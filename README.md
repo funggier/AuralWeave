@@ -4,7 +4,7 @@
 
 AuralWeave คือโปรเจกต์โปรแกรมจัดเส้นทางเสียงแบบ Real-time สำหรับ Windows รองรับการรับเสียงจากอุปกรณ์จริงหรืออุปกรณ์เสมือน ประมวลผลตามลำดับ และกระจายเสียงออกไปหลายอุปกรณ์พร้อมกัน
 
-> **Project status:** Initial repository and specifications only. ยังไม่มี Audio Engine, UI ที่เชื่อมกับอุปกรณ์จริง หรือ Virtual Audio Driver ที่ใช้งานได้
+> **Project status:** Experimental Windows desktop and WASAPI audio route implemented; **not yet a product release**. Capture/render routing and a repeatable Gain effect have passed preliminary checks. RNNoise, independent clock correction, integrated native streaming and Virtual Audio Driver are not implemented.
 
 ## Concept
 
@@ -36,6 +36,8 @@ Output Distributor
 
 | Document | Description |
 | --- | --- |
+| [Implementation status](docs/IMPLEMENTATION_STATUS.md) | หลักฐานการ Build/Test และข้อจำกัดของต้นแบบ |
+| [Windows development](docs/WINDOWS_DEVELOPMENT.md) | Compiler, Windows SDK และคำสั่ง Build |
 | [Product requirements](docs/PRODUCT_REQUIREMENTS.md) | ขอบเขตและกฎที่ต้องรองรับ |
 | [Architecture](docs/ARCHITECTURE.md) | โมดูลหลักและการแยกความรับผิดชอบ |
 | [Audio routing](docs/AUDIO_ROUTING.md) | Signal flow, timing, device identity |
@@ -49,7 +51,16 @@ Output Distributor
 
 ## Development status
 
-Directories under `src/` are module placeholders, **not working implementations**. Recommended initial target: native C++ audio core using Windows WASAPI, decoupled desktop UI (candidate: .NET/WPF), RNNoise as optional DSP adapter, and an isolated future virtual-driver project.
+Current implementation consists of a WPF desktop frontend and .NET/WASAPI prototype router (via NAudio), plus a separate native C++20 configuration/endpoint enumeration prototype compiled with MSVC. Native streaming is **not yet connected to the desktop**. See [implementation evidence and open gaps](docs/IMPLEMENTATION_STATUS.md). Do not confuse a successful muted test with a verified multi-device audible release.
+
+Quick-start development:
+
+```powershell
+.\scripts\build-windows.ps1
+.\scripts\build-native.ps1 -ListDevices
+```
+
+Running either script is optional; no automatic startup or virtual audio driver install occurs.
 
 ## License
 

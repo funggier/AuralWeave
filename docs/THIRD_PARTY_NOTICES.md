@@ -23,3 +23,10 @@ The MIT license **does not automatically relicense** third-party libraries, SDKs
 | Future AI voice models | Optional DSP/voice effects | Undefined; licenses to be reviewed per model |
 
 The table is an inventory of **intent**, not evidence that these dependencies are installed.
+## Current prototype dependency (needs release audit)
+
+| Component | Version | Integration | Status |
+| --- | --- | --- | --- |
+| NAudio | 2.2.1 | NuGet managed WASAPI bridge for prototype | Installed via package restore; license/notice audit before redistribution pending |
+
+The native graph currently uses Windows SDK headers/APIs and does not bundle a virtual audio driver or RNNoise model.

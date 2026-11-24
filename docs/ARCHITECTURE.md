@@ -54,3 +54,12 @@ A failing sink can be marked disconnected without stopping healthy siblings; rep
 ## Portability
 
 Prefer paths relative to the executable root. User-specific settings/cache/models/presets stored locally by default. Driver installation is OS-level and separately managed; portable does not mean driverless virtual audio.
+## Existing implementation versus target design
+
+- `AuralWeave.Core` (C#): route configuration rules and Gain DSP instances; tested.
+- `AuralWeave.Audio.Windows` (C#/NAudio): active WASAPI capture, optional loopback, one-route fan-out into physical rendering; preliminary silent single-output smoke passed.
+- `AuralWeave.Desktop` (WPF): prototype route editor and real-time meters; currently one active route; devices cannot be changed while running.
+- `AuralWeave.Native` (C++20/MSVC): native RouteGraph, duplicate endpoint validation, repeated Gain effect processing, Windows endpoint enumeration; **not yet used by live desktop audio**.
+- `AuralWeave.Dsp` and `AuralWeave.VirtualDriver`: placeholders only.
+
+Do not present the desired fully-native low-latency engine as delivered. This split is an incremental bridge; see [implementation status](IMPLEMENTATION_STATUS.md). After Visual Studio Installer activity is finished, validate any newer toolsets without forcing changes to installed components.

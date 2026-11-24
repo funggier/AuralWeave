@@ -1,6 +1,6 @@
 # Roadmap
 
-No phase below is claimed complete beyond repository/document initialization.
+The repository now includes working prototypes; boxes below distinguish fully proven milestones from remaining hardening. See [Implementation status](IMPLEMENTATION_STATUS.md) for test evidence.
 
 ## Phase 0 — Repository foundation
 
@@ -13,16 +13,16 @@ No phase below is claimed complete beyond repository/document initialization.
 ## Phase 1 — Minimal functional audio route
 
 - [ ] C++/WASAPI capture and render proof of concept
-- [ ] Device enumeration and stable identity
-- [ ] Start/Stop one route with one input and one physical output
-- [ ] Basic UI and real meter/status
-- [ ] Format adaptation and bounded buffering
+- [x] Device enumeration and stable endpoint identity (prototype on Windows)
+- [x] Start/Stop one .NET/WASAPI route with one input and one muted physical output (smoke test)
+- [x] Basic WPF UI and input meter/status (prototype)
+- [ ] Media Foundation format adaptation and bounded buffering prototyped; full conversion matrix and stability not yet verified
 - [ ] Recovery from stop/disconnect, measured performance
 
 ## Phase 2 — Multiple simultaneous outputs
 
-- [ ] Add/remove output controls with per-route uniqueness
-- [ ] Simultaneous fan-out and independent output gain/mute
+- [x] Add/remove output controls with per-route uniqueness (prototype)
+- [ ] Prototype fan-out and per-output gain/mute implemented; real multi-output hardware smoke and drift handling remain
 - [ ] Per-device clock drift/underrun handling
 - [ ] Hotplug and per-output status
 - [ ] Regression tests for every dropdown edge case
@@ -31,8 +31,8 @@ No phase below is claimed complete beyond repository/document initialization.
 
 - [ ] Noise processing selector: Bypass/RNNoise
 - [ ] Frame adapter and RNNoise quality tests
-- [ ] Ordered effect instances, repeated types, independent settings
-- [ ] Enable/bypass/reorder/remove and safe reconfiguration
+- [x] Ordered Gain effect instances, repeated types and independent gain settings (prototype)
+- [ ] Enable/bypass/reorder/remove implemented for Gain; concurrent hot reconfiguration safety and DSP engine plugin ABI require hardening
 - [ ] Actual EQ as first configurable built-in effect
 - [ ] Preset save/load round-trips
 
@@ -48,3 +48,9 @@ No phase below is claimed complete beyond repository/document initialization.
 - [ ] Additional noise engines and effect plugins
 - [ ] Voice processing / optional AI processors
 - [ ] Virtual playback and recording driver with installer and tested signing
+## Native C++ implementation checkpoint
+
+- [x] Detect and invoke installed MSVC toolchain without requiring `cl.exe` globally on PATH
+- [x] C++20 native RouteGraph: unique outputs, ordered repeated-effect instances and Gain processor
+- [x] Core Audio endpoint discovery with Windows SDK; native non-audible smoke test
+- [ ] Native C++ WASAPI streaming engine and UI interop
