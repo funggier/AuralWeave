@@ -23,11 +23,7 @@ To build only native C++ plus tests:
 .\scripts\build-native.ps1 -ListDevices
 ```
 
-To build just .NET when MSVC is not available:
-
-```powershell
-.\scripts\build-windows.ps1 -SkipNative
-```
+The native MSVC C++ compiler is mandatory; there is no managed audio fallback or .NET-only product build.
 
 ## Run the desktop UI
 
@@ -35,7 +31,7 @@ To build just .NET when MSVC is not available:
 dotnet run --project .\src\AuralWeave.Desktop\AuralWeave.Desktop.csproj -c Release
 ```
 
-The UI starts with the managed backend selected. The **Native C++ WASAPI** option activates only when the DLL is found. Native uses the endpoint mix formats and supports mono/stereo Float32/PCM16. Unsupported endpoints return an error, rather than forcing a different audio device.
+The UI uses only the **Native C++ WASAPI** engine. The native DLL must be present. Native supports mono/stereo Float32/PCM16 endpoint mix formats. Unsupported endpoints return an error rather than falling back to another audio engine.
 
 ## Manual real-hardware muted diagnostics
 
@@ -54,8 +50,8 @@ The second selects one 192 kHz and one 48 kHz output if present. Neither is part
 .\scripts\build-windows.ps1 -PublishPortable
 ```
 
-Produces a self-contained Windows x64 directory under `dist/AuralWeave-win-x64`, including the separate native DLL, without installing any audio driver. Portable publish layout is an implementation step, not a tested public release.
+Produces `dist/AuralWeave-win-x64` and `dist/AuralWeave-Windows-x64-Preview.zip` with the native DLL and required notices. No driver installation or automatic copying into Products/test folders. This is a preview, not a public release.
 
 ## Safety and rights
 
-Do not install or replace audio drivers during routine builds. MIT license applies to original project source. Review NAudio and any RNNoise/third-party package's own license and required notices before public distribution.
+Do not install or replace audio drivers during routine builds. MIT license applies to original project source. Verify notices and licenses for future RNNoise and other third-party modules before public distribution. NAudio is not included.

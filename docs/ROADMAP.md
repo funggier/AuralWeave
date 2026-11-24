@@ -63,3 +63,11 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Managed shorter queue, actual queue telemetry, direct-format path
 - [x] 30-second muted native mixed-rate hardware soak; no post-warmup overruns or underruns
 - [ ] Audible latency measurement, filtering quality and long-duration independent clock drift correction
+
+## Native-only consolidation (2026-11-24)
+
+- [x] Use C++ WASAPI as the sole audio engine
+- [x] Move Core Audio endpoint discovery and mix-format reporting to native C ABI
+- [x] Remove managed NAudio streaming and the backend selector
+- [x] Build/Portable remains in project; no automatic copy to test Products folder
+- [ ] Formal listening/latency and cross-device drift acceptance tests

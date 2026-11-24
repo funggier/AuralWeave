@@ -26,3 +26,12 @@ AW_API float aw_input_peak(void* handle) noexcept;
 AW_API int aw_set_effects(void* handle, const float* gains, const int* enabled, int count) noexcept;
 AW_API int aw_set_output(void* handle, int index, float gain, int muted) noexcept;
 AW_API void aw_last_error(void* handle, wchar_t* buffer, std::size_t capacity) noexcept;
+
+// Native Windows Core Audio endpoints (kind 0=capture, 1=render).
+// Query names/IDs, default endpoint and supported shared mix rate/channels.
+AW_API int aw_endpoint_count(int kind) noexcept;
+AW_API int aw_endpoint_get(int kind, int index,
+                           wchar_t* id, std::size_t id_capacity,
+                           wchar_t* name, std::size_t name_capacity,
+                           int* is_default, int* sample_rate,
+                           int* channels) noexcept;

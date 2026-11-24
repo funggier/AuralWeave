@@ -5,10 +5,10 @@ using AuralWeave.Core;
 namespace AuralWeave.Audio.Windows;
 
 /// <summary>
-/// Optional P/Invoke bridge to AuralWeave.Native.dll. Uses individual device
+/// Required native C++ WASAPI bridge to AuralWeave.Native.dll. Uses individual device
 /// shared-mode mix formats and bounded per-output linear resamplers.
 /// </summary>
-public sealed class NativeWasapiAudioRoute : IAudioRouteSession
+public sealed class NativeWasapiAudioRoute : IDisposable
 {
     private IntPtr _handle;
     private readonly List<OutputRoute> _outputs = [];

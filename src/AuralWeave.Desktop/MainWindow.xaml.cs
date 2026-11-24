@@ -15,7 +15,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _meterTimer;
     private IReadOnlyList<AudioEndpoint> _captureDevices = [];
     private IReadOnlyList<AudioEndpoint> _renderDevices = [];
-    private IAudioRouteSession? _route;
+    private NativeWasapiAudioRoute? _route;
     private bool _updating;
 
     public MainWindow()
@@ -36,8 +36,8 @@ public partial class MainWindow : Window
         try
         {
             var oldInput = (InputCombo.SelectedItem as AudioEndpoint)?.Id;
-            _captureDevices = WasapiDeviceCatalog.CaptureDevices();
-            _renderDevices = WasapiDeviceCatalog.RenderDevices();
+            _captureDevices = NativeAudioDeviceCatalog.CaptureDevices();
+            _renderDevices = NativeAudioDeviceCatalog.RenderDevices();
             InputCombo.ItemsSource = _captureDevices;
             InputCombo.SelectedItem = _captureDevices.FirstOrDefault(x => x.Id == oldInput)
                 ?? _captureDevices.FirstOrDefault(x => x.IsDefault)
@@ -307,11 +307,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        IAudioRouteSession? candidate = null;
+        NativeWasapiAudioRoute? candidate = null;
         try
         {
-            candidate = NativeToggle.IsChecked == true
-                ? new NativeWasapiAudioRoute() : new WasapiAudioRoute();
+            candidate = new NativeWasapiAudioRoute();
             candidate.ReplaceEffects(_effects);
             candidate.Start(input.Id, _outputs);
             _route = candidate;
@@ -320,9 +319,8 @@ public partial class MainWindow : Window
             StartButton.Foreground = Brushes.White;
             RefreshButton.IsEnabled = false;
             InputCombo.IsEnabled = false;
-            NativeToggle.IsEnabled = false;
             RefreshOutputRows();
-            Status($"Route started ({(candidate is NativeWasapiAudioRoute ? "Native C++" : "Managed WASAPI")}): {input.DisplayName} → {_outputs.Count} output(s).");
+            Status($"Route started (Native C++): {input.DisplayName} → {_outputs.Count} output(s).");
         }
         catch (Exception ex)
         {
@@ -344,7 +342,6 @@ public partial class MainWindow : Window
             StartButton.Foreground = new SolidColorBrush(Color.FromRgb(16, 38, 27));
             RefreshButton.IsEnabled = true;
             InputCombo.IsEnabled = true;
-            NativeToggle.IsEnabled = NativeWasapiAudioRoute.Available;
             InputLevel.Value = 0;
             FrameCountLabel.Text = "0 frames";
             OutputStatusLabel.Text = "";

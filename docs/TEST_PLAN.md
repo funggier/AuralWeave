@@ -62,3 +62,13 @@ Test reported vs measured latency, long-session stability, CPU use, buffer under
 | LAT-05 | 30-second muted mixed-rate smoke | Report capture frames, startup underrun, post-warmup underrun delta and overflow |
 
 Observed: native 30-second muted smoke yielded **0 post-warmup overruns and 0 post-warmup underruns**, but audible latency and output quality have not yet been tested.
+## Native-only consolidation verification (2026-11-24)
+
+- C++20 full native build and 16 native tests passed.
+- Managed **data/model validation** 13 tests passed; the managed audio-renderer and NAudio dependency have been removed.
+- Native DLL now enumerates capture, loopback and render endpoints and obtains their actual shared-mode sample rate and channel count. Hardware read-only enumeration passed with 6 capture/loopback and 5 render candidates.
+- Default Windows capture and render endpoints correctly identified after native enumeration identity fix.
+- Real hardware muted single-output: Line In 192k -> Realtek Speakers 192k; 295,680 captured frames, 0 overruns, 1 startup underrun, no reported engine error; Stop succeeded.
+- Real hardware muted mixed-rate: Line In 192k -> Speakers 192k + ASUS VG249 48k; 483,840 captured frames, 0 overruns, 2,401 cumulative startup underruns, **zero additional underruns or overruns after warmup**, no engine error; Stop succeeded.
+- User reported Native C++ audio felt immediate with no perceptible delay; no calibrated millisecond measurement has been taken.
+- Still required: prolonged real-audio testing, different rate/channel configurations, high-quality resampling and host-device hotplug validation.

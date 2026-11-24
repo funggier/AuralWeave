@@ -51,7 +51,7 @@ Output Distributor
 
 ## Development status
 
-Current implementation consists of a WPF desktop frontend and .NET/WASAPI prototype router (via NAudio), plus an optional native C++20 WASAPI streaming backend, compiled with MSVC and selectable in the Desktop UI. Native output conversion uses bounded linear resamplers; high-quality filtering, sink isolation and long-session drift management are not complete. See [implementation evidence and open gaps](docs/IMPLEMENTATION_STATUS.md) and [dark theme/audio stability changes](docs/AUDIO_LATENCY_AND_THEME.md). Do not confuse a successful muted test with a verified multi-device audible release.
+Current implementation has a Windows .NET/WPF desktop for controls, but all real-time audio capture/render and endpoint discovery are provided exclusively by `AuralWeave.Native.dll` (C++20/WASAPI). The NAudio managed audio backend and engine selection were removed following a successful listening test. The user reported **no perceptible native latency**; exact timing has not been measured. See [ADR 0003](docs/adr/0003-native-only-audio.md), [implementation status](docs/IMPLEMENTATION_STATUS.md), and [known limitations](docs/PREVIEW_NOTES.md).
 
 Quick-start development:
 

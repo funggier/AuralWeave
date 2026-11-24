@@ -13,7 +13,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock FontSize="23" FontWeight="Bold" Text="AuralWeave"/>
-                    <TextBlock Foreground="#AAB8CE" Text="Modular Real-time Audio Routing  •  WASAPI prototype"/>
+                    <TextBlock Foreground="#AAB8CE" Text="Modular Real-time Audio Routing  •  Native C++ WASAPI"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="RefreshButton" Content="Refresh devices" Click="RefreshClicked"/>
@@ -34,7 +34,6 @@
                     <StackPanel>
                         <TextBlock FontSize="17" FontWeight="SemiBold" Text="1  Input source" Margin="0,0,0,10"/>
                         <ComboBox x:Name="InputCombo" DisplayMemberPath="DisplayName"/>
-                        <CheckBox x:Name="NativeToggle" Margin="0,11,0,2" Content="Native C++ engine (low-latency preview; uncheck for compatibility mode)" IsChecked="False"/>
                         <TextBlock Margin="0,9,0,3" Foreground="#AAB8CE" Text="Input signal"/>
                         <ProgressBar x:Name="InputLevel" Minimum="0" Maximum="100" Height="12" Value="0" Foreground="#70E0AD" Background="#37455B"/>
                         <TextBlock Foreground="#AAB8CE" Margin="0,9,0,0" Text="Mic / Line In or Windows playback loopback • selects active device endpoint"/>
@@ -79,7 +78,7 @@
                         <TextBlock x:Name="DeviceCountLabel" Foreground="#AAB8CE" Margin="0,7,0,0"/>
                         <TextBlock x:Name="OutputStatusLabel" Foreground="#AAB8CE" Margin="0,7,0,0" TextWrapping="Wrap"/>
                         <TextBlock Foreground="#AAB8CE" Margin="0,9,0,0" TextWrapping="Wrap"
-                                   Text="Native C++ uses per-output buffering • Managed WASAPI remains available as fallback"/>
+                                   Text="Native C++ audio engine • independent output buffering and event-driven rendering"/>
                     </StackPanel>
                 </Border>
             </StackPanel>

@@ -1,33 +1,28 @@
-# AuralWeave — Dark UI & Audio Stability Preview
+# AuralWeave — Native-only Windows x64 Preview
 
-This is an experimental engineering build, not a stable public release.
+This is an experimental preview, not a final product release.
 
-## Changes in this Preview
+## What's changed
 
-- Dark dropdowns, dropdown options, buttons and disabled states; no white-on-white device names.
-- Start and Stop combined into a single button. Click Start to begin, then the same button says Stop.
-- Default backend is **Native C++ WASAPI** if `AuralWeave.Native.dll` is available.
-- Uncheck **Native C++ engine** to use Managed WASAPI compatibility mode.
-- Native uses independent render endpoint events; shorter buffering and separate overrun/underrun telemetry.
-- Managed fallback lowers requested buffer/latency and avoids converting already-matched PCM.
-- Output selections use a dropdown and +/−, and already-selected endpoints are excluded until removed.
-- Duplicate Gain effects can still be inserted and configured independently.
+- **Native C++ WASAPI is the only audio backend.** Managed WASAPI/NAudio and the engine selection checkbox were removed.
+- Device discovery, endpoint mix formats, physical capture/render and loopback are handled by the native DLL.
+- The existing dark theme and single Start/Stop button remain.
+- One input can route to several independently buffered output devices; newly added outputs start muted.
+- You may add more than one Gain effect; each instance retains independent gain, enabled state and order.
 
-## Launch
+## Usage
 
-1. **Close old AuralWeave.exe before switching to the new preview.** The previous test installation is not automatically overwritten or terminated.
-2. Extract the ZIP into a new, writable folder. Keep `AuralWeave.exe` and `AuralWeave.Native.dll` together.
-3. Run `AuralWeave.exe`.
-4. Select Line In or microphone from Input source.
-5. Add an output from the Output dropdown with `+`. Newly added outputs start **Muted**; explicitly unmute to hear.
-6. Click Start route. The button becomes Stop route while running.
-7. If the native backend rejects an unusual device configuration, stop and uncheck Native C++ to retry with Managed WASAPI.
+1. Run `AuralWeave.exe` with `AuralWeave.Native.dll` in the same folder.
+2. Choose an input (Microphone, Line In or playback loopback) and add one or more output devices via the `+` button.
+3. Newly added outputs start muted. Use headphones and low gain when testing to prevent acoustic feedback.
+4. Click **Start route**. The same button becomes **Stop route**.
+5. To change selected endpoints, stop the route and adjust the dropdowns.
+6. Portable builds are generated in the project at `dist/AuralWeave-win-x64` and may be copied manually to a test folder.
 
-## Cautions / limitations
+## Known limitations
 
-- Routing to speakers while capturing a microphone in the same room can create feedback. Start with low gain and headphones.
-- **RNNoise, EQ, AI Voice Changer, Virtual Audio Driver and preset persistence are not included yet.**
-- Muted real-device smoke tests cannot prove audible quality. Sound quality, glitches on other devices, long-term clock drift and exact end-to-end latency remain to be measured.
-- Native resampling uses linear interpolation, not an anti-aliased production resampler.
-- Windows audio endpoint settings can affect total delay; a setting of 40 ms does not mean measured 40 ms latency.
-- No driver or Windows service is installed. See included THIRD_PARTY_NOTICES.md and licenses for third-party rights.
+- RNNoise, EQ and AI effects, presets and optional virtual audio drivers are not implemented.
+- Native engine supports mono/stereo Float32/PCM16 mix formats; unsupported device configurations report errors instead of falling back.
+- A subjective user test found Native latency imperceptible, but no measured end-to-end millisecond figure is available.
+- The native linear resampler is not a production-quality anti-aliased resampler. Longer-session drift, hotplug, sink isolation and audio fidelity still need formal testing.
+- No audio driver is installed by this preview.

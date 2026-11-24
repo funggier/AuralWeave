@@ -27,8 +27,9 @@ $dll = Join-Path $out 'AuralWeave.Native.dll'
 
 $compileTests = 'cl ' + $common + $graph + $resampler + $catalog + $tests +
     '/link ole32.lib propsys.lib /OUT:"' + $exe + '"'
-$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler +
-    '/link ole32.lib uuid.lib /OUT:"' + $dll + '"'
+$catalogApi = '"' + (Join-Path $src 'src\device_catalog_api.cpp') + '" '
+$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler + $catalog + $catalogApi +
+    '/link ole32.lib propsys.lib uuid.lib /OUT:"' + $dll + '"'
 
 Push-Location $out
 try {

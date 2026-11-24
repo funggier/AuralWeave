@@ -66,8 +66,8 @@ std::vector<AudioDevice> enumerate_endpoints(bool capture) {
                 }
                 PropVariantClear(&value);
             }
-            result.push_back(AudioDevice{std::move(id), std::move(name),
-                                         default_id == id});
+            const bool is_default = default_id == id;
+            result.push_back(AudioDevice{std::move(id), std::move(name), is_default});
         }
         if (must_uninit) CoUninitialize();
         return result;

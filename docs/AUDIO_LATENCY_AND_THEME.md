@@ -58,3 +58,7 @@ Changes:
 - Improve per-device clock drift compensation, sink isolation, hotplug and large-scale multi-output testing.
 - Add settings for buffer/latency modes once safe ranges for supported devices are validated.
 - RNNoise and other effects are future modules.
+
+## Updated decision (2026-11-24)
+
+The user confirmed that Native C++ latency was not perceptible to them in audible testing. Native is now the sole audio engine; the managed backend discussed above is **historical** and has been removed from code and distribution. Do not interpret this feedback as a measured millisecond value.

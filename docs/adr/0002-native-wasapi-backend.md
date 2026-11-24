@@ -1,7 +1,7 @@
 # ADR 0002 — Native C++ WASAPI and per-output format adaptation
 
 - **Date:** 2026-11-24
-- **Status:** Accepted for prototype; production quality pending
+- **Status:** Superseded by ADR 0003 (native-only audio)
 
 ## Context
 

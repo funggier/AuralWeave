@@ -63,3 +63,7 @@ Prefer paths relative to the executable root. User-specific settings/cache/model
 - `AuralWeave.Dsp` and `AuralWeave.VirtualDriver`: placeholders only.
 
 Do not present the desired fully-native low-latency engine as delivered. This split is an incremental bridge; see [implementation status](IMPLEMENTATION_STATUS.md). After Visual Studio Installer activity is finished, validate any newer toolsets without forcing changes to installed components.
+
+## Native-only architecture decision (2026-11-24)
+
+[ADR 0003](adr/0003-native-only-audio.md) supersedes the earlier dual-backend prototype. The application now has **one** audio implementation: native C++ WASAPI. The WPF UI and C# Core remain a control plane only. NAudio and the managed capture/render modules have been removed. Read earlier sections as historical architecture planning where they describe dual backend behavior.

@@ -4,117 +4,91 @@ using AuralWeave.Core;
 try
 {
     Console.OutputEncoding = System.Text.Encoding.UTF8;
-    Console.WriteLine("AuralWeave device diagnostics");
-    var sources = WasapiDeviceCatalog.CaptureDevices();
-    var outputs = WasapiDeviceCatalog.RenderDevices();
-    Console.WriteLine($"CAPTURE SOURCES: {sources.Count}");
+    Console.WriteLine("AuralWeave diagnostics — Native C++ WASAPI only");
+
+    var sources = NativeAudioDeviceCatalog.CaptureDevices();
+    var outputs = NativeAudioDeviceCatalog.RenderDevices();
+    Console.WriteLine($"CAPTURE / LOOPBACK SOURCES: {sources.Count}");
     foreach (var source in sources)
-        Console.WriteLine($"  [{source.Kind}] {source.DisplayName} | default={source.IsDefault} | id={source.Id}");
+        Console.WriteLine($"  [{source.Kind}] {source.DisplayName} | default={source.IsDefault}" +
+            $" | {source.SampleRate} Hz / {source.Channels} ch | id={source.Id}");
     Console.WriteLine($"RENDER OUTPUTS: {outputs.Count}");
     foreach (var output in outputs)
-        Console.WriteLine($"  {output.Name} | default={output.IsDefault} | id={output.Id}");
+        Console.WriteLine($"  {output.Name} | default={output.IsDefault}" +
+            $" | {output.SampleRate} Hz / {output.Channels} ch | id={output.Id}");
 
-    if (args.Contains("--formats"))
+    var single = args.Contains("--smoke-native") || args.Contains("--smoke-silent");
+    var mixed = args.Contains("--smoke-native-multi") ||
+                args.Contains("--soak-native-multi") ||
+                args.Contains("--long-soak-native-multi");
+    if (single)
     {
-        using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
-        foreach (var device in sources.Where(x => x.Kind == AudioEndpointKind.Capture))
-        {
-            using var d = enumerator.GetDevice(device.Id.Substring("capture:".Length));
-            var f = d.AudioClient.MixFormat;
-            Console.WriteLine($"CAPTURE FORMAT [{d.FriendlyName}]: {f}");
-        }
-        foreach (var device in outputs)
-        {
-            using var d = enumerator.GetDevice(device.Id);
-            var f = d.AudioClient.MixFormat;
-            Console.WriteLine($"RENDER FORMAT [{d.FriendlyName}]: {f}");
-        }
-    }
-    if (args.Contains("--smoke-native-multi") || args.Contains("--soak-native-multi") || args.Contains("--long-soak-native-multi"))
-    {
-        if (!NativeWasapiAudioRoute.Available)
-            throw new InvalidOperationException("Native DLL missing from diagnostics output.");
-        var input = sources.First(x => x.Kind == AudioEndpointKind.Capture);
-        using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
-        var specs = outputs.Select(endpoint =>
-        {
-            using var device = enumerator.GetDevice(endpoint.Id);
-            return (endpoint, rate: device.AudioClient.MixFormat.SampleRate);
-        }).ToArray();
-        var first = specs.FirstOrDefault(x => x.rate == 192000);
-        var second = specs.FirstOrDefault(x => x.rate == 48000);
-        if (first.endpoint is null || second.endpoint is null)
-            throw new InvalidOperationException("Need independent outputs at 192k and 48k for mixed-rate smoke.");
-        Console.WriteLine($"NATIVE MULTI MUTED: {input.Name} -> {first.endpoint.Name} [{first.rate}Hz] + {second.endpoint.Name} [{second.rate}Hz]");
-        using var route = new NativeWasapiAudioRoute();
-        route.ReplaceEffects([new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect, true, 0.8f)]);
-        route.Start(input.Id, [new OutputRoute(Guid.NewGuid(), first.endpoint.Id, 1f, true),
-                               new OutputRoute(Guid.NewGuid(), second.endpoint.Id, 1f, true)]);
-// Distinguish startup underflow from a stream that continues to starve.
-        await Task.Delay(2000);
-        var afterStartupUnderruns = route.UnderrunRenderFrames;
-        var afterStartupOverruns = route.DroppedRenderFrames;
-        await Task.Delay(args.Contains("--long-soak-native-multi") ? 28000 : args.Contains("--soak-native-multi") ? 8000 : 500);
-        var frames = route.CapturedFrames;
-        var drops = route.DroppedRenderFrames;
-        var underruns = route.UnderrunRenderFrames;
-        var error = route.LastError;
-        route.Stop();
-        Console.WriteLine($"Native mixed-rate frames: {frames}; ring overruns: {drops}; ring underruns: {underruns}; after warmup overrun delta: {drops - afterStartupOverruns}; after warmup underrun delta: {underruns - afterStartupUnderruns}; error: {error ?? "none"}");
-        if (frames <= 0 || error != null)
-            throw new InvalidOperationException("Native mixed-rate routing failed.");
-        Console.WriteLine("PASS: Muted native multi-output routing across two sample rates.");
-    }
-    if (args.Contains("--smoke-native"))
-    {
-        if (!NativeWasapiAudioRoute.Available)
-            throw new InvalidOperationException("Native DLL is not in the diagnostics output directory.");
         var input = sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture && x.IsDefault)
             ?? sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture)
-            ?? throw new InvalidOperationException("No capture device.");
-        var output = outputs.FirstOrDefault(x => x.IsDefault) ?? outputs.First();
+            ?? throw new InvalidOperationException("No active capture input.");
+        var output = outputs.FirstOrDefault(x => x.IsDefault)
+            ?? outputs.FirstOrDefault()
+            ?? throw new InvalidOperationException("No active render output.");
+
         Console.WriteLine($"NATIVE SILENT: {input.Name} -> {output.Name} (muted)");
         using var route = new NativeWasapiAudioRoute();
-        route.ReplaceEffects([new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect, true, 0.5f),
-            new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect, true, 0.5f)]);
+        route.ReplaceEffects([
+            new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect, true, 0.5f),
+            new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect, true, 0.5f)
+        ]);
         route.Start(input.Id, [new OutputRoute(Guid.NewGuid(), output.Id, 1f, true)]);
         await Task.Delay(1500);
         var frames = route.CapturedFrames;
-        var dropped = route.DroppedRenderFrames;
+        var overrun = route.DroppedRenderFrames;
+        var underrun = route.UnderrunRenderFrames;
+        var error = route.LastError;
+        route.Stop();
+        Console.WriteLine($"Native frames: {frames}; overrun: {overrun}; underrun: {underrun}; error: {error ?? "none"}");
+        if (frames <= 0 || error is not null)
+            throw new InvalidOperationException("Native single-output muted smoke failed.");
+        Console.WriteLine("PASS: Native muted capture -> render route and Stop.");
+    }
+
+    if (mixed)
+    {
+        var input = sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture)
+            ?? throw new InvalidOperationException("No active capture input.");
+        var first = outputs.FirstOrDefault(x => x.SampleRate == 192000);
+        var second = outputs.FirstOrDefault(x => x.SampleRate == 48000);
+        if (first is null || second is null)
+            throw new InvalidOperationException("Mixed-rate smoke requires 192k and 48k outputs.");
+        Console.WriteLine($"NATIVE MULTI MUTED: {input.Name} -> {first.Name} [192k] + {second.Name} [48k]");
+        using var route = new NativeWasapiAudioRoute();
+        route.ReplaceEffects([
+            new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect, true, 0.8f)
+        ]);
+        route.Start(input.Id, [
+            new OutputRoute(Guid.NewGuid(), first.Id, 1f, true),
+            new OutputRoute(Guid.NewGuid(), second.Id, 1f, true)
+        ]);
+        await Task.Delay(2000);
+        var warmupOverrun = route.DroppedRenderFrames;
+        var warmupUnderrun = route.UnderrunRenderFrames;
+        var duration = args.Contains("--long-soak-native-multi") ? 28000
+            : args.Contains("--soak-native-multi") ? 8000 : 500;
+        await Task.Delay(duration);
+        var frames = route.CapturedFrames;
+        var overruns = route.DroppedRenderFrames;
         var underruns = route.UnderrunRenderFrames;
         var error = route.LastError;
         route.Stop();
-        Console.WriteLine($"Native frames: {frames}, dropped: {dropped}, underruns: {underruns}, error: {error ?? "none"}");
-        if (frames <= 0 || error != null)
-            throw new InvalidOperationException("Native audio stream not healthy.");
-        Console.WriteLine("PASS: Native muted capture -> render route and Stop.");
-    }
-    if (args.Contains("--smoke-silent"))
-    {
-        // Emits only silence to selected render endpoint. This validates device open,
-        // capture callbacks, ring buffering and Stop() without audible output.
-        var input = sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture && x.IsDefault)
-            ?? sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture)
-            ?? throw new InvalidOperationException("No capture input exists for silent smoke test.");
-        var output = outputs.FirstOrDefault(x => x.IsDefault) ?? outputs.First();
-        var selection = new OutputRoute(Guid.NewGuid(), output.Id, 1f, Muted: true);
-        Console.WriteLine($"SILENT SMOKE: {input.Name} -> {output.Name} (Muted)");
-        using var route = new WasapiAudioRoute();
-        route.Start(input.Id, [selection]);
-        await Task.Delay(1800);
-        var frames = route.CapturedFrames;
-        var errors = route.GetOutputTelemetry();
-        var error = route.LastError ?? errors.Select(x => x.Error).FirstOrDefault(x => x is not null);
-        route.Stop();
-        Console.WriteLine($"Frames captured: {frames}; output telemetry: {errors.Count}; error: {error ?? "none"}");
-        if (error is not null || frames == 0 || errors.Count != 1)
-            throw new InvalidOperationException("Silent audio route smoke test failed.");
-        Console.WriteLine("PASS: Muted real-device capture/render route and Stop.");
+        Console.WriteLine($"Frames: {frames}; overruns: {overruns}; underruns: {underruns};" +
+            $" post-warmup overrun delta: {overruns - warmupOverrun};" +
+            $" post-warmup underrun delta: {underruns - warmupUnderrun};" +
+            $" error: {error ?? "none"}");
+        if (frames <= 0 || error is not null)
+            throw new InvalidOperationException("Native mixed-rate muted smoke failed.");
+        Console.WriteLine("PASS: Native muted mixed-rate multi-output and Stop.");
     }
 }
-catch (Exception ex)
+catch (Exception error)
 {
-    Console.Error.WriteLine("Diagnostic failed: " + ex);
+    Console.Error.WriteLine("Diagnostic failed: " + error);
     return 1;
 }
 return 0;
