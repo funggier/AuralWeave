@@ -1,0 +1,43 @@
+# Local workspace and editor settings
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.rsuser
+*.sln.docstates
+
+# Build and compiler outputs
+bin/
+obj/
+build/
+out/
+dist/
+Debug/
+Release/
+x64/
+x86/
+CMakeFiles/
+CMakeCache.txt
+*.pdb
+*.ilk
+*.tlog
+
+# Portable runtime and user-created data
+data/
+cache/
+logs/
+models/
+presets/
+plugins/installed/
+drivers/installed/
+*.tmp
+*.bak
+
+# Developer/OS artifacts
+Thumbs.db
+Desktop.ini
+.DS_Store
+.env
+.env.*
+!.env.example
