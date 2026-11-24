@@ -91,7 +91,7 @@ FormatInfo format_info(const WAVEFORMATEX* f) {
 void init_client(IAudioClient* client, WAVEFORMATEX* format, DWORD flags) {
     // Windows Audio Engine MixFormat is a supported shared-mode format.
     checked(client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags,
-                               1000000, 0, format, nullptr),
+                               400000, 0, format, nullptr),
             "IAudioClient::Initialize");
 }
 
@@ -104,6 +104,7 @@ struct RenderSink final {
     UINT32 buffer_frames{};
     FormatInfo format{};
     std::unique_ptr<auralweave::StreamResampler> resampler;
+    std::unique_ptr<Event> render_event;
     std::vector<float> scratch;
 };
 
@@ -155,6 +156,7 @@ public:
         }
         frames_.store(0);
         overruns_.store(0);
+        underruns_.store(0);
         peak_.store(0);
         stop_event();
         state_.store(1);
@@ -179,6 +181,7 @@ public:
     int state() const noexcept { return state_.load(); }
     std::uint64_t frames() const noexcept { return frames_.load(); }
     std::uint64_t overruns() const noexcept { return overruns_.load(); }
+    std::uint64_t underruns() const noexcept { return underruns_.load(); }
     float peak() const noexcept { return peak_.load(); }
 
     std::wstring error() {
@@ -222,6 +225,7 @@ private:
     std::atomic<int> state_{0};  // 0=off, 1=starting, 2=running, 3=error
     std::atomic<std::uint64_t> frames_{0};
     std::atomic<std::uint64_t> overruns_{0};
+    std::atomic<std::uint64_t> underruns_{0};
     std::atomic<float> peak_{0};
 
     void stop_event() noexcept { stop_.reset(); }
@@ -332,8 +336,10 @@ private:
             sink.format = format_info(mix.data);
             sink.resampler = std::make_unique<auralweave::StreamResampler>(
                 in_format.rate, in_format.channels,
-                sink.format.rate, sink.format.channels, 250);
-            init_client(sink.client.Get(), mix.data, 0);
+                sink.format.rate, sink.format.channels, 80);
+            init_client(sink.client.Get(), mix.data, AUDCLNT_STREAMFLAGS_EVENTCALLBACK);
+            sink.render_event = std::make_unique<Event>();
+            checked(sink.client->SetEventHandle(sink.render_event->get()), "Set render event");
             checked(sink.client->GetBufferSize(&sink.buffer_frames), "Get render buffer size");
             checked(sink.client->GetService(IID_PPV_ARGS(&sink.writer)),
                     "Get render client");
@@ -354,16 +360,17 @@ private:
         checked(capture->Start(), "Start capture");
         state_.store(2);
 
-        HANDLE events[2]{stop_.get(), capture_event.get()};
-        std::vector<float> samples;
-        samples.reserve(32768);
-        std::array<float, 256> effects_snapshot{};
-        for (;;) {
-            DWORD result = WaitForMultipleObjects(2, events, FALSE, 250);
-            if (result == WAIT_OBJECT_0) break;
-            if (result == WAIT_FAILED) throw std::runtime_error("WaitForMultipleObjects failed");
-            if (result != WAIT_OBJECT_0 + 1) continue;
+        // Windows' capture and each render endpoint run on independent clocks.
+        // Service render events independently of capture callbacks: the old code
+        // rendered only when capture arrived and could intermittently starve outputs.
+        std::vector<HANDLE> events{stop_.get(), capture_event.get()};
+        for (const auto& sink : sinks_) events.push_back(sink.render_event->get());
 
+        std::vector<float> samples;
+        samples.reserve(65536);
+        std::array<float, 256> effects_snapshot{};
+
+        auto capture_available = [&]() {
             for (;;) {
                 UINT32 pending{};
                 checked(reader->GetNextPacketSize(&pending), "GetNextPacketSize");
@@ -382,9 +389,10 @@ private:
                              (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0);
                 checked(reader->ReleaseBuffer(frame_count), "Capture ReleaseBuffer");
                 frames_.fetch_add(frame_count);
+
                 float maximum = 0.0F;
-                for (float f : samples)
-                    if (std::isfinite(f)) maximum = std::max(maximum, std::fabs(f));
+                for (float value : samples)
+                    if (std::isfinite(value)) maximum = std::max(maximum, std::fabs(value));
                 peak_.store(std::min(maximum, 1.0F));
 
                 std::size_t active_effects{};
@@ -400,41 +408,64 @@ private:
                         value = std::clamp(value * gain, -1.0F, 1.0F);
                 }
 
+                // Distribute once-processed PCM into an independent bounded
+                // converter/FIFO per destination; rendering is event-driven.
                 for (auto& sink : sinks_) {
                     const auto previous = sink.resampler->overrun_frames();
                     sink.resampler->push(samples.data(), frame_count);
                     overruns_.fetch_add(sink.resampler->overrun_frames() - previous);
-
-                    UINT32 padding{};
-                    checked(sink.client->GetCurrentPadding(&padding), "Get render padding");
-                    const UINT32 free_frames = sink.buffer_frames > padding
-                        ? sink.buffer_frames - padding : 0;
-                    const auto block = std::min<std::size_t>(
-                        free_frames,
-                        std::max<std::size_t>(sink.resampler->buffered_frames(),
-                                              sink.format.rate / 100));
-                    if (block == 0) continue;
-                    sink.resampler->pop(sink.scratch.data(), block);
-
-                    float gain{};
-                    bool mute{};
-                    {
-                        std::lock_guard<std::mutex> guard(mutex_);
-                        gain = sink.gain;
-                        mute = sink.muted;
-                    }
-                    BYTE* output{};
-                    checked(sink.writer->GetBuffer(static_cast<UINT32>(block), &output),
-                            "Render GetBuffer");
-                    if (!mute) convert_render(output, sink.scratch.data(),
-                        block * sink.format.channels, sink.format.is_float, gain);
-                    checked(sink.writer->ReleaseBuffer(static_cast<UINT32>(block),
-                                mute ? AUDCLNT_BUFFERFLAGS_SILENT : 0),
-                            "Render ReleaseBuffer");
                 }
             }
-        }
+        };
 
+        auto render_ready = [&](RenderSink& sink) {
+            UINT32 padding{};
+            checked(sink.client->GetCurrentPadding(&padding), "Get render padding");
+            const UINT32 free_frames = sink.buffer_frames > padding
+                ? sink.buffer_frames - padding : 0;
+            // Keep only one render period in flight per callback, rather than
+            // filling a large render buffer with stale frames or silence.
+            const UINT32 period = std::max<UINT32>(1, sink.format.rate / 100);
+            const UINT32 block = std::min(free_frames, period);
+            if (!block) return;
+
+            const auto previous = sink.resampler->underrun_frames();
+            sink.resampler->pop(sink.scratch.data(), block);
+            underruns_.fetch_add(sink.resampler->underrun_frames() - previous);
+
+            float gain{};
+            bool mute{};
+            {
+                std::lock_guard<std::mutex> guard(mutex_);
+                gain = sink.gain;
+                mute = sink.muted;
+            }
+            BYTE* output{};
+            checked(sink.writer->GetBuffer(block, &output), "Render GetBuffer");
+            if (!mute) convert_render(output, sink.scratch.data(),
+                static_cast<std::size_t>(block) * sink.format.channels,
+                sink.format.is_float, gain);
+            checked(sink.writer->ReleaseBuffer(block,
+                        mute ? AUDCLNT_BUFFERFLAGS_SILENT : 0),
+                    "Render ReleaseBuffer");
+        };
+
+        for (;;) {
+            const DWORD result = WaitForMultipleObjects(
+                static_cast<DWORD>(events.size()), events.data(), FALSE, 150);
+            if (result == WAIT_OBJECT_0) break;
+            if (result == WAIT_FAILED) throw std::runtime_error("WASAPI event wait failed");
+            if (result == WAIT_TIMEOUT) continue;
+            if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + events.size())
+                throw std::runtime_error("Unexpected WASAPI event index");
+
+            const std::size_t event_index = static_cast<std::size_t>(result - WAIT_OBJECT_0);
+            if (event_index == 1) {
+                capture_available();
+            } else if (event_index >= 2) {
+                render_ready(sinks_[event_index - 2]);
+            }
+        }
         capture->Stop();
         for (auto& sink : sinks_) sink.client->Stop();
     }
@@ -465,6 +496,9 @@ AW_API std::uint64_t aw_captured_frames(void* handle) noexcept {
 }
 AW_API std::uint64_t aw_dropped_render_frames(void* handle) noexcept {
     return handle ? static_cast<NativeRoute*>(handle)->overruns() : 0;
+}
+AW_API std::uint64_t aw_underrun_render_frames(void* handle) noexcept {
+    return handle ? static_cast<NativeRoute*>(handle)->underruns() : 0;
 }
 AW_API float aw_input_peak(void* handle) noexcept {
     return handle ? static_cast<NativeRoute*>(handle)->peak() : 0;

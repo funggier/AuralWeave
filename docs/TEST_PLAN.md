@@ -46,3 +46,19 @@ Test reported vs measured latency, long-session stability, CPU use, buffer under
 - Muted native route: Line In (192 kHz) to USB Headphones (192 kHz) passed, 291,840 captured frames, 0 reported ring overruns.
 - Muted mixed-rate native route: Line In (192 kHz) to USB Headphones (192 kHz) plus ASUS VG249 (48 kHz) passed for 2.5 s, 483,840 captured frames, 0 reported ring overruns.
 - **Not yet passed:** audible signal quality, anti-aliased resampling fidelity, long-session drift, hotplug, per-sink isolation, Virtual Driver, RNNoise, and actual two-channel subjective listening tests.
+
+## UI and audio regression scenarios (2026-11-24)
+
+| ID | Scenario | Expected |
+| --- | --- | --- |
+| DARK-01 | Open all device selectors | Popup and selected item show readable light-on-dark text |
+| DARK-02 | Disabled + hovered + selected controls | States remain distinguishable and accessible |
+| START-01 | One route: Start then Stop | Same button toggles text/colors and stops actual capture |
+| START-02 | Start error/retry | Button remains Start, no zombie engine |
+| LAT-01 | Managed, capture/render identical format | Direct provider path without Media Foundation resampler |
+| LAT-02 | Managed, format mismatch | Conversion active and queue never grows unbounded |
+| LAT-03 | Native, mixed-rate two outputs | Each output serviced by its own render event |
+| LAT-04 | Run with input stopped/unplugged | Surface error cleanly; avoid unbounded busy loops |
+| LAT-05 | 30-second muted mixed-rate smoke | Report capture frames, startup underrun, post-warmup underrun delta and overflow |
+
+Observed: native 30-second muted smoke yielded **0 post-warmup overruns and 0 post-warmup underruns**, but audible latency and output quality have not yet been tested.

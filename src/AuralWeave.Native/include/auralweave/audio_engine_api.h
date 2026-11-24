@@ -21,6 +21,7 @@ AW_API void aw_stop(void* handle) noexcept;
 AW_API int aw_state(void* handle) noexcept; // 0 stopped,1 starting,2 running,3 error
 AW_API std::uint64_t aw_captured_frames(void* handle) noexcept;
 AW_API std::uint64_t aw_dropped_render_frames(void* handle) noexcept;
+AW_API std::uint64_t aw_underrun_render_frames(void* handle) noexcept;
 AW_API float aw_input_peak(void* handle) noexcept;
 AW_API int aw_set_effects(void* handle, const float* gains, const int* enabled, int count) noexcept;
 AW_API int aw_set_output(void* handle, int index, float gain, int muted) noexcept;

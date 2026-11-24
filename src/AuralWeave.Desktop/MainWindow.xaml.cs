@@ -283,7 +283,17 @@ public partial class MainWindow : Window
         catch (Exception ex) { Status("Effect configuration: " + ex.Message, true); }
     }
 
-    private void StartClicked(object sender, RoutedEventArgs e)
+    private void StartStopClicked(object sender, RoutedEventArgs e)
+    {
+        if (_route is not null)
+        {
+            StopCurrentRoute();
+            return;
+        }
+        StartCurrentRoute();
+    }
+
+    private void StartCurrentRoute()
     {
         if (_route is not null) return;
         if (InputCombo.SelectedItem is not AudioEndpoint input)
@@ -296,27 +306,30 @@ public partial class MainWindow : Window
             Status("Add at least one output device.", true);
             return;
         }
-        var candidate = new WasapiAudioRoute();
+
+        IAudioRouteSession? candidate = null;
         try
         {
+            candidate = NativeToggle.IsChecked == true
+                ? new NativeWasapiAudioRoute() : new WasapiAudioRoute();
             candidate.ReplaceEffects(_effects);
             candidate.Start(input.Id, _outputs);
             _route = candidate;
-            StartButton.IsEnabled = false;
-            StopButton.IsEnabled = true;
+            StartButton.Content = "Stop route";
+            StartButton.Background = new SolidColorBrush(Color.FromRgb(214, 111, 98));
+            StartButton.Foreground = Brushes.White;
             RefreshButton.IsEnabled = false;
             InputCombo.IsEnabled = false;
+            NativeToggle.IsEnabled = false;
             RefreshOutputRows();
-            Status($"Route started: {input.DisplayName} → {_outputs.Count} output(s).");
+            Status($"Route started ({(candidate is NativeWasapiAudioRoute ? "Native C++" : "Managed WASAPI")}): {input.DisplayName} → {_outputs.Count} output(s).");
         }
         catch (Exception ex)
         {
-            candidate.Dispose();
+            candidate?.Dispose();
             Status("Cannot start route: " + ex.Message, true);
         }
     }
-
-    private void StopClicked(object sender, RoutedEventArgs e) => StopCurrentRoute();
 
     private void StopCurrentRoute()
     {
@@ -326,10 +339,12 @@ public partial class MainWindow : Window
         finally
         {
             _route = null;
-            StartButton.IsEnabled = true;
-            StopButton.IsEnabled = false;
+            StartButton.Content = "Start route";
+            StartButton.Background = new SolidColorBrush(Color.FromRgb(112, 224, 173));
+            StartButton.Foreground = new SolidColorBrush(Color.FromRgb(16, 38, 27));
             RefreshButton.IsEnabled = true;
             InputCombo.IsEnabled = true;
+            NativeToggle.IsEnabled = NativeWasapiAudioRoute.Available;
             InputLevel.Value = 0;
             FrameCountLabel.Text = "0 frames";
             OutputStatusLabel.Text = "";
@@ -346,7 +361,9 @@ public partial class MainWindow : Window
         FrameCountLabel.Text = $"{route.CapturedFrames:N0} frames captured";
         var metrics = route.GetOutputTelemetry();
         var dropped = route.DroppedRenderFrames;
-        OutputStatusLabel.Text = (dropped > 0 ? $"Total dropped render frames: {dropped:N0} | " : "") + string.Join("  |  ", metrics.Select((x, i) =>
+        var underruns = route.UnderrunRenderFrames;
+        OutputStatusLabel.Text = (dropped > 0 ? $"Buffer overruns: {dropped:N0} | " : "")
+            + (underruns > 0 ? $"Buffer underruns: {underruns:N0} | " : "") + string.Join("  |  ", metrics.Select((x, i) =>
             $"Output {i + 1}: {(double.IsNaN(x.BufferedMilliseconds) ? "native backend" : x.BufferedMilliseconds.ToString("0") + " ms buffered")}" +
             (x.Error is null ? "" : $" ERROR {x.Error}")));
         if (!string.IsNullOrEmpty(route.LastError))

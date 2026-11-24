@@ -4,25 +4,164 @@
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <SolidColorBrush x:Key="CardBrush" Color="#202A3B"/>
-        <SolidColorBrush x:Key="SecondaryBrush" Color="#AAB8CE"/>
+        <SolidColorBrush x:Key="SecondaryBrush" Color="#B8C6DC"/>
+        <SolidColorBrush x:Key="InputBrush" Color="#151F30"/>
+        <SolidColorBrush x:Key="BorderBrushDark" Color="#50647F"/>
+
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#EDF3FC"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- Non-editable drop-downs must use dark surfaces BOTH when closed and open. -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#F0F5FF"/>
+            <Setter Property="Background" Value="#192438"/>
+            <Setter Property="Padding" Value="9,7"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemSurface" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Content" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemSurface" Property="Background" Value="#31577C"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemSurface" Property="Background" Value="#285677"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#8596B0"/>
+                                <Setter TargetName="ItemSurface" Property="Opacity" Value="0.62"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Padding" Value="9,6"/>
+            <Setter Property="Foreground" Value="#F0F5FF"/>
+            <Setter Property="Background" Value="#151F30"/>
+            <Setter Property="BorderBrush" Value="#50647F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="MaxDropDownHeight" Value="290"/>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="DropDownBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="32"/>
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Grid.Column="0" Margin="11,5,3,5"
+                                                  VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"
+                                                  IsHitTestVisible="False"
+                                                  Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"/>
+                                <Path Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Data="M 0 0 L 5 5 L 10 0"
+                                      Stroke="#C1D2E8" StrokeThickness="1.7"/>
+                            </Grid>
+                            <ToggleButton Name="Toggle" Background="Transparent" BorderThickness="0"
+                                          Focusable="False"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent"/>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup" Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True" Focusable="False"
+                                   PopupAnimation="Fade">
+                                <Border Background="#192438" BorderBrush="#6781A0"
+                                        BorderThickness="1" CornerRadius="5"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ScrollViewer Margin="1" VerticalScrollBarVisibility="Auto"
+                                                  CanContentScroll="True" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="DropDownBorder" Property="BorderBrush" Value="#81B5DF"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="DropDownBorder" Property="BorderBrush" Value="#86D8BD"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="DropDownBorder" Property="Background" Value="#273448"/>
+                                <Setter Property="Foreground" Value="#91A0B4"/>
+                                <Setter Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="Button">
             <Setter Property="Padding" Value="12,6"/>
             <Setter Property="Margin" Value="2"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="MinHeight" Value="32"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Foreground" Value="#EDF3FC"/>
+            <Setter Property="Background" Value="#33435D"/>
+            <Setter Property="BorderBrush" Value="#647C9F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonSurface" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="BorderBrush" Value="#C1D8F2"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="Opacity" Value="0.80"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonSurface" Property="Background" Value="#273244"/>
+                                <Setter TargetName="ButtonSurface" Property="BorderBrush" Value="#46556A"/>
+                                <Setter Property="Foreground" Value="#96A4B9"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
-        <Style TargetType="ComboBox">
-            <Setter Property="MinHeight" Value="32"/>
-            <Setter Property="Foreground" Value="#172033"/>
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="Padding" Value="5,3"/>
-        </Style>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#E9EFF9"/>
-            <Setter Property="FontSize" Value="13"/>
-        </Style>
+
         <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#E9EFF9"/>
+            <Setter Property="Foreground" Value="#EDF3FC"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
     </Application.Resources>

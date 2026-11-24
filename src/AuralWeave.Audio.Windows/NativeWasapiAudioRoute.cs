@@ -45,6 +45,7 @@ public sealed class NativeWasapiAudioRoute : IAudioRouteSession
     public long CapturedFrames => _handle == IntPtr.Zero ? 0 : (long)NativeCapturedFrames(_handle);
     public float InputPeak => _handle == IntPtr.Zero ? 0 : NativeInputPeak(_handle);
     public long DroppedRenderFrames => _handle == IntPtr.Zero ? 0 : (long)NativeDroppedFrames(_handle);
+    public long UnderrunRenderFrames => _handle == IntPtr.Zero ? 0 : (long)NativeUnderrunFrames(_handle);
 
     public string? LastError
     {
@@ -154,6 +155,9 @@ public sealed class NativeWasapiAudioRoute : IAudioRouteSession
 
     [DllImport(Library, EntryPoint = "aw_dropped_render_frames", CallingConvention = CallingConvention.Cdecl)]
     private static extern ulong NativeDroppedFrames(IntPtr handle);
+
+    [DllImport(Library, EntryPoint = "aw_underrun_render_frames", CallingConvention = CallingConvention.Cdecl)]
+    private static extern ulong NativeUnderrunFrames(IntPtr handle);
 
     [DllImport(Library, EntryPoint = "aw_input_peak", CallingConvention = CallingConvention.Cdecl)]
     private static extern float NativeInputPeak(IntPtr handle);

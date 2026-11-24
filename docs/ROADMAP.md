@@ -54,3 +54,12 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] C++20 native RouteGraph: unique outputs, ordered repeated-effect instances and Gain processor
 - [x] Core Audio endpoint discovery with Windows SDK; native non-audible smoke test
 - [x] Native C++ WASAPI streaming prototype and optional WPF backend interop (hardening pending)
+
+## Dark UI and buffering checkpoint (2026-11-24)
+
+- [x] Dark ComboBox popup/selected/disabled/button templates
+- [x] Single Start/Stop control
+- [x] Native per-output render events, shorter bounded queues and underrun telemetry
+- [x] Managed shorter queue, actual queue telemetry, direct-format path
+- [x] 30-second muted native mixed-rate hardware soak; no post-warmup overruns or underruns
+- [ ] Audible latency measurement, filtering quality and long-duration independent clock drift correction

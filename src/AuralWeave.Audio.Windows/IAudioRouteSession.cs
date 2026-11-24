@@ -10,6 +10,7 @@ public interface IAudioRouteSession : IDisposable
     float InputPeak { get; }
     string? LastError { get; }
     long DroppedRenderFrames { get; }
+    long UnderrunRenderFrames { get; }
     void ReplaceEffects(IEnumerable<AudioEffectInstance> effects);
     void Start(string sourceId, IReadOnlyList<OutputRoute> outputs);
     void Stop();

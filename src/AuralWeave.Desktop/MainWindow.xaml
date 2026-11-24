@@ -17,8 +17,8 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="RefreshButton" Content="Refresh devices" Click="RefreshClicked"/>
-                    <Button x:Name="StartButton" Content="Start route" Click="StartClicked" Background="#70E0AD"/>
-                    <Button x:Name="StopButton" Content="Stop route" Click="StopClicked" IsEnabled="False"/>
+                    <Button x:Name="StartButton" Content="Start route" Click="StartStopClicked" Background="#70E0AD" Foreground="#10261B" MinWidth="118"/>
+
                 </StackPanel>
             </Grid>
         </Border>
@@ -34,6 +34,7 @@
                     <StackPanel>
                         <TextBlock FontSize="17" FontWeight="SemiBold" Text="1  Input source" Margin="0,0,0,10"/>
                         <ComboBox x:Name="InputCombo" DisplayMemberPath="DisplayName"/>
+                        <CheckBox x:Name="NativeToggle" Margin="0,11,0,2" Content="Native C++ engine (low-latency preview; uncheck for compatibility mode)" IsChecked="False"/>
                         <TextBlock Margin="0,9,0,3" Foreground="#AAB8CE" Text="Input signal"/>
                         <ProgressBar x:Name="InputLevel" Minimum="0" Maximum="100" Height="12" Value="0" Foreground="#70E0AD" Background="#37455B"/>
                         <TextBlock Foreground="#AAB8CE" Margin="0,9,0,0" Text="Mic / Line In or Windows playback loopback • selects active device endpoint"/>
@@ -78,7 +79,7 @@
                         <TextBlock x:Name="DeviceCountLabel" Foreground="#AAB8CE" Margin="0,7,0,0"/>
                         <TextBlock x:Name="OutputStatusLabel" Foreground="#AAB8CE" Margin="0,7,0,0" TextWrapping="Wrap"/>
                         <TextBlock Foreground="#AAB8CE" Margin="0,9,0,0" TextWrapping="Wrap"
-                                   Text="Shared-mode WASAPI • output conversion via Media Foundation • drivers and virtual devices not installed"/>
+                                   Text="Native C++ uses per-output buffering • Managed WASAPI remains available as fallback"/>
                     </StackPanel>
                 </Border>
             </StackPanel>

@@ -1,32 +1,33 @@
-# AuralWeave — Windows Portable Preview
+# AuralWeave — Dark UI & Audio Stability Preview
 
-This is an experimental engineering build, not a production release.
+This is an experimental engineering build, not a stable public release.
+
+## Changes in this Preview
+
+- Dark dropdowns, dropdown options, buttons and disabled states; no white-on-white device names.
+- Start and Stop combined into a single button. Click Start to begin, then the same button says Stop.
+- Default backend is **Native C++ WASAPI** if `AuralWeave.Native.dll` is available.
+- Uncheck **Native C++ engine** to use Managed WASAPI compatibility mode.
+- Native uses independent render endpoint events; shorter buffering and separate overrun/underrun telemetry.
+- Managed fallback lowers requested buffer/latency and avoids converting already-matched PCM.
+- Output selections use a dropdown and +/−, and already-selected endpoints are excluded until removed.
+- Duplicate Gain effects can still be inserted and configured independently.
 
 ## Launch
 
-1. Extract the entire archive to a writable folder.
-2. Run `AuralWeave.exe`. It is a self-contained Windows x64 desktop app.
-3. Choose one input device, then select one or more output devices using the dropdown and **+** button.
-4. All newly added outputs start **muted for safety**. You must explicitly unmute an output if you want audible playback.
-5. The default engine is Managed WASAPI; use the separate Native C++ WASAPI checkbox only for experimental native testing.
-6. Use Start route / Stop route to control capture and routing.
+1. **Close old AuralWeave.exe before switching to the new preview.** The previous test installation is not automatically overwritten or terminated.
+2. Extract the ZIP into a new, writable folder. Keep `AuralWeave.exe` and `AuralWeave.Native.dll` together.
+3. Run `AuralWeave.exe`.
+4. Select Line In or microphone from Input source.
+5. Add an output from the Output dropdown with `+`. Newly added outputs start **Muted**; explicitly unmute to hear.
+6. Click Start route. The button becomes Stop route while running.
+7. If the native backend rejects an unusual device configuration, stop and uncheck Native C++ to retry with Managed WASAPI.
 
-## Capabilities available now
+## Cautions / limitations
 
-- Capture from enumerated Windows audio inputs and supported loopback endpoints.
-- Route a single input to multiple outputs with separate output level/mute.
-- Prevent duplicate output selection within a route; options reappear when removed.
-- Add multiple independent Gain effects of the same type, change order, enable/bypass or remove them.
-- Native backend uses per-endpoint mix formats and bounded linear resampling (prototype).
-
-## Known missing features and safety
-
-- RNNoise and AI voice effects are not implemented.
-- Virtual microphone/audio driver is not installed or included.
-- This preview has no built-in preset persistence or multi-route manager.
-- Mixed-rate output has been tested muted; audible quality and long-running clock drift have NOT been validated. Linear resampling does not provide production-quality anti-aliasing.
-- Avoid acoustic feedback (microphone near speakers) and routing a loopback source into its own playback output.
-- Some multichannel or unsupported output formats require the Managed backend.
-- See THIRD_PARTY_NOTICES.md, LICENSE, and licenses/NAudio-2.2.1-LICENSE.txt for available project/dependency notices. Full redistribution audit is still required before any public release.
-
-No drivers or Windows services are installed by this preview.
+- Routing to speakers while capturing a microphone in the same room can create feedback. Start with low gain and headphones.
+- **RNNoise, EQ, AI Voice Changer, Virtual Audio Driver and preset persistence are not included yet.**
+- Muted real-device smoke tests cannot prove audible quality. Sound quality, glitches on other devices, long-term clock drift and exact end-to-end latency remain to be measured.
+- Native resampling uses linear interpolation, not an anti-aliased production resampler.
+- Windows audio endpoint settings can affect total delay; a setting of 40 ms does not mean measured 40 ms latency.
+- No driver or Windows service is installed. See included THIRD_PARTY_NOTICES.md and licenses for third-party rights.

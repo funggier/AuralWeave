@@ -45,3 +45,15 @@ The last two diagnostics activate physical audio endpoints **muted**. They are n
 3. Implement RNNoise behind a separate Noise Processor interface and test frame adaptation.
 4. Expand effects plugin interface beyond Gain, presets, device hotplug and portable packaging.
 5. Native virtual endpoints require a separately installed and appropriately signed Windows driver.
+
+## Dark UI and buffer-stability improvements (2026-11-24)
+
+- Dark ComboBox control template, dropdown rows, buttons, and disabled states; Start/Stop is now a single stateful button.
+- The **Native C++ WASAPI backend is selected by default** when its DLL is available, with Managed WASAPI exposed as a compatibility fallback.
+- Managed WASAPI: configured queue size reduced 450 ms -> 120 ms, requested WasapiOut latency 90 ms -> 35 ms, avoids unnecessary Media Foundation conversion when source/output PCM formats match, and discards oldest queued frames if an endpoint falls behind. The output status now reflects actual queued milliseconds rather than maximum buffer capacity.
+- Native WASAPI: independent render events per device instead of only rendering during capture callbacks; requested stream buffer 100 ms -> 40 ms and resampler ring capacity 250 ms -> 80 ms; reports both overruns and underruns.
+- **30-second mixed-rate muted hardware test**: 5,765,760 input frames (Line In 192 kHz -> Headphones 192 kHz + Display Audio 48 kHz), 0 overruns; 2,401 startup underrun frames and 0 new overruns or underruns after 2-second warmup. No engine errors.
+- Audible sound fidelity and end-to-end latency measurement are still pending. Current native resampler remains linear interpolation and no full independent drift-correction policy is implemented.
+- The user's original running Preview under T:\Space\Products must not be overwritten while its executable is in use. Build the updated preview in a separate folder.
+
+See [audio stability notes](AUDIO_LATENCY_AND_THEME.md) for details.

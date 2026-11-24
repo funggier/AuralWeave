@@ -30,7 +30,7 @@ try
             Console.WriteLine($"RENDER FORMAT [{d.FriendlyName}]: {f}");
         }
     }
-    if (args.Contains("--smoke-native-multi"))
+    if (args.Contains("--smoke-native-multi") || args.Contains("--soak-native-multi") || args.Contains("--long-soak-native-multi"))
     {
         if (!NativeWasapiAudioRoute.Available)
             throw new InvalidOperationException("Native DLL missing from diagnostics output.");
@@ -50,12 +50,17 @@ try
         route.ReplaceEffects([new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect, true, 0.8f)]);
         route.Start(input.Id, [new OutputRoute(Guid.NewGuid(), first.endpoint.Id, 1f, true),
                                new OutputRoute(Guid.NewGuid(), second.endpoint.Id, 1f, true)]);
-        await Task.Delay(2500);
+// Distinguish startup underflow from a stream that continues to starve.
+        await Task.Delay(2000);
+        var afterStartupUnderruns = route.UnderrunRenderFrames;
+        var afterStartupOverruns = route.DroppedRenderFrames;
+        await Task.Delay(args.Contains("--long-soak-native-multi") ? 28000 : args.Contains("--soak-native-multi") ? 8000 : 500);
         var frames = route.CapturedFrames;
         var drops = route.DroppedRenderFrames;
+        var underruns = route.UnderrunRenderFrames;
         var error = route.LastError;
         route.Stop();
-        Console.WriteLine($"Native mixed-rate frames: {frames}; ring overruns: {drops}; error: {error ?? "none"}");
+        Console.WriteLine($"Native mixed-rate frames: {frames}; ring overruns: {drops}; ring underruns: {underruns}; after warmup overrun delta: {drops - afterStartupOverruns}; after warmup underrun delta: {underruns - afterStartupUnderruns}; error: {error ?? "none"}");
         if (frames <= 0 || error != null)
             throw new InvalidOperationException("Native mixed-rate routing failed.");
         Console.WriteLine("PASS: Muted native multi-output routing across two sample rates.");
@@ -76,9 +81,10 @@ try
         await Task.Delay(1500);
         var frames = route.CapturedFrames;
         var dropped = route.DroppedRenderFrames;
+        var underruns = route.UnderrunRenderFrames;
         var error = route.LastError;
         route.Stop();
-        Console.WriteLine($"Native frames: {frames}, dropped: {dropped}, error: {error ?? "none"}");
+        Console.WriteLine($"Native frames: {frames}, dropped: {dropped}, underruns: {underruns}, error: {error ?? "none"}");
         if (frames <= 0 || error != null)
             throw new InvalidOperationException("Native audio stream not healthy.");
         Console.WriteLine("PASS: Native muted capture -> render route and Stop.");

@@ -25,7 +25,8 @@ public sealed class WasapiAudioRoute : IAudioRouteSession
     private string? _lastError;
 
     public bool IsRunning => _accepting;
-    public long DroppedRenderFrames => 0; // Not yet metered by NAudio backend.
+    public long DroppedRenderFrames { get { lock (_callbackGate) return _outputs.Sum(x => x.DroppedFrames); } }
+    public long UnderrunRenderFrames => -1; // NAudio buffered provider does not expose underrun telemetry.
     public long CapturedFrames => Interlocked.Read(ref _capturedFrames);
     public float InputPeak => Volatile.Read(ref _inputPeak);
     public string? LastError => Volatile.Read(ref _lastError);
@@ -231,7 +232,7 @@ public sealed class WasapiAudioRoute : IAudioRouteSession
     {
         private readonly MMDevice _device;
         private readonly BufferedWaveProvider _buffer;
-        private readonly MediaFoundationResampler _converter;
+        private readonly MediaFoundationResampler? _converter;
         private readonly WasapiOut _player;
         private readonly PcmSampleEncoding? _sampleEncoding;
 
@@ -240,7 +241,10 @@ public sealed class WasapiAudioRoute : IAudioRouteSession
         public bool Muted { get; set; }
         public float LastPeak { get; private set; }
         public string? LastError { get; set; }
-        public double BufferedMilliseconds => _buffer.BufferedDuration.TotalMilliseconds;
+        public long DroppedFrames { get; private set; }
+        public double BufferedMilliseconds =>
+            _buffer.WaveFormat.AverageBytesPerSecond > 0
+                ? _buffer.BufferedBytes * 1000.0 / _buffer.WaveFormat.AverageBytesPerSecond : 0;
 
         public OutputSink(MMDevice device, WaveFormat sourceFormat, OutputRoute route)
         {
@@ -251,18 +255,29 @@ public sealed class WasapiAudioRoute : IAudioRouteSession
             Muted = route.Muted;
             _buffer = new BufferedWaveProvider(sourceFormat)
             {
-                BufferDuration = TimeSpan.FromMilliseconds(450),
+                BufferDuration = TimeSpan.FromMilliseconds(120),
                 ReadFully = true,
                 DiscardOnBufferOverflow = true
             };
-            // MF performs sample rate, channel and PCM conversion to the actual
-            // endpoint mix format (bypass affects DSP, not required format conversion).
-            _converter = new MediaFoundationResampler(_buffer, device.AudioClient.MixFormat)
+            // Avoid expensive Media Foundation work for endpoints already matching
+            // the capture's sample rate, channel layout and PCM encoding.
+            var outputFormat = device.AudioClient.MixFormat;
+            var sameFormat = sourceFormat.SampleRate == outputFormat.SampleRate
+                && sourceFormat.Channels == outputFormat.Channels
+                && sourceFormat.BitsPerSample == outputFormat.BitsPerSample
+                && GetEncoding(sourceFormat) is { } sampleEncoding
+                && GetEncoding(outputFormat) == sampleEncoding;
+            IWaveProvider renderSource = _buffer;
+            if (!sameFormat)
             {
-                ResamplerQuality = 40
-            };
-            _player = new WasapiOut(device, AudioClientShareMode.Shared, true, 90);
-            _player.Init(_converter);
+                _converter = new MediaFoundationResampler(_buffer, outputFormat)
+                {
+                    ResamplerQuality = 30
+                };
+                renderSource = _converter;
+            }
+            _player = new WasapiOut(device, AudioClientShareMode.Shared, true, 35);
+            _player.Init(renderSource);
             _player.PlaybackStopped += (_, args) =>
             {
                 if (args.Exception is not null) LastError = args.Exception.Message;
@@ -274,14 +289,39 @@ public sealed class WasapiAudioRoute : IAudioRouteSession
         {
             if (_sampleEncoding is { } encoding)
                 LastPeak = AudioBlockProcessor.Peak(data.AsSpan(0, count), encoding);
-            _buffer.AddSamples(data, 0, count);
+            // Discard the OLDEST audio when output falls behind.
+            // Previously the 450 ms queue silently accumulated stale sound;
+            // on overflow BufferedWaveProvider discarded NEW audio instead.
+            int offset = 0;
+            int capacity = _buffer.BufferLength;
+            int alignment = Math.Max(1, _buffer.WaveFormat.BlockAlign);
+            if (count > capacity)
+            {
+                offset = ((count - capacity + alignment - 1) / alignment) * alignment;
+                DroppedFrames += offset / alignment;
+                count -= offset;
+            }
+            int excess = _buffer.BufferedBytes + count - capacity;
+            if (excess > 0)
+            {
+                int bytesToDiscard = Math.Min(_buffer.BufferedBytes,
+                    ((excess + alignment - 1) / alignment) * alignment);
+                if (bytesToDiscard > 0)
+                {
+                    var oldData = ArrayPool<byte>.Shared.Rent(bytesToDiscard);
+                    try { _buffer.Read(oldData, 0, bytesToDiscard); }
+                    finally { ArrayPool<byte>.Shared.Return(oldData); }
+                    DroppedFrames += bytesToDiscard / alignment;
+                }
+            }
+            _buffer.AddSamples(data, offset, count);
         }
 
         public void Dispose()
         {
             _player.Stop();
             _player.Dispose();
-            _converter.Dispose();
+            _converter?.Dispose();
             _device.Dispose();
         }
     }
@@ -292,14 +332,3 @@ public sealed record OutputTelemetry(
     double BufferedMilliseconds,
     float Peak,
     string? Error);
-
-internal static class AudioGain
-{
-    public static void Apply(Span<byte> audio, PcmSampleEncoding encoding, float gain)
-    {
-        // Share the exact same saturating gain algorithm used by effect instances.
-        var processor = new AudioBlockProcessor();
-        processor.ReplaceEffects([new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect, true, gain)]);
-        processor.Process(audio, encoding);
-    }
-}
