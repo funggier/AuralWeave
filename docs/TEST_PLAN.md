@@ -38,3 +38,11 @@ Test reported vs measured latency, long-session stability, CPU use, buffer under
 - Documentation accurately describes shipped features.
 - Third-party licenses and attribution verified for pinned dependencies.
 - No release while core route start/stop, multi-output, or duplicated effect-instance data retention is broken.
+
+## Observed prototype evidence, 2026-11-24
+
+- Native compiler with /W4 /WX and desktop .NET builds succeeded without warnings or errors.
+- 13 managed core checks and 16 native core/resampler tests passed.
+- Muted native route: Line In (192 kHz) to USB Headphones (192 kHz) passed, 291,840 captured frames, 0 reported ring overruns.
+- Muted mixed-rate native route: Line In (192 kHz) to USB Headphones (192 kHz) plus ASUS VG249 (48 kHz) passed for 2.5 s, 483,840 captured frames, 0 reported ring overruns.
+- **Not yet passed:** audible signal quality, anti-aliased resampling fidelity, long-session drift, hotplug, per-sink isolation, Virtual Driver, RNNoise, and actual two-channel subjective listening tests.

@@ -10,7 +10,7 @@ namespace AuralWeave.Audio.Windows;
 /// This prototype uses bounded capture-format buffers and Media Foundation conversion for
 /// each physical sink. Independent device clock drift management is still future work.
 /// </summary>
-public sealed class WasapiAudioRoute : IDisposable
+public sealed class WasapiAudioRoute : IAudioRouteSession
 {
     private readonly object _callbackGate = new();
     private readonly AudioBlockProcessor _processor = new();
@@ -25,6 +25,7 @@ public sealed class WasapiAudioRoute : IDisposable
     private string? _lastError;
 
     public bool IsRunning => _accepting;
+    public long DroppedRenderFrames => 0; // Not yet metered by NAudio backend.
     public long CapturedFrames => Interlocked.Read(ref _capturedFrames);
     public float InputPeak => Volatile.Read(ref _inputPeak);
     public string? LastError => Volatile.Read(ref _lastError);

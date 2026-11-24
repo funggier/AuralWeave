@@ -12,7 +12,7 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 
 ## Phase 1 — Minimal functional audio route
 
-- [ ] C++/WASAPI capture and render proof of concept
+- [x] Native C++/WASAPI capture and render proof of concept (muted hardware smoke)
 - [x] Device enumeration and stable endpoint identity (prototype on Windows)
 - [x] Start/Stop one .NET/WASAPI route with one input and one muted physical output (smoke test)
 - [x] Basic WPF UI and input meter/status (prototype)
@@ -53,4 +53,4 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Detect and invoke installed MSVC toolchain without requiring `cl.exe` globally on PATH
 - [x] C++20 native RouteGraph: unique outputs, ordered repeated-effect instances and Gain processor
 - [x] Core Audio endpoint discovery with Windows SDK; native non-audible smoke test
-- [ ] Native C++ WASAPI streaming engine and UI interop
+- [x] Native C++ WASAPI streaming prototype and optional WPF backend interop (hardening pending)

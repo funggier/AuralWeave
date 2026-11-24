@@ -59,7 +59,7 @@ Prefer paths relative to the executable root. User-specific settings/cache/model
 - `AuralWeave.Core` (C#): route configuration rules and Gain DSP instances; tested.
 - `AuralWeave.Audio.Windows` (C#/NAudio): active WASAPI capture, optional loopback, one-route fan-out into physical rendering; preliminary silent single-output smoke passed.
 - `AuralWeave.Desktop` (WPF): prototype route editor and real-time meters; currently one active route; devices cannot be changed while running.
-- `AuralWeave.Native` (C++20/MSVC): native RouteGraph, duplicate endpoint validation, repeated Gain effect processing, Windows endpoint enumeration; **not yet used by live desktop audio**.
+- `AuralWeave.Native` (C++20/MSVC): native RouteGraph and Windows endpoint enumeration, plus a separate C ABI WASAPI capture/render streaming engine with per-output bounded linear resamplers. Native backend is optionally selectable in WPF; full production-grade resampling and clock drift recovery are pending.
 - `AuralWeave.Dsp` and `AuralWeave.VirtualDriver`: placeholders only.
 
 Do not present the desired fully-native low-latency engine as delivered. This split is an incremental bridge; see [implementation status](IMPLEMENTATION_STATUS.md). After Visual Studio Installer activity is finished, validate any newer toolsets without forcing changes to installed components.

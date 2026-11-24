@@ -4,7 +4,7 @@
 
 AuralWeave คือโปรเจกต์โปรแกรมจัดเส้นทางเสียงแบบ Real-time สำหรับ Windows รองรับการรับเสียงจากอุปกรณ์จริงหรืออุปกรณ์เสมือน ประมวลผลตามลำดับ และกระจายเสียงออกไปหลายอุปกรณ์พร้อมกัน
 
-> **Project status:** Experimental Windows desktop and WASAPI audio route implemented; **not yet a product release**. Capture/render routing and a repeatable Gain effect have passed preliminary checks. RNNoise, independent clock correction, integrated native streaming and Virtual Audio Driver are not implemented.
+> **Project status:** Experimental Windows desktop and WASAPI audio route implemented; **not yet a product release**. Capture/render routing and a repeatable Gain effect have passed preliminary checks. Native C++ streaming and muted mixed-rate multi-output routing have now passed preliminary hardware smoke tests. RNNoise, production-grade clock correction, and Virtual Audio Driver are not implemented.
 
 ## Concept
 
@@ -51,7 +51,7 @@ Output Distributor
 
 ## Development status
 
-Current implementation consists of a WPF desktop frontend and .NET/WASAPI prototype router (via NAudio), plus a separate native C++20 configuration/endpoint enumeration prototype compiled with MSVC. Native streaming is **not yet connected to the desktop**. See [implementation evidence and open gaps](docs/IMPLEMENTATION_STATUS.md). Do not confuse a successful muted test with a verified multi-device audible release.
+Current implementation consists of a WPF desktop frontend and .NET/WASAPI prototype router (via NAudio), plus an optional native C++20 WASAPI streaming backend, compiled with MSVC and selectable in the Desktop UI. Native output conversion uses bounded linear resamplers; high-quality filtering, sink isolation and long-session drift management are not complete. See [implementation evidence and open gaps](docs/IMPLEMENTATION_STATUS.md). Do not confuse a successful muted test with a verified multi-device audible release.
 
 Quick-start development:
 

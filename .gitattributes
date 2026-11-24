@@ -6,3 +6,6 @@
 *.md text eol=lf
 *.ps1 text eol=crlf
 *.xaml text eol=lf
+
+# Keep upstream license texts byte-for-byte (including trailing blank lines).
+third_party/licenses/* -whitespace

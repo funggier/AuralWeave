@@ -1,44 +1,61 @@
-# Windows development environment
+# Windows development and build
 
-## Toolchain already detected on this machine
+## Verified toolchain
 
-- Windows 10 Pro 22H2 / Windows SDK 10.0.19041.0
-- Visual Studio Community 2026 at `C:\Program Files\Microsoft Visual Studio\18\Community`
-- MSVC 14.51.36231 and 14.52.36725 (x64 `cl.exe`)
-- .NET SDK 8, 9 and 10 installed
-- CMake available on PATH
+- Windows 10 / Windows SDK 10.0.19041.0
+- Visual Studio Community 2026; MSVC toolsets detected under `C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC`
+- .NET SDK 8, 9 and 10 installed (app currently targets .NET 8 Windows)
+- Build scripts locate MSVC using `vswhere` and initialize its environment with `vcvars64.bat`; the compiler does **not** need to appear in the global PATH.
 
-A missing `cl.exe` from a generic PowerShell PATH **does not imply C++ is uninstalled**.
-To initialize x64 C++ compiler environment:
+## Full local build and tests
 
-```bat
-call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
-cl /Bv
-```
-
-The native build script finds Visual Studio with `vswhere.exe` and calls `vcvars64.bat` itself.
-
-## Native smoke
+Run at the repository root in Windows PowerShell:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-native.ps1 -ListDevices
+.\scripts\build-windows.ps1 -RunDeviceDiagnostics
 ```
 
-This compiles the native graph and Windows Core Audio device enumerator and runs non-audible tests. It does **not** install a driver.
+This compiles Native C++20 engine and its tests with `/W4 /WX`, builds all .NET projects, copies `AuralWeave.Native.dll` next to Desktop and Diagnostics outputs, runs the non-audible managed tests, and enumerates hardware endpoints. No audio stream starts during this build.
 
-## Desktop / .NET
+To build only native C++ plus tests:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
+.\scripts\build-native.ps1 -ListDevices
+```
+
+To build just .NET when MSVC is not available:
+
+```powershell
+.\scripts\build-windows.ps1 -SkipNative
+```
+
+## Run the desktop UI
+
+```powershell
 dotnet run --project .\src\AuralWeave.Desktop\AuralWeave.Desktop.csproj -c Release
 ```
 
-The current Desktop is a prototype. Select a source and render output, then Start or Stop. Be cautious with physical playback feedback. The app does not automatically start audio.
+The UI starts with the managed backend selected. The **Native C++ WASAPI** option activates only when the DLL is found. Native uses the endpoint mix formats and supports mono/stereo Float32/PCM16. Unsupported endpoints return an error, rather than forcing a different audio device.
 
-## Dependency note
+## Manual real-hardware muted diagnostics
 
-The .NET WASAPI bridge currently references `NAudio 2.2.1` through NuGet. This dependency's packaging and license notices must be audited before a public release. The native C++ graph and endpoint enumeration use Windows SDK APIs.
+These tests do open the actual capture/render devices, but send **mute** flags to the output. They require active audio endpoints.
 
-## No compiler installation required
+```powershell
+dotnet run --no-build -c Release --project .\src\AuralWeave.Diagnostics\AuralWeave.Diagnostics.csproj -- --smoke-native
+dotnet run --no-build -c Release --project .\src\AuralWeave.Diagnostics\AuralWeave.Diagnostics.csproj -- --smoke-native-multi
+```
 
-The existing MSVC toolchain passed a real C++ compile/run and native project build. Additional Visual Studio components may be installed separately as desired, but do not alter the current install while Visual Studio Installer is working.
+The second selects one 192 kHz and one 48 kHz output if present. Neither is part of the automatic build.
+
+## Optional portable publish
+
+```powershell
+.\scripts\build-windows.ps1 -PublishPortable
+```
+
+Produces a self-contained Windows x64 directory under `dist/AuralWeave-win-x64`, including the separate native DLL, without installing any audio driver. Portable publish layout is an implementation step, not a tested public release.
+
+## Safety and rights
+
+Do not install or replace audio drivers during routine builds. MIT license applies to original project source. Review NAudio and any RNNoise/third-party package's own license and required notices before public distribution.

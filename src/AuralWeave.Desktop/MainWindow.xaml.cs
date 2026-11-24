@@ -15,7 +15,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _meterTimer;
     private IReadOnlyList<AudioEndpoint> _captureDevices = [];
     private IReadOnlyList<AudioEndpoint> _renderDevices = [];
-    private WasapiAudioRoute? _route;
+    private IAudioRouteSession? _route;
     private bool _updating;
 
     public MainWindow()
@@ -53,7 +53,7 @@ public partial class MainWindow : Window
     private void AddOutputClicked(object sender, RoutedEventArgs e)
     {
         if (_route is not null || OutputChoiceCombo.SelectedItem is not AudioEndpoint device) return;
-        _outputs.Add(new OutputRoute(Guid.NewGuid(), device.Id));
+        _outputs.Add(new OutputRoute(Guid.NewGuid(), device.Id, Muted: true));
         RefreshOutputRows();
     }
 
@@ -158,7 +158,7 @@ public partial class MainWindow : Window
             AddOutputButton.IsEnabled = choicesToAdd.Count != 0 && !running;
             OutputHint.Text = choicesToAdd.Count == 0
                 ? "Every available output is selected. Remove one to make it available again."
-                : $"{choicesToAdd.Count} unselected output(s) available. A device can be selected once per route.";
+                : $"{choicesToAdd.Count} unselected output(s) available. New outputs start muted for safety; unmute explicitly.";
         }
         finally { _updating = false; }
     }
@@ -345,8 +345,9 @@ public partial class MainWindow : Window
         InputLevel.Value = route.InputPeak * 100;
         FrameCountLabel.Text = $"{route.CapturedFrames:N0} frames captured";
         var metrics = route.GetOutputTelemetry();
-        OutputStatusLabel.Text = string.Join("  |  ", metrics.Select((x, i) =>
-            $"Output {i + 1}: {x.BufferedMilliseconds:0} ms buffered" +
+        var dropped = route.DroppedRenderFrames;
+        OutputStatusLabel.Text = (dropped > 0 ? $"Total dropped render frames: {dropped:N0} | " : "") + string.Join("  |  ", metrics.Select((x, i) =>
+            $"Output {i + 1}: {(double.IsNaN(x.BufferedMilliseconds) ? "native backend" : x.BufferedMilliseconds.ToString("0") + " ms buffered")}" +
             (x.Error is null ? "" : $" ERROR {x.Error}")));
         if (!string.IsNullOrEmpty(route.LastError))
             Status("Audio error: " + route.LastError, true);
