@@ -13,31 +13,47 @@ if (!(Test-Path -LiteralPath $vcvars)) { throw "Missing MSVC environment script:
 
 $src = Join-Path $root 'src\AuralWeave.Native'
 $include = Join-Path $src 'include'
+$third = Join-Path $root 'third_party\rnnoise'
+$rnSrc = Join-Path $third 'src'
+$rnInc = Join-Path $third 'include'
+if (!(Test-Path -LiteralPath (Join-Path $third 'COPYING'))) {
+    throw 'Pinned RNNoise v0.1.1 source and COPYING file are mandatory; do not auto-download during builds.'
+}
+
 $out = Join-Path $root 'build\native'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-$common = '/nologo /std:c++20 /EHsc /W4 /WX /utf-8 /I"' + $include + '" '
+$rnNames = @('denoise', 'rnn', 'rnn_data', 'rnn_reader', 'pitch', 'kiss_fft', 'celt_lpc')
+$rnFiles = ($rnNames | ForEach-Object { '"' + (Join-Path $rnSrc ($_ + '.c')) + '"' }) -join ' '
+$rnObjs = ($rnNames | ForEach-Object { '"' + (Join-Path $out ($_ + '.obj')) + '"' }) -join ' '
+$compileRnnoise = 'cl /nologo /O2 /TC /D_USE_MATH_DEFINES /I"' + $rnSrc +
+    '" /I"' + $rnInc + '" /c ' + $rnFiles
+
+$common = '/nologo /std:c++20 /EHsc /W4 /WX /utf-8 /I"' + $include +
+    '" /I"' + $rnInc + '" '
 $graph = '"' + (Join-Path $src 'src\route_graph.cpp') + '" '
 $resampler = '"' + (Join-Path $src 'src\audio_resampler.cpp') + '" '
+$noise = '"' + (Join-Path $src 'src\rnnoise_processor.cpp') + '" '
 $catalog = '"' + (Join-Path $src 'src\device_catalog.cpp') + '" '
+$catalogApi = '"' + (Join-Path $src 'src\device_catalog_api.cpp') + '" '
 $tests = '"' + (Join-Path $src 'tests\native_smoke.cpp') + '" '
 $engine = '"' + (Join-Path $src 'src\audio_engine.cpp') + '" '
 $exe = Join-Path $out 'AuralWeaveNativeSmoke.exe'
 $dll = Join-Path $out 'AuralWeave.Native.dll'
 
-$compileTests = 'cl ' + $common + $graph + $resampler + $catalog + $tests +
-    '/link ole32.lib propsys.lib /OUT:"' + $exe + '"'
-$catalogApi = '"' + (Join-Path $src 'src\device_catalog_api.cpp') + '" '
-$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler + $catalog + $catalogApi +
-    '/link ole32.lib propsys.lib uuid.lib /OUT:"' + $dll + '"'
+$compileTests = 'cl ' + $common + $graph + $resampler + $noise + $catalog +
+    $tests + $rnObjs + ' /link ole32.lib propsys.lib /OUT:"' + $exe + '"'
+$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler + $noise +
+    $catalog + $catalogApi + $rnObjs + ' /link ole32.lib propsys.lib uuid.lib /OUT:"' + $dll + '"'
 
 Push-Location $out
 try {
-    & cmd.exe /d /s /c ('call "' + $vcvars + '" >nul && ' + $compileTests + ' && ' + $compileEngine)
+    & cmd.exe /d /s /c ('call "' + $vcvars + '" >nul && ' +
+        $compileRnnoise + ' && ' + $compileTests + ' && ' + $compileEngine)
     if ($LASTEXITCODE -ne 0) { throw "Native compile/link failed ($LASTEXITCODE)" }
     if ($ListDevices) { & $exe --devices } else { & $exe }
     if ($LASTEXITCODE -ne 0) { throw "Native smoke test failed ($LASTEXITCODE)" }
     if (!(Test-Path -LiteralPath $dll)) { throw 'Native WASAPI DLL was not generated' }
-    Write-Output "Native WASAPI library: $dll"
+    Write-Output "Native WASAPI + RNNoise library: $dll"
 }
 finally { Pop-Location }

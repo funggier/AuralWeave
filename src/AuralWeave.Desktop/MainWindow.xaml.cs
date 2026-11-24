@@ -178,6 +178,29 @@ public partial class MainWindow : Window
         catch (Exception ex) { Status("Output control: " + ex.Message, true); }
     }
 
+    private void NoiseModeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // This event may fire during InitializeComponent before both controls exist.
+        if (NoiseCombo is null || NoiseModelCombo is null) return;
+        var selected = NoiseCombo.SelectedIndex == 1
+            ? NoiseProcessingMode.RnnoiseStandard
+            : NoiseProcessingMode.Bypass;
+        NoiseModelCombo.IsEnabled = selected == NoiseProcessingMode.RnnoiseStandard;
+        NoiseDescription.Text = selected == NoiseProcessingMode.Bypass
+            ? "Bypass: no RNNoise DSP or input resampling is performed."
+            : "RNNoise Standard: 48 kHz / 480 samples per 10 ms frame. Changing modes may briefly reset the DSP state.";
+        try
+        {
+            _route?.SetNoiseMode(selected);
+            if (_route is not null)
+                Status("Noise reduction: " + (selected == NoiseProcessingMode.Bypass
+                    ? "Bypass" : "RNNoise Standard"));
+        }
+        catch (Exception error)
+        {
+            Status("Noise mode could not be changed: " + error.Message, true);
+        }
+    }
     private void AddEffectClicked(object sender, RoutedEventArgs e)
     {
         _effects.Add(new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect));
@@ -311,6 +334,8 @@ public partial class MainWindow : Window
         try
         {
             candidate = new NativeWasapiAudioRoute();
+            candidate.SetNoiseMode(NoiseCombo.SelectedIndex == 1
+                ? NoiseProcessingMode.RnnoiseStandard : NoiseProcessingMode.Bypass);
             candidate.ReplaceEffects(_effects);
             candidate.Start(input.Id, _outputs);
             _route = candidate;

@@ -14,6 +14,7 @@ public sealed class NativeWasapiAudioRoute : IDisposable
     private readonly List<OutputRoute> _outputs = [];
     private AudioEffectInstance[] _effects = [];
     private bool _disposed;
+    private NoiseProcessingMode _noiseMode = NoiseProcessingMode.Bypass;
 
     private const string Library = "AuralWeave.Native";
 
@@ -39,6 +40,16 @@ public sealed class NativeWasapiAudioRoute : IDisposable
             }
             catch { return false; }
         }
+    }
+
+    public NoiseProcessingMode NoiseMode => _noiseMode;
+
+    public void SetNoiseMode(NoiseProcessingMode mode)
+    {
+        ThrowIfDisposed();
+        if (!Enum.IsDefined(mode) || NativeSetNoiseMode(_handle, (int)mode) != 1)
+            throw new ArgumentOutOfRangeException(nameof(mode), "Unsupported native noise reduction mode.");
+        _noiseMode = mode;
     }
 
     public bool IsRunning => _handle != IntPtr.Zero && NativeState(_handle) == 2;
@@ -161,6 +172,9 @@ public sealed class NativeWasapiAudioRoute : IDisposable
 
     [DllImport(Library, EntryPoint = "aw_input_peak", CallingConvention = CallingConvention.Cdecl)]
     private static extern float NativeInputPeak(IntPtr handle);
+
+    [DllImport(Library, EntryPoint = "aw_set_noise_mode", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeSetNoiseMode(IntPtr handle, int mode);
 
     [DllImport(Library, EntryPoint = "aw_set_effects", CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeSetEffects(IntPtr handle, [In] float[] gains, [In] int[] enabled, int count);

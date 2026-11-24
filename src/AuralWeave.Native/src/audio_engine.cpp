@@ -25,6 +25,7 @@
 
 #include "auralweave/audio_engine_api.h"
 #include "auralweave/audio_resampler.hpp"
+#include "auralweave/rnnoise_processor.hpp"
 
 using Microsoft::WRL::ComPtr;
 
@@ -182,6 +183,11 @@ public:
     std::uint64_t frames() const noexcept { return frames_.load(); }
     std::uint64_t overruns() const noexcept { return overruns_.load(); }
     std::uint64_t underruns() const noexcept { return underruns_.load(); }
+    bool set_noise_mode(int mode) noexcept {
+        if (mode < 0 || mode > 1) return false;
+        noise_mode_.store(mode);
+        return true;
+    }
     float peak() const noexcept { return peak_.load(); }
 
     std::wstring error() {
@@ -227,6 +233,7 @@ private:
     std::atomic<std::uint64_t> overruns_{0};
     std::atomic<std::uint64_t> underruns_{0};
     std::atomic<float> peak_{0};
+    std::atomic<int> noise_mode_{0}; // Default bypass preserves the existing fast path.
 
     void stop_event() noexcept { stop_.reset(); }
     void fail(const wchar_t* message) {
@@ -317,6 +324,10 @@ private:
         MixFormat capture_mix;
         checked(capture->GetMixFormat(&capture_mix.data), "Get capture mix format");
         const FormatInfo in_format = format_info(capture_mix.data);
+        // Prepare RNNoise before starting the capture/render streams. No model
+        // allocation in the audio packet callback. Bypass skips process().
+        auralweave::RnnoiseProcessor noise(in_format.rate, in_format.channels);
+        bool noise_was_enabled = false;
         Event capture_event;
         init_client(capture.Get(), capture_mix.data,
                     AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
@@ -394,6 +405,13 @@ private:
                 for (float value : samples)
                     if (std::isfinite(value)) maximum = std::max(maximum, std::fabs(value));
                 peak_.store(std::min(maximum, 1.0F));
+
+                const bool enable_noise = noise_mode_.load() == 1;
+                if (enable_noise) {
+                    if (!noise_was_enabled) noise.reset();
+                    noise.process(samples.data(), frame_count);
+                }
+                noise_was_enabled = enable_noise;
 
                 std::size_t active_effects{};
                 {
@@ -502,6 +520,9 @@ AW_API std::uint64_t aw_underrun_render_frames(void* handle) noexcept {
 }
 AW_API float aw_input_peak(void* handle) noexcept {
     return handle ? static_cast<NativeRoute*>(handle)->peak() : 0;
+}
+AW_API int aw_set_noise_mode(void* handle, int mode) noexcept {
+    return handle && static_cast<NativeRoute*>(handle)->set_noise_mode(mode) ? 1 : 0;
 }
 AW_API int aw_set_effects(void* handle, const float* gains, const int* enabled,
                           int count) noexcept {

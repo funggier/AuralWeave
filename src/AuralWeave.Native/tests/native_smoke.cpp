@@ -1,5 +1,6 @@
 #include "auralweave/route_graph.hpp"
 #include "auralweave/audio_resampler.hpp"
+#include "auralweave/rnnoise_processor.hpp"
 
 #include <array>
 #include <cmath>
@@ -58,6 +59,28 @@ int wmain(int argc, wchar_t* argv[]) {
         bounded.pop(large_read.data(), 2000);
         expect(bounded.underrun_frames() > 0, "resampler reports underrun");
 
+        // RNNoise 48-kHz/480-sample standard model in a streaming DSP wrapper:
+        // tests exercise internal states without opening any audio devices.
+        for (auto rate : {44100U, 48000U, 96000U, 192000U}) {
+            for (std::uint16_t channels : {std::uint16_t{1}, std::uint16_t{2}}) {
+                RnnoiseProcessor noise(rate, channels);
+                const auto frames_per_call = static_cast<std::size_t>(rate / 100);
+                std::vector<float> block(frames_per_call * channels, 0.0F);
+                for (int iteration = 0; iteration < 20; ++iteration) {
+                    for (std::size_t i = 0; i < block.size(); ++i)
+                        block[i] = 0.1F * std::sin(static_cast<float>(i + iteration * block.size()) * .15F);
+                    noise.process(block.data(), frames_per_call);
+                    for (float sample : block)
+                        if (!std::isfinite(sample) || std::fabs(sample) > 1.0001F)
+                            throw std::runtime_error("RNNoise returned non-finite or out-of-range PCM");
+                }
+                expect(noise.processed_frames() == 20 * frames_per_call,
+                       "RNNoise streaming finite PCM across mono/stereo sample rates");
+                noise.reset();
+                expect(noise.processed_frames() == 0,
+                       "RNNoise processor state resets safely");
+            }
+        }
         if (argc > 1 && std::wstring_view(argv[1]) == L"--devices") {
             auto capture = enumerate_endpoints(true);
             auto render = enumerate_endpoints(false);

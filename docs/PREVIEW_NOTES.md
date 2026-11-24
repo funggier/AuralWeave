@@ -1,10 +1,10 @@
-# AuralWeave — Native-only Windows x64 Preview
+# AuralWeave — Native-only Windows x64 Preview (RNNoise development build)
 
 This is an experimental preview, not a final product release.
 
 ## What's changed
 
-- **Native C++ WASAPI is the only audio backend.** Managed WASAPI/NAudio and the engine selection checkbox were removed.
+- **Native C++ WASAPI is the only audio backend.** The legacy managed backend is removed.
 - Device discovery, endpoint mix formats, physical capture/render and loopback are handled by the native DLL.
 - The existing dark theme and single Start/Stop button remain.
 - One input can route to several independently buffered output devices; newly added outputs start muted.
@@ -21,8 +21,12 @@ This is an experimental preview, not a final product release.
 
 ## Known limitations
 
-- RNNoise, EQ and AI effects, presets and optional virtual audio drivers are not implemented.
+- **RNNoise Standard v0.1.1 is now optional in the noise dropdown.** Little and Custom models are not yet available. EQ and AI effects, presets and optional virtual audio drivers are not implemented.
 - Native engine supports mono/stereo Float32/PCM16 mix formats; unsupported device configurations report errors instead of falling back.
 - A subjective user test found Native latency imperceptible, but no measured end-to-end millisecond figure is available.
 - The native linear resampler is not a production-quality anti-aliased resampler. Longer-session drift, hotplug, sink isolation and audio fidelity still need formal testing.
 - No audio driver is installed by this preview.
+
+## RNNoise notes
+
+The default is Bypass, which preserves the native low-latency audio path. Selecting RNNoise introduces 48-kHz frame processing and resampling when required. Change modes during playback to compare quality, but do not assume RNNoise latency matches Bypass.

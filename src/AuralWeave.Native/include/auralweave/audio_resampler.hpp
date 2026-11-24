@@ -14,6 +14,9 @@ public:
                     std::uint32_t output_rate, std::uint16_t output_channels,
                     std::uint32_t buffer_ms = 250);
 
+    // Clear all buffered audio and interpolation history without reallocating.
+    void reset() noexcept;
+
     // Interleaved Float32 source frames, called in strict order.
     void push(const float* source, std::size_t frames) noexcept;
     // Pop up to 'frames' into destination; missing frames are silence.

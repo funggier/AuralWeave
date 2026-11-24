@@ -71,3 +71,12 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Remove managed NAudio streaming and the backend selector
 - [x] Build/Portable remains in project; no automatic copy to test Products folder
 - [ ] Formal listening/latency and cross-device drift acceptance tests
+
+## RNNoise processing milestone — local preview
+
+- [x] Vendor pinned RNNoise v0.1.1 Standard model + BSD-3-Clause notice
+- [x] Native C++ RNNoise frame adapter for 48/192 kHz and mono/stereo
+- [x] Noise dropdown: Bypass vs RNNoise, including runtime switching
+- [x] Preserve pure Bypass as default with no extra denoising DSP
+- [ ] High-fidelity sample-rate conversion, audible QA and timing measurement
+- [ ] Support compatible Little / Custom RNNoise models after source/ABI/licensing review

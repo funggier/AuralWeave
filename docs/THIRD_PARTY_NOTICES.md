@@ -1,22 +1,28 @@
 # Third-party Components and Licensing
 
-AuralWeave original project source: [MIT License](../LICENSE), Copyright (c) 2026 funggier.
+AuralWeave original source: MIT License, Copyright (c) 2026 funggier.
+See the repository root `LICENSE`.
 
-## Current implementation
+## Included in native v0.2.0-preview.1
 
-- Native C++ Windows Audio (WASAPI / MMDevice): uses Windows SDK interfaces and platform components. No third-party audio-processing library is bundled in this preview.
-- Desktop interface: .NET 8 WPF; self-contained deployment redistributes applicable .NET runtime components subject to their respective Microsoft licenses and notices. Confirm full redistributable obligations before a public release.
+**RNNoise** — Xiph.Org, pinned upstream `v0.1.1`,
+commit `6cbfd53eb348a8d394e0757b4025c6ded34eb2b6`.
 
-## Planned, not bundled
+- Purpose: optional neural noise reduction
+- Distribution: source under `third_party/rnnoise`; embedded Standard
+  weights from `src/rnn_data.c`, compiled into `AuralWeave.Native.dll`
+- License: BSD 3-Clause. Full original notice: `third_party/rnnoise/COPYING`,
+  copied in Windows ZIP as `licenses/RNNoise-v0.1.1-BSD-3-Clause.txt`
+- Modifications: MSVC compatibility changes to two C files; see vendor README
+- No RNNoise model downloads are performed when running or building.
 
-| Candidate | Purpose | Current state |
-| --- | --- | --- |
-| RNNoise (Xiph) | Noise suppression | Not yet added; audit pinned upstream version/license/notice before bundling |
-| Microsoft SysVAD sample | Research for optional virtual endpoints | Not bundled; source/driver redistribution and signing to be assessed |
-| Future DSP and AI models | Additional voice effects | Not bundled; model rights must be verified separately |
+**Windows Core Audio, .NET 8/WPF** — Microsoft platform/runtime components;
+relevant redistribution conditions must be observed.
 
-## History
+## Not included
 
-NAudio 2.2.1 was used only in an early managed-audio prototype. **It is no longer referenced by the project or included in native-only preview packaging.** Historical Git commits retain the earlier dependency and its license notice. This file describes the present product state.
+NAudio was removed in earlier native-only versions.
+Little/Custom RNNoise models, EQ, AI processing and virtual audio drivers have
+not been bundled.
 
-Before distributing new third-party code: document its exact version, origin, rights, notices, and redistribution conditions. The project's MIT license does not relicense external software, models or drivers.
+The project's MIT License does not relicense third-party software.

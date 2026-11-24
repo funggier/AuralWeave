@@ -9,3 +9,6 @@
 
 # Keep upstream license texts byte-for-byte (including trailing blank lines).
 third_party/licenses/* -whitespace
+
+# Keep third-party upstream formatting and original license text intact.
+third_party/rnnoise/** -whitespace

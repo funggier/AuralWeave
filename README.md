@@ -4,7 +4,7 @@
 
 AuralWeave คือโปรเจกต์โปรแกรมจัดเส้นทางเสียงแบบ Real-time สำหรับ Windows รองรับการรับเสียงจากอุปกรณ์จริงหรืออุปกรณ์เสมือน ประมวลผลตามลำดับ และกระจายเสียงออกไปหลายอุปกรณ์พร้อมกัน
 
-> **Project status:** Experimental Windows desktop and WASAPI audio route implemented; **not yet a product release**. Capture/render routing and a repeatable Gain effect have passed preliminary checks. Native C++ streaming and muted mixed-rate multi-output routing have now passed preliminary hardware smoke tests. RNNoise, production-grade clock correction, and Virtual Audio Driver are not implemented.
+> **Project status:** Experimental Windows desktop and WASAPI audio route implemented; **not yet a product release**. Capture/render routing and a repeatable Gain effect have passed preliminary checks. Native C++ streaming and muted mixed-rate multi-output routing have now passed preliminary hardware smoke tests. RNNoise Standard processing is now available in a newer **local development preview**, but production-grade clock correction and Virtual Audio Driver are not implemented.
 
 ## Concept
 
@@ -65,3 +65,6 @@ Running either script is optional; no automatic startup or virtual audio driver 
 ## License
 
 [MIT License](LICENSE) — Copyright (c) 2026 funggier. Third-party code/models/drivers retain their own licenses.
+## Post-v0.1.0 local preview
+
+Optional RNNoise v0.1.1 Standard processing is implemented in the source tree with an offline build and live Bypass/RNNoise switching. The published GitHub `v0.1.0` remains unchanged; see [integration details](docs/RNNOISE_INTEGRATION.md).

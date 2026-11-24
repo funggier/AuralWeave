@@ -42,12 +42,19 @@
                 <Border Background="#202A3B" CornerRadius="10" Padding="16" Margin="0,0,0,14">
                     <StackPanel>
                         <TextBlock FontSize="17" FontWeight="SemiBold" Text="2  Noise reduction" Margin="0,0,0,10"/>
-                        <ComboBox SelectedIndex="0" x:Name="NoiseCombo">
-                            <ComboBoxItem Content="Bypass — direct routing (active)"/>
-                            <ComboBoxItem Content="RNNoise — coming in a later phase" IsEnabled="False"/>
+                        <ComboBox SelectedIndex="0" x:Name="NoiseCombo" SelectionChanged="NoiseModeChanged">
+                            <ComboBoxItem Content="Bypass — unprocessed, minimal latency"/>
+                            <ComboBoxItem Content="RNNoise — neural noise suppression"/>
                         </ComboBox>
-                        <TextBlock Foreground="#AAB8CE" Margin="0,9,0,0" TextWrapping="Wrap"
-                                   Text="Noise reduction is bypassed in this build. The gain effects below are independently active."/>
+                        <TextBlock Margin="0,10,0,5" Foreground="#AAB8CE" Text="RNNoise model"/>
+                        <ComboBox x:Name="NoiseModelCombo" SelectedIndex="0" IsEnabled="False">
+                            <ComboBoxItem Content="Standard — bundled Xiph RNNoise v0.1.1"/>
+                            <ComboBoxItem Content="Little — future compatible model" IsEnabled="False"/>
+                            <ComboBoxItem Content="Custom — future compatible model" IsEnabled="False"/>
+                        </ComboBox>
+                        <TextBlock x:Name="NoiseDescription" Foreground="#AAB8CE" Margin="0,9,0,0"
+                                   TextWrapping="Wrap"
+                                   Text="Bypass does not run RNNoise. RNNoise adds frame processing (10 ms at 48 kHz) and can change voice quality."/>
                     </StackPanel>
                 </Border>
                 <Border Background="#202A3B" CornerRadius="10" Padding="16" Margin="0,0,0,14">

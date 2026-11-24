@@ -20,6 +20,18 @@ StreamResampler::StreamResampler(std::uint32_t source_rate, std::uint16_t source
     ring_.resize(capacity_ * output_channels_);
 }
 
+void StreamResampler::reset() noexcept {
+    std::fill(ring_.begin(), ring_.end(), 0.0F);
+    head_ = 0;
+    length_ = 0;
+    incoming_ = 0;
+    overruns_ = 0;
+    underruns_ = 0;
+    next_position_ = 0.0;
+    previous_left_ = 0.0F;
+    previous_right_ = 0.0F;
+    has_previous_ = false;
+}
 float StreamResampler::sample(const float* data, std::size_t frames,
                               std::int64_t offset, unsigned channel) const noexcept {
     if (offset < 0)

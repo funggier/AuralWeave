@@ -68,14 +68,19 @@ try {
         Get-ChildItem -LiteralPath $target -File -Filter '*.pdb' |
             Remove-Item -Force
 
-                $csprojXml = [xml](Get-Content -LiteralPath (Join-Path $root 'src\AuralWeave.Desktop\AuralWeave.Desktop.csproj') -Raw)
+                        $csprojXml = [xml](Get-Content -LiteralPath (Join-Path $root 'src\AuralWeave.Desktop\AuralWeave.Desktop.csproj') -Raw)
         $version = [string]$csprojXml.Project.PropertyGroup.Version
-        if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid application release version: $version" }
+        if ($version -notmatch '^\d+\.\d+\.\d+(-[a-z0-9.]+)?$') {
+            throw "Invalid application version: $version"
+        }
         Copy-Item -LiteralPath (Join-Path $root "docs\releases\v$version.md") -Destination (Join-Path $target 'RELEASE_NOTES.md') -Force
+        $licenseFolder = Join-Path $target 'licenses'
+        New-Item -ItemType Directory -Force -Path $licenseFolder | Out-Null
+        Copy-Item -LiteralPath (Join-Path $root 'third_party\rnnoise\COPYING') -Destination (Join-Path $licenseFolder 'RNNoise-v0.1.1-BSD-3-Clause.txt') -Force
+
         $archive = Join-Path $root ("dist\AuralWeave-v$version-Windows-x64.zip")
         Compress-Archive -Path (Join-Path $target '*') -DestinationPath $archive -CompressionLevel Optimal -Force
         if (!(Test-Path -LiteralPath $archive)) { throw 'Portable ZIP was not created' }
-
         Write-Output "Native-only portable ZIP: $archive"
         Write-Output "Native-only portable output: $target"
     }

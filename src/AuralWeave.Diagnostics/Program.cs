@@ -49,6 +49,44 @@ try
         Console.WriteLine("PASS: Native muted capture -> render route and Stop.");
     }
 
+    if (args.Contains("--smoke-rnnoise-toggle") || args.Contains("--soak-rnnoise"))
+    {
+        var input = sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture && x.SampleRate == 192000)
+            ?? sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture)
+            ?? throw new InvalidOperationException("No physical capture device available.");
+        var output1 = outputs.FirstOrDefault(x => x.IsDefault)
+            ?? outputs.FirstOrDefault()
+            ?? throw new InvalidOperationException("No render endpoints.");
+        var output2 = outputs.FirstOrDefault(x => x.Id != output1.Id && x.SampleRate == 48000)
+            ?? outputs.FirstOrDefault(x => x.Id != output1.Id);
+        var selected = new List<OutputRoute> { new(Guid.NewGuid(), output1.Id, 1f, true) };
+        if (output2 is not null)
+            selected.Add(new OutputRoute(Guid.NewGuid(), output2.Id, 1f, true));
+        Console.WriteLine($"RNNOISE TOGGLE (muted): {input.Name}, {selected.Count} output(s)");
+        using var route = new NativeWasapiAudioRoute();
+        route.SetNoiseMode(NoiseProcessingMode.Bypass);
+        route.Start(input.Id, selected);
+        await Task.Delay(1000);
+        var before = route.CapturedFrames;
+        route.SetNoiseMode(NoiseProcessingMode.RnnoiseStandard);
+        await Task.Delay(args.Contains("--soak-rnnoise") ? 10000 : 1800);
+        var during = route.CapturedFrames;
+        var underrunsAtNoiseEnd = route.UnderrunRenderFrames;
+        route.SetNoiseMode(NoiseProcessingMode.Bypass);
+        await Task.Delay(800);
+        var after = route.CapturedFrames;
+        var errors = route.LastError;
+        var underruns = route.UnderrunRenderFrames;
+        var overruns = route.DroppedRenderFrames;
+        route.Stop();
+        Console.WriteLine($"Bypass frames: {before}; RNNoise frames: {during-before}; " +
+            $"resumed bypass frames: {after-during}; overruns: {overruns}; " +
+            $"underruns: {underruns}; after noise: {underruns-underrunsAtNoiseEnd}; " +
+            $"error: {errors ?? "none"}");
+        if (!(before > 0 && during > before && after > during && errors is null))
+            throw new InvalidOperationException("RNNoise live switch diagnostic failed.");
+        Console.WriteLine("PASS: Native RNNoise ↔ Bypass live switching, muted endpoints and Stop.");
+    }
     if (mixed)
     {
         var input = sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture)
