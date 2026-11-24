@@ -702,7 +702,7 @@ static bool AwMatchesHardwareId(const UNICODE_STRING& id, PCWSTR prefix)
                          (suffix[1] - L'0') * 100 +
                          (suffix[2] - L'0') * 10 +
                          (suffix[3] - L'0');
-    return number >= 1 && number <= 16;
+    return number == 1; // exactly one root PnP ID per endpoint role
 }
 
 #pragma code_seg("PAGE")

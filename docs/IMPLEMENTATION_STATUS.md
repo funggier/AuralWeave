@@ -57,7 +57,7 @@ A new AuralWeave-branded unsigned WDM/PortCls virtual audio
 prototype now compiles into `AuralWeaveVirtualAudio.sys`. It
 selects capture or render KS interfaces according to independently
 enumerated AuralWeave root hardware IDs. Maximum reserved ID bank:
-16 input + 16 output. Windows 10 build 19041+ / Windows 11 x64 INF
+1 input + 1 output. Windows 10 build 19041+ / Windows 11 x64 INF
 model selection; InfVerif /w /u and Inf2Cat /nocat signability pass.
 Device discovery is hardened to the MEDIA class, AuralWeave service
 and exact ID bank. No live PCM driver transport, Windows 11 runtime
@@ -75,3 +75,17 @@ resampled to a 48-kHz Shared PCM tap and was consumed without
 overrun in a 1.2-second test. The unsigned kernel prototype is
 still NOT attached to this transport, and virtual output input
 selection, Windows 11 VM tests and Microsoft signing remain pending.
+
+
+## One Virtual Input / One Virtual Output (2026-11-25)
+
+- The current INF exposes one PnP hardware ID for each role, both ending in 0001.
+- The AuralWeave PnP manager allows future installation only when no current
+  or legacy device of that role exists; unsigned driver installation stays disabled.
+- Former 0002..0016 prototype IDs are recognized for safe, explicit cleanup.
+- The developer-only Native Studio route now accepts a Virtual Output PCM source
+  through the same ordered Filter graph and optional Virtual Input PCM tap.
+- Windows 10 user-mode test: 57,600 frames consumed, 57,599 frames emitted,
+  Gain applied, zero source overflow, physical output muted.
+- Windows Kernel driver transport, signing and Windows 11 runtime validation
+  have NOT yet been implemented or performed.

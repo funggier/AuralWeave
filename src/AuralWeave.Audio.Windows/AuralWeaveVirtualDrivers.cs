@@ -18,13 +18,20 @@ public sealed record AuralWeaveVirtualDevice(
 {
     public string RoleLabel => Role == VirtualAudioEndpointRole.Input
         ? "Virtual Input (recording / microphone)" : "Virtual Output (playback)";
+    // Only for migration/cleanup. Legacy slots 0002..0016 are no longer
+    // eligible for installation but must remain discoverable for removal.
+    public bool IsLegacy => !AuralWeaveVirtualDrivers.TryIdentifyRole(HardwareId, out _);
 }
 
 public static class AuralWeaveVirtualDrivers
 {
-    // Matches the 16-ID-per-role prototype INF; no signed driver ships yet.
+    // One installable PnP ID per role on Windows 10/11. No signed package yet.
+    public const int MaxVirtualInputs = 1;
+    public const int MaxVirtualOutputs = 1;
     public const string InputHardwarePrefix = "ROOT\\AURALWEAVE_VINPUT";
     public const string OutputHardwarePrefix = "ROOT\\AURALWEAVE_VOUTPUT";
+    public const string InputHardwareId = "ROOT\\AURALWEAVE_VINPUT_0001";
+    public const string OutputHardwareId = "ROOT\\AURALWEAVE_VOUTPUT_0001";
 
     private const uint DigcfAllclasses = 0x00000004;
     private const uint SpdrpHardwareId = 0x00000001;
@@ -67,8 +74,11 @@ public static class AuralWeaveVirtualDrivers
                 var ids = ReadProperty(infoSet, ref data, SpdrpHardwareId)
                     .Split('\0', StringSplitOptions.RemoveEmptyEntries);
                 var ownId = ids.FirstOrDefault(id =>
-                    TryIdentifyRole(id, out _));
-                if (ownId is null || !TryIdentifyRole(ownId, out var role))
+                    TryIdentifyRole(id, out _) || TryIdentifyLegacyRole(id, out _));
+                if (ownId is null)
+                    continue;
+                if (!TryIdentifyRole(ownId, out var role) &&
+                    !TryIdentifyLegacyRole(ownId, out role))
                     continue;
 
                 var instance = new StringBuilder(1024);
@@ -94,16 +104,16 @@ public static class AuralWeaveVirtualDrivers
         }
     }
 
-    public static bool TryIdentifyRole(string hardwareId, out VirtualAudioEndpointRole role)
+    public static bool TryIdentifyRole(string? hardwareId, out VirtualAudioEndpointRole role)
     {
-        // Strict, boundary-aware namespace check. "AURALWEAVE" in the friendly
-        // name is not evidence of ownership.
-        if (IsOwnHardwareId(hardwareId, InputHardwarePrefix))
+        // Only these two IDs are current. An unrecognized ID must not count
+        // as a second supported virtual endpoint (or a normal device).
+        if (string.Equals(hardwareId, InputHardwareId, StringComparison.OrdinalIgnoreCase))
         {
             role = VirtualAudioEndpointRole.Input;
             return true;
         }
-        if (IsOwnHardwareId(hardwareId, OutputHardwarePrefix))
+        if (string.Equals(hardwareId, OutputHardwareId, StringComparison.OrdinalIgnoreCase))
         {
             role = VirtualAudioEndpointRole.Output;
             return true;
@@ -112,23 +122,50 @@ public static class AuralWeaveVirtualDrivers
         return false;
     }
 
-    private static bool IsOwnHardwareId(string candidate, string prefix)
+    public static bool TryIdentifyLegacyRole(string? hardwareId,
+                                             out VirtualAudioEndpointRole role)
     {
-        // Only the hardware IDs explicitly enumerated in the INF belong
-        // to this driver. Never remove a generic/foreign PnP device because
-        // its name or a misleading prefix happens to contain AuralWeave.
-        if (candidate.Length != prefix.Length + 5 ||
+        // Previous UNSIGNED prototypes advertised 0002..0016. They are now
+        // deprecated, but if installed on a test machine they must be shown
+        // as legacy devices so a user can explicitly uninstall them.
+        if (IsLegacyHardwareId(hardwareId, InputHardwarePrefix))
+        {
+            role = VirtualAudioEndpointRole.Input;
+            return true;
+        }
+        if (IsLegacyHardwareId(hardwareId, OutputHardwarePrefix))
+        {
+            role = VirtualAudioEndpointRole.Output;
+            return true;
+        }
+        role = default;
+        return false;
+    }
+
+    private static bool IsLegacyHardwareId(string? candidate, string prefix)
+    {
+        if (candidate is null || candidate.Length != prefix.Length + 5 ||
             !candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
             candidate[prefix.Length] != '_')
             return false;
-
         var number = 0;
         foreach (var c in candidate.AsSpan(prefix.Length + 1))
         {
             if (c is < '0' or > '9') return false;
-            number = number * 10 + (c - '0');
+            number = number * 10 + c - '0';
         }
-        return number is >= 1 and <= 16;
+        return number is >= 2 and <= 16;
+    }
+
+    // Future signed installer MUST check the installed inventory before
+    // creating ANY device node (and serialize concurrent install attempts).
+    // Existing legacy IDs block a new install until explicitly removed.
+    public static bool MayInstall(
+        IReadOnlyList<AuralWeaveVirtualDevice> installed,
+        VirtualAudioEndpointRole role)
+    {
+        ArgumentNullException.ThrowIfNull(installed);
+        return !installed.Any(device => device.Role == role);
     }
 
     private static string ReadProperty(

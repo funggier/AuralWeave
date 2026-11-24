@@ -125,7 +125,7 @@ This is a UI-only fix. Native WASAPI code and routing were not modified.
   `InfVerif /w` and `InfVerif /u` both passed; Inf2Cat
   `/nocat` signability passed with no errors or warnings.
 - INF targets Windows 10 build 19041+ and Windows 11; candidate
-  device IDs are 0001-0016 for each of Input and Output.
+  active device IDs are only 0001 for Input and 0001 for Output.
 - Managed PnP ownership checks reject unrelated/bare/malformed
   hardware IDs; available classes and service are checked.
 - Current Windows 10 development host: 0 owned devices installed.
@@ -151,3 +151,21 @@ This is a UI-only fix. Native WASAPI code and routing were not modified.
 - Full build-windows.ps1 with WPF, Diagnostics, Core and 32 managed
   tests passed; no compiler warnings/errors.
 - Kernel transport and Windows 11 runtime tests NOT YET performed.
+
+
+## One Virtual Input / One Virtual Output (2026-11-25)
+
+- The current INF exposes one PnP hardware ID for each role, both ending in 0001.
+- The AuralWeave PnP manager allows future installation only when no current
+  or legacy device of that role exists; unsigned driver installation stays disabled.
+- Former 0002..0016 prototype IDs are recognized for safe, explicit cleanup.
+- The developer-only Native Studio route now accepts a Virtual Output PCM source
+  through the same ordered Filter graph and optional Virtual Input PCM tap.
+- Windows 10 user-mode test: 57,600 frames consumed, 57,599 frames emitted,
+  Gain applied, zero source overflow, physical output muted.
+- Windows Kernel driver transport, signing and Windows 11 runtime validation
+  have NOT yet been implemented or performed.
+
+Additional shutdown regression: closing the user-mode Virtual Output producer
+causes the Native Studio route to terminate cleanly without hanging. The
+Windows custom title-bar maximize/restore checks also passed on 3 monitors.

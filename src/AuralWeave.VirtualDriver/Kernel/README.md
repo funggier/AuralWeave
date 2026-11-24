@@ -20,10 +20,9 @@ attribution/copyright notices are preserved. The full MS-PL text is in
 - The adapter reads the root-enumerated PnP device **hardware ID**
   and registers *only the correct direction* for that physical devnode.
   Nonmatching or malformed hardware IDs fail closed.
-- The INF reserves IDs `ROOT\AURALWEAVE_VINPUT_0001` through
-  `ROOT\AURALWEAVE_VINPUT_0016` and corresponding
-  `ROOT\AURALWEAVE_VOUTPUT_0001` through `_0016`.
-  These represent **candidate identifiers**, not proven simultaneous
+- The INF reserves one recording device PnP ID ending in VINPUT_0001
+  and one playback device PnP ID ending in VOUTPUT_0001.
+  These represent **candidate device identities**, not proven simultaneous
   working audio devices.
 - Microsoft sample's synthetic tone generator is disabled by default.
 

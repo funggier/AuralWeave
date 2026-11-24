@@ -110,7 +110,7 @@ without any optional kernel driver.
 This development checkpoint adds a separately licensed **MS-PL**
 `AuralWeaveVirtualAudio.sys` source prototype with different PnP
 registrations for Virtual Input (recording) and Virtual Output
-(playback). The INF reserves 16 IDs of each type and targets
+(playback). The INF now reserves exactly one PnP ID per role and targets
 Windows 10 build 19041+ and Windows 11 x64.
 
 `scripts/build-virtual-driver-prototype.ps1` performs compile-only
@@ -132,9 +132,23 @@ developer-facing C ABI and .NET wrapper are in the repository.
 A real Windows 10 muted hardware smoke verified 192-kHz capture,
 ordered Gain filter, conversion to 48-kHz stereo Shared PCM and
 continuous consumption without dropped frames. The Virtual Output
-shared channel also passed cross-process tests, but is not connected
+shared channel also passed cross-process tests; developer-only Native routing is now implemented, while the Windows driver remains unconnected
 to a WaveRT endpoint or Studio source selector.
 
 This is **not yet a working installed kernel virtual audio driver**.
 No driver install option has been enabled. For architecture, tests and
 limitations see [Virtual PCM Bridge](docs/VIRTUAL_PCM_BRIDGE.md).
+
+
+## One Virtual Input / One Virtual Output (2026-11-25)
+
+- The current INF exposes one PnP hardware ID for each role, both ending in 0001.
+- The AuralWeave PnP manager allows future installation only when no current
+  or legacy device of that role exists; unsigned driver installation stays disabled.
+- Former 0002..0016 prototype IDs are recognized for safe, explicit cleanup.
+- The developer-only Native Studio route now accepts a Virtual Output PCM source
+  through the same ordered Filter graph and optional Virtual Input PCM tap.
+- Windows 10 user-mode test: 57,600 frames consumed, 57,599 frames emitted,
+  Gain applied, zero source overflow, physical output muted.
+- Windows Kernel driver transport, signing and Windows 11 runtime validation
+  have NOT yet been implemented or performed.

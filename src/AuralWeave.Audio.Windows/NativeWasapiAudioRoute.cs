@@ -109,7 +109,7 @@ public sealed class NativeWasapiAudioRoute : IDisposable
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(bridge);
-        if (bridge.Role != 1 || bridge.Slot is < 1 or > 16)
+        if (bridge.Role != 1 || bridge.Slot != 1)
             throw new ArgumentException("Only owned Virtual Input bridges may be bound.");
         if (!IsRunning)
             throw new InvalidOperationException("Start the physical audio route first.");

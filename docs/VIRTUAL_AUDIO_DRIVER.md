@@ -39,7 +39,7 @@ The current UI deliberately does not provide a fake install action. Never use `p
 3. Support creating additional independent instances with fixed signed hardware IDs. Ensure no cross-instance audio leakage and stable device naming.
 4. Build and sign driver INF/SYS/CAT packages with appropriate Windows 10 kernel signing rules. Never disable secure boot, disable driver-signature enforcement or turn on test signing as part of normal application operation.
 5. Add verified install flow (UAC, valid INF and signature, installed endpoint check, reboot handling), plus per-device uninstall and optional separate package cleanup only when no instances rely on it.
-6. Test clean install/uninstall/reboot, multi-instance performance, endpoint visibility, migration after moving the portable folder, and security.
+6. Test clean install/uninstall/reboot, single-device-per-role behavior, endpoint visibility, migration after moving the portable folder, and security.
 
 The existing physical input/output Native C++ route must continue working when this optional module is absent.
 
@@ -51,7 +51,7 @@ passes through `scripts/build-sysvad-reference.ps1`.
 
 **Still not implemented:** AuralWeave-branded, signed and installable
 virtual audio kernel endpoints; production Windows 10 INF;
-per-instance full-duplex audio transport and multi-instance
+one-input/one-output audio transport and independent
 device management. The Manager INSTALL controls remain disabled
 until those pieces are actually built and tested.
 
@@ -60,8 +60,8 @@ until those pieces are actually built and tested.
 A separate **compile-only** prototype now lives under
 `src/AuralWeave.VirtualDriver/Kernel`, adapted from Microsoft's
 MS-PL Simple Audio Sample. The binary is called
-`AuralWeaveVirtualAudio.sys` and the INF separates 16 possible
-Virtual Input hardware IDs from 16 possible Virtual Output IDs.
+`AuralWeaveVirtualAudio.sys` and the INF separates 1 possible
+Virtual Input hardware IDs from 1 possible Virtual Output IDs.
 The kernel compares the physical PnP hardware ID before registering
 only the requested WaveRT endpoint direction.
 
@@ -72,7 +72,7 @@ HLK or Microsoft driver-signing results yet.
 
 This is a substantial engineering prototype, NOT a working virtual
 microphone/speaker product. There is no user-to-kernel PCM transport,
-multi-instance stream isolation has not been tested, and INSTALL
+stream lifecycle and driver isolation has not been tested, and INSTALL
 remains intentionally disabled. The earlier "not implemented"
 statements above describe the previous milestone.
 

@@ -158,8 +158,9 @@ public:
         stop();
         const std::wstring source_name(source);
         if (!source_name.starts_with(L"capture:") &&
-            !source_name.starts_with(L"loopback:")) {
-            fail(L"Source must be prefixed capture: or loopback:");
+            !source_name.starts_with(L"loopback:") &&
+            !source_name.starts_with(L"virtual-output:")) {
+            fail(L"Source must be capture:, loopback:, or virtual-output:");
             return false;
         }
         std::set<std::wstring> used;
@@ -258,7 +259,7 @@ public:
     float peak() const noexcept { return peak_.load(); }
 
     bool bind_virtual_input(const wchar_t* name, std::uint32_t slot) {
-        if (!name || slot < 1 || slot > 16 || state_.load() != 2)
+        if (!name || slot != 1 || state_.load() != 2)
             return false;
         const auto rate = sample_rate_.load();
         const auto channels = channels_.load();
@@ -411,16 +412,32 @@ private:
         checked(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                                  IID_PPV_ARGS(&enumerator)), "CoCreateInstance MMDeviceEnumerator");
 
+        const bool virtual_output = source_.starts_with(L"virtual-output:");
         const bool loopback = source_.starts_with(L"loopback:");
-        const std::wstring endpoint = source_.substr(loopback ? 9 : 8);
-        ComPtr<IMMDevice> input_device;
-        checked(enumerator->GetDevice(endpoint.c_str(), &input_device), "Get capture device");
         ComPtr<IAudioClient> capture;
-        checked(input_device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
-                                       &capture), "Activate capture IAudioClient");
+        ComPtr<IAudioCaptureClient> reader;
         MixFormat capture_mix;
-        checked(capture->GetMixFormat(&capture_mix.data), "Get capture mix format");
-        const FormatInfo in_format = format_info(capture_mix.data);
+        FormatInfo in_format{};
+        std::unique_ptr<auralweave::VirtualAudioBridge> virtual_source;
+        if (virtual_output) {
+            // Developer-only user-mode source. No kernel driver device is
+            // created, and a random exact mapping name must be supplied.
+            auto connected = auralweave::VirtualAudioBridge::attach(
+                source_.substr(std::wstring_view(L"virtual-output:").size()),
+                auralweave::VirtualEndpointRole::output, 1);
+            const auto format = connected.format();
+            in_format = FormatInfo{format.sample_rate, format.channels, true};
+            virtual_source = std::make_unique<auralweave::VirtualAudioBridge>(
+                std::move(connected));
+        } else {
+            const std::wstring endpoint = source_.substr(loopback ? 9 : 8);
+            ComPtr<IMMDevice> input_device;
+            checked(enumerator->GetDevice(endpoint.c_str(), &input_device), "Get capture device");
+            checked(input_device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                                           &capture), "Activate capture IAudioClient");
+            checked(capture->GetMixFormat(&capture_mix.data), "Get capture mix format");
+            in_format = format_info(capture_mix.data);
+        }
         {
             std::lock_guard<std::mutex> guard(mutex_);
             sample_rate_.store(in_format.rate);
@@ -434,13 +451,15 @@ private:
         // allocation in the audio packet callback. Bypass skips process().
         auralweave::RnnoiseProcessor noise(in_format.rate, in_format.channels);
         bool noise_was_enabled = false;
-        Event capture_event;
-        init_client(capture.Get(), capture_mix.data,
-                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-                        (loopback ? AUDCLNT_STREAMFLAGS_LOOPBACK : 0));
-        checked(capture->SetEventHandle(capture_event.get()), "Set capture event");
-        ComPtr<IAudioCaptureClient> reader;
-        checked(capture->GetService(IID_PPV_ARGS(&reader)), "Get capture client");
+        std::unique_ptr<Event> capture_event;
+        if (!virtual_output) {
+            capture_event = std::make_unique<Event>();
+            init_client(capture.Get(), capture_mix.data,
+                        AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                            (loopback ? AUDCLNT_STREAMFLAGS_LOOPBACK : 0));
+            checked(capture->SetEventHandle(capture_event->get()), "Set capture event");
+            checked(capture->GetService(IID_PPV_ARGS(&reader)), "Get capture client");
+        }
 
         for (auto& sink : sinks_) {
             ComPtr<IMMDevice> out_device;
@@ -474,37 +493,24 @@ private:
             }
             checked(sink.client->Start(), "Start render");
         }
-        checked(capture->Start(), "Start capture");
+        if (capture)
+            checked(capture->Start(), "Start capture");
         state_.store(2);
 
-        // Windows' capture and each render endpoint run on independent clocks.
-        // Service render events independently of capture callbacks: the old code
-        // rendered only when capture arrived and could intermittently starve outputs.
-        std::vector<HANDLE> events{stop_.get(), capture_event.get()};
+        // Physical capture is event-driven. Developer-only virtual output
+        // source is polled in 5-ms chunks because the SPSC mapping currently
+        // has no signal handle; never spin or block while waiting for PCM.
+        std::vector<HANDLE> events{stop_.get()};
+        if (capture_event)
+            events.push_back(capture_event->get());
+        const auto render_event_base = events.size();
         for (const auto& sink : sinks_) events.push_back(sink.render_event->get());
 
         std::vector<float> samples;
         samples.reserve(65536);
         std::array<float, 256> effects_snapshot{};
 
-        auto capture_available = [&]() {
-            for (;;) {
-                UINT32 pending{};
-                checked(reader->GetNextPacketSize(&pending), "GetNextPacketSize");
-                if (!pending) break;
-                BYTE* input{};
-                UINT32 frame_count{};
-                DWORD flags{};
-                checked(reader->GetBuffer(&input, &frame_count, &flags, nullptr, nullptr),
-                        "Capture GetBuffer");
-                const auto sample_count = static_cast<std::size_t>(frame_count) * in_format.channels;
-                if (sample_count > 65536) {
-                    reader->ReleaseBuffer(frame_count);
-                    throw std::runtime_error("Capture packet too large");
-                }
-                copy_capture(samples, input, frame_count, in_format,
-                             (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0);
-                checked(reader->ReleaseBuffer(frame_count), "Capture ReleaseBuffer");
+        auto process_samples = [&](UINT32 frame_count) {
                 frames_.fetch_add(frame_count);
 
                 float maximum = 0.0F;
@@ -553,7 +559,47 @@ private:
                     sink.resampler->push(samples.data(), frame_count);
                     overruns_.fetch_add(sink.resampler->overrun_frames() - previous);
                 }
+        };
+
+        auto capture_available = [&]() {
+            for (;;) {
+                UINT32 pending{};
+                checked(reader->GetNextPacketSize(&pending), "GetNextPacketSize");
+                if (!pending) break;
+                BYTE* input{};
+                UINT32 frame_count{};
+                DWORD flags{};
+                checked(reader->GetBuffer(&input, &frame_count, &flags, nullptr, nullptr),
+                        "Capture GetBuffer");
+                const auto sample_count = static_cast<std::size_t>(frame_count) * in_format.channels;
+                if (sample_count > 65536) {
+                    reader->ReleaseBuffer(frame_count);
+                    throw std::runtime_error("Capture packet too large");
+                }
+                copy_capture(samples, input, frame_count, in_format,
+                             (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0);
+                checked(reader->ReleaseBuffer(frame_count), "Capture ReleaseBuffer");
+                process_samples(frame_count);
             }
+        };
+
+        auto virtual_available = [&]() {
+            if (!virtual_source) return;
+            // Bounded work per loop and a short 5-ms wait preserve render
+            // events, while avoiding runaway work if the peer is writing.
+            for (std::size_t iteration = 0; iteration < 16; ++iteration) {
+                const auto queued = virtual_source->counters().queued_frames;
+                if (!queued) break;
+                const UINT32 period = std::max<UINT32>(1, in_format.rate / 100);
+                const UINT32 frames = std::min<UINT32>(queued, period);
+                samples.resize(static_cast<std::size_t>(frames) * in_format.channels);
+                const UINT32 actual = virtual_source->read(samples.data(), frames);
+                if (!actual) break;
+                samples.resize(static_cast<std::size_t>(actual) * in_format.channels);
+                process_samples(actual);
+            }
+            if (virtual_source->counters().producer_closed)
+                stop_.signal(); // clean producer teardown closes the dev source.
         };
 
         auto render_ready = [&](RenderSink& sink) {
@@ -589,8 +635,10 @@ private:
         };
 
         for (;;) {
+            if (virtual_source) virtual_available();
             const DWORD result = WaitForMultipleObjects(
-                static_cast<DWORD>(events.size()), events.data(), FALSE, 150);
+                static_cast<DWORD>(events.size()), events.data(), FALSE,
+                virtual_source ? 5u : 150u);
             if (result == WAIT_OBJECT_0) break;
             if (result == WAIT_FAILED) throw std::runtime_error("WASAPI event wait failed");
             if (result == WAIT_TIMEOUT) continue;
@@ -598,13 +646,14 @@ private:
                 throw std::runtime_error("Unexpected WASAPI event index");
 
             const std::size_t event_index = static_cast<std::size_t>(result - WAIT_OBJECT_0);
-            if (event_index == 1) {
+            if (capture_event && event_index == 1) {
                 capture_available();
-            } else if (event_index >= 2) {
-                render_ready(sinks_[event_index - 2]);
+            } else if (event_index >= render_event_base) {
+                render_ready(sinks_[event_index - render_event_base]);
             }
         }
-        capture->Stop();
+        if (capture)
+            capture->Stop();
         for (auto& sink : sinks_) sink.client->Stop();
     }
 };

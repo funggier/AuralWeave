@@ -3,7 +3,7 @@
 ; Derived portions licensed under Microsoft Public License (MS-PL).
 ; THIS FILE IS A PROTOTYPE ONLY. NOT VALIDATED, NOT SIGNED, NOT INSTALLABLE.
 ; Windows 10 and Windows 11 both report the NT 10.0 OS version.
-; Device count is a finite 16-per-role PnP ID bank; no global wildcard install.
+; Only ROOT\AURALWEAVE_VINPUT_0001 and ROOT\AURALWEAVE_VOUTPUT_0001 are supported.
 
 [Version]
 Signature   = "$Windows NT$"
@@ -27,36 +27,6 @@ AuralWeaveVirtualAudio.sys = 222
 [AW.NTamd64.10.0...19041]
 %AW.Input.0001% = AW_Input, ROOT\AURALWEAVE_VINPUT_0001
 %AW.Output.0001% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0001
-%AW.Input.0002% = AW_Input, ROOT\AURALWEAVE_VINPUT_0002
-%AW.Output.0002% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0002
-%AW.Input.0003% = AW_Input, ROOT\AURALWEAVE_VINPUT_0003
-%AW.Output.0003% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0003
-%AW.Input.0004% = AW_Input, ROOT\AURALWEAVE_VINPUT_0004
-%AW.Output.0004% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0004
-%AW.Input.0005% = AW_Input, ROOT\AURALWEAVE_VINPUT_0005
-%AW.Output.0005% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0005
-%AW.Input.0006% = AW_Input, ROOT\AURALWEAVE_VINPUT_0006
-%AW.Output.0006% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0006
-%AW.Input.0007% = AW_Input, ROOT\AURALWEAVE_VINPUT_0007
-%AW.Output.0007% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0007
-%AW.Input.0008% = AW_Input, ROOT\AURALWEAVE_VINPUT_0008
-%AW.Output.0008% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0008
-%AW.Input.0009% = AW_Input, ROOT\AURALWEAVE_VINPUT_0009
-%AW.Output.0009% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0009
-%AW.Input.0010% = AW_Input, ROOT\AURALWEAVE_VINPUT_0010
-%AW.Output.0010% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0010
-%AW.Input.0011% = AW_Input, ROOT\AURALWEAVE_VINPUT_0011
-%AW.Output.0011% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0011
-%AW.Input.0012% = AW_Input, ROOT\AURALWEAVE_VINPUT_0012
-%AW.Output.0012% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0012
-%AW.Input.0013% = AW_Input, ROOT\AURALWEAVE_VINPUT_0013
-%AW.Output.0013% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0013
-%AW.Input.0014% = AW_Input, ROOT\AURALWEAVE_VINPUT_0014
-%AW.Output.0014% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0014
-%AW.Input.0015% = AW_Input, ROOT\AURALWEAVE_VINPUT_0015
-%AW.Output.0015% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0015
-%AW.Input.0016% = AW_Input, ROOT\AURALWEAVE_VINPUT_0016
-%AW.Output.0016% = AW_Output, ROOT\AURALWEAVE_VOUTPUT_0016
 
 [DestinationDirs]
 AW.CopyList = 13
@@ -194,33 +164,3 @@ AW.Output.Friendly="AuralWeave Virtual Output"
 AW.Output.Topology="AuralWeave Virtual Output Topology"
 AW.Input.0001 = "AuralWeave Virtual Input 01"
 AW.Output.0001 = "AuralWeave Virtual Output 01"
-AW.Input.0002 = "AuralWeave Virtual Input 02"
-AW.Output.0002 = "AuralWeave Virtual Output 02"
-AW.Input.0003 = "AuralWeave Virtual Input 03"
-AW.Output.0003 = "AuralWeave Virtual Output 03"
-AW.Input.0004 = "AuralWeave Virtual Input 04"
-AW.Output.0004 = "AuralWeave Virtual Output 04"
-AW.Input.0005 = "AuralWeave Virtual Input 05"
-AW.Output.0005 = "AuralWeave Virtual Output 05"
-AW.Input.0006 = "AuralWeave Virtual Input 06"
-AW.Output.0006 = "AuralWeave Virtual Output 06"
-AW.Input.0007 = "AuralWeave Virtual Input 07"
-AW.Output.0007 = "AuralWeave Virtual Output 07"
-AW.Input.0008 = "AuralWeave Virtual Input 08"
-AW.Output.0008 = "AuralWeave Virtual Output 08"
-AW.Input.0009 = "AuralWeave Virtual Input 09"
-AW.Output.0009 = "AuralWeave Virtual Output 09"
-AW.Input.0010 = "AuralWeave Virtual Input 10"
-AW.Output.0010 = "AuralWeave Virtual Output 10"
-AW.Input.0011 = "AuralWeave Virtual Input 11"
-AW.Output.0011 = "AuralWeave Virtual Output 11"
-AW.Input.0012 = "AuralWeave Virtual Input 12"
-AW.Output.0012 = "AuralWeave Virtual Output 12"
-AW.Input.0013 = "AuralWeave Virtual Input 13"
-AW.Output.0013 = "AuralWeave Virtual Output 13"
-AW.Input.0014 = "AuralWeave Virtual Input 14"
-AW.Output.0014 = "AuralWeave Virtual Output 14"
-AW.Input.0015 = "AuralWeave Virtual Input 15"
-AW.Output.0015 = "AuralWeave Virtual Output 15"
-AW.Input.0016 = "AuralWeave Virtual Input 16"
-AW.Output.0016 = "AuralWeave Virtual Output 16"

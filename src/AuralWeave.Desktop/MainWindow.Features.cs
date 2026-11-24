@@ -194,15 +194,42 @@ public partial class MainWindow
         {
             var installed = await Task.Run(
                 AuralWeaveVirtualDrivers.EnumerateInstalled);
-            FillVirtualDeviceCard(VirtualInputDevices,
-                installed.Where(x => x.Role == VirtualAudioEndpointRole.Input).ToArray(),
-                "No AuralWeave Virtual Input devices installed.");
-            FillVirtualDeviceCard(VirtualOutputDevices,
-                installed.Where(x => x.Role == VirtualAudioEndpointRole.Output).ToArray(),
-                "No AuralWeave Virtual Output devices installed.");
-            VirtualDriverSummary.Text = $"{installed.Count} owned virtual device(s) found. " +
-                "Discovery uses Windows PnP identity, not the portable folder location. " +
+            var inputDevices = installed.Where(
+                x => x.Role == VirtualAudioEndpointRole.Input).ToArray();
+            var outputDevices = installed.Where(
+                x => x.Role == VirtualAudioEndpointRole.Output).ToArray();
+            FillVirtualDeviceCard(VirtualInputDevices, inputDevices,
+                "No AuralWeave Virtual Input installed (0/1).");
+            FillVirtualDeviceCard(VirtualOutputDevices, outputDevices,
+                "No AuralWeave Virtual Output installed (0/1).");
+
+            var activeInput = inputDevices.Count(x => !x.IsLegacy);
+            var activeOutput = outputDevices.Count(x => !x.IsLegacy);
+            var legacy = installed.Count(x => x.IsLegacy);
+            VirtualInputPackageStatus.Text = activeInput > 0
+                ? $"Virtual Input: {activeInput}/1 installed. Maximum reached; no additional installation."
+                : "Virtual Input: 0/1. Installation unavailable until audio bridge and driver signing are complete.";
+            VirtualOutputPackageStatus.Text = activeOutput > 0
+                ? $"Virtual Output: {activeOutput}/1 installed. Maximum reached; no additional installation."
+                : "Virtual Output: 0/1. Installation unavailable until audio bridge and driver signing are complete.";
+
+            var conflict = activeInput > 1 || activeOutput > 1 ||
+                           (legacy > 0);
+            VirtualDriverSummary.Text =
+                $"Virtual Input {activeInput}/1 · Virtual Output {activeOutput}/1. " +
+                (legacy > 0
+                    ? $"{legacy} legacy PnP device(s) require optional explicit cleanup. "
+                    : "") +
+                (conflict
+                    ? "Review devices before any future installation. "
+                    : "") +
+                "Discovery uses PnP identity, independent of the portable app folder. " +
                 "Unsigned/unbridged kernel prototypes cannot be installed.";
+            // No signed kernel package yet: keep all INSTALL buttons disabled
+            // regardless of inventory. Future install must also enforce
+            // AuralWeaveVirtualDrivers.MayInstall(...).
+            InstallVirtualInputButton.IsEnabled = false;
+            InstallVirtualOutputButton.IsEnabled = false;
         }
         catch (Exception ex)
         {
@@ -243,7 +270,8 @@ public partial class MainWindow
             var details = new StackPanel();
             details.Children.Add(new TextBlock
             {
-                Text = device.Name,
+                Text = device.IsLegacy ? device.Name + " (LEGACY — cleanup only)"
+                                       : device.Name,
                 FontWeight = FontWeights.SemiBold,
                 TextWrapping = TextWrapping.Wrap
             });
@@ -255,7 +283,9 @@ public partial class MainWindow
             var remove = new Button
             {
                 Content = "UNINSTALL",
-                ToolTip = "Uninstall only this AuralWeave-owned PnP device",
+                ToolTip = device.IsLegacy
+                    ? "Uninstall this obsolete AuralWeave prototype device only"
+                    : "Uninstall only this AuralWeave-owned PnP device",
                 MinWidth = 106,
                 Margin = new Thickness(10, 0, 0, 0)
             };

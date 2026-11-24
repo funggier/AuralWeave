@@ -12,7 +12,7 @@
 #endif
 
 // role: 1 = Windows virtual microphone input, 2 = virtual speaker output.
-// slot: 1..16 (reserved hardware-ID family). PCM is interleaved Float32.
+// slot: 1 only for each direction (single endpoint per role). PCM is interleaved Float32.
 // mapping_name: WCHAR buffer >= 160 is recommended; same-session random name.
 // Caller must close the opaque handle. At most one writer and one reader
 // are permitted per mapping (no concurrent writers).

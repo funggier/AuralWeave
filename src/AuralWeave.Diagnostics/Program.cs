@@ -23,7 +23,7 @@ try
                 @"ROOT\AURALWEAVE_VINPUT_0001", out var inputRole) ||
             inputRole != VirtualAudioEndpointRole.Input ||
             !AuralWeaveVirtualDrivers.TryIdentifyRole(
-                @"ROOT\AURALWEAVE_VOUTPUT_0002", out var outputRole) ||
+                @"ROOT\AURALWEAVE_VOUTPUT_0001", out var outputRole) ||
             outputRole != VirtualAudioEndpointRole.Output ||
             AuralWeaveVirtualDrivers.TryIdentifyRole(
                 @"USB\VID_1234&PID_5678", out _) ||
@@ -38,13 +38,42 @@ try
             AuralWeaveVirtualDrivers.TryIdentifyRole(
                 @"ROOT\AURALWEAVE_VOUTPUT_0001&EXTRA", out _) ||
             !AuralWeaveVirtualDrivers.TryIdentifyRole(
-                @"root\auralweave_vinput_0016", out var input16) ||
-            input16 != VirtualAudioEndpointRole.Input ||
-            !AuralWeaveVirtualDrivers.TryIdentifyRole(
-                @"ROOT\AURALWEAVE_VOUTPUT_0016", out var output16) ||
-            output16 != VirtualAudioEndpointRole.Output)
+                @"root\auralweave_vinput_0001", out var inputOne) ||
+            inputOne != VirtualAudioEndpointRole.Input ||
+            AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VINPUT_0002", out _) ||
+            AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VOUTPUT_0016", out _) ||
+            !AuralWeaveVirtualDrivers.TryIdentifyLegacyRole(
+                @"ROOT\AURALWEAVE_VINPUT_0002", out var legacyInput) ||
+            legacyInput != VirtualAudioEndpointRole.Input ||
+            !AuralWeaveVirtualDrivers.TryIdentifyLegacyRole(
+                @"ROOT\AURALWEAVE_VOUTPUT_0016", out var legacyOutput) ||
+            legacyOutput != VirtualAudioEndpointRole.Output)
             throw new InvalidOperationException(
                 "Virtual Driver ownership matching is incorrect.");
+        if (AuralWeaveVirtualDrivers.MaxVirtualInputs != 1 ||
+            AuralWeaveVirtualDrivers.MaxVirtualOutputs != 1 ||
+            !AuralWeaveVirtualDrivers.MayInstall([], VirtualAudioEndpointRole.Input) ||
+            !AuralWeaveVirtualDrivers.MayInstall([], VirtualAudioEndpointRole.Output))
+            throw new InvalidOperationException("Single-endpoint capacity contract is invalid.");
+        var simulatedInstalled = new[] {
+            new AuralWeaveVirtualDevice(@"ROOT\AURALWEAVE_VINPUT_0001", "VInput",
+                VirtualAudioEndpointRole.Input, AuralWeaveVirtualDrivers.InputHardwareId),
+            new AuralWeaveVirtualDevice(@"ROOT\AURALWEAVE_VOUTPUT_0001", "VOutput",
+                VirtualAudioEndpointRole.Output, AuralWeaveVirtualDrivers.OutputHardwareId)
+        };
+        if (AuralWeaveVirtualDrivers.MayInstall(simulatedInstalled, VirtualAudioEndpointRole.Input) ||
+            AuralWeaveVirtualDrivers.MayInstall(simulatedInstalled, VirtualAudioEndpointRole.Output))
+            throw new InvalidOperationException("Duplicate virtual driver installation must be blocked.");
+        var legacyInstalled = new[] {
+            new AuralWeaveVirtualDevice(@"ROOT\AURALWEAVE_VINPUT_0002", "Old VInput",
+                VirtualAudioEndpointRole.Input, @"ROOT\AURALWEAVE_VINPUT_0002")
+        };
+        if (!legacyInstalled[0].IsLegacy ||
+            AuralWeaveVirtualDrivers.MayInstall(legacyInstalled, VirtualAudioEndpointRole.Input))
+            throw new InvalidOperationException("Legacy device must be discoverable and block installation.");
+        Console.WriteLine("PASS: one current PnP ID per role, duplicate install guard and legacy cleanup recognition.");
         var installed = AuralWeaveVirtualDrivers.EnumerateInstalled();
         Console.WriteLine($"PASS: Windows SetupAPI discovery; {installed.Count} owned devices found.");
         foreach (var device in installed)
@@ -63,8 +92,8 @@ try
             ?? throw new InvalidOperationException("No usable render endpoint.");
         Console.WriteLine("VIRTUAL PCM TAP: native physical capture -> filters -> user-mode bridge; output muted.");
         using var route = new NativeWasapiAudioRoute();
-        using var owner = NativeVirtualAudioBridge.Create(1, 3, 48000, 2, 4096);
-        using var peer = NativeVirtualAudioBridge.Attach(owner.Name, 1, 3);
+        using var owner = NativeVirtualAudioBridge.Create(1, 1, 48000, 2, 4096);
+        using var peer = NativeVirtualAudioBridge.Attach(owner.Name, 1, 1);
         route.ReplaceFilterChain([
             new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, 0.75f)
         ]);
@@ -96,6 +125,66 @@ try
         }
         finally
         {
+            route.Stop();
+        }
+    }
+
+    if (args.Contains("--smoke-virtual-output"))
+    {
+        // This creates TWO user-mode Shared Memory mappings and opens only
+        // a muted physical playback device. No kernel driver is installed.
+        var output = outputs.FirstOrDefault(x => x.IsDefault)
+            ?? outputs.FirstOrDefault()
+            ?? throw new InvalidOperationException("No physical render endpoint available.");
+        Console.WriteLine("VIRTUAL OUTPUT ROUTE TEST: simulated output PCM -> Studio Gain Filter -> virtual input PCM (muted physical output).");
+        using var virtualOutput = NativeVirtualAudioBridge.Create(2, 1, 48000, 2, 4096);
+        using var virtualInput = NativeVirtualAudioBridge.Create(1, 1, 48000, 2, 4096);
+        using var virtualMicReader = NativeVirtualAudioBridge.Attach(virtualInput.Name, 1, 1);
+        using var route = new NativeWasapiAudioRoute();
+        route.ReplaceFilterChain([
+            new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, 0.5f)
+        ]);
+        route.Start("virtual-output:" + virtualOutput.Name,
+            [new OutputRoute(Guid.NewGuid(), output.Id, 1f, true)]);
+        try
+        {
+            route.BindVirtualInputBridge(virtualInput);
+            var inputPcm = Enumerable.Repeat(0.2f, 480 * 2).ToArray();
+            var readerPcm = new float[960 * 2];
+            ulong wrote = 0, received = 0, exactGainSamples = 0;
+            for (var i = 0; i < 120; i++)
+            {
+                wrote += virtualOutput.Write(inputPcm);
+                await Task.Delay(10);
+                var frames = virtualMicReader.Read(readerPcm);
+                received += frames;
+                for (var j = 0; j < (int)frames * 2; j++)
+                {
+                    if (Math.Abs(readerPcm[j] - 0.1f) < 0.0001f)
+                        exactGainSamples++;
+                }
+            }
+            var fromVirtual = route.CapturedFrames;
+            var statsIn = virtualInput.GetStats();
+            var statsOut = virtualOutput.GetStats();
+            Console.WriteLine($"Virtual Output source wrote {wrote}, Native Studio received {fromVirtual}, " +
+                $"Virtual Input wrote {statsIn.FramesWritten}, read {received}, " +
+                $"Gain-processed samples {exactGainSamples}, Output dropped {statsOut.OverflowFrames}");
+            if (wrote < 24000 || fromVirtual < 24000 || received < 10000 ||
+                exactGainSamples < 10000 || route.LastError is not null)
+                throw new InvalidOperationException("Virtual Output source -> native filters -> Virtual Input tap failed.");
+            Console.WriteLine("PASS: Virtual Output (user mode) -> native Studio filters -> Virtual Input (user mode).");
+            // A closed source must terminate the Native route, even if no
+            // further PCM arrives. Stop must still be idempotent afterward.
+            virtualOutput.Dispose();
+            await Task.Delay(100);
+            if (route.IsRunning)
+                throw new InvalidOperationException("Native route continued running after virtual source closed.");
+            Console.WriteLine("PASS: Virtual Output producer shutdown stops Native route cleanly.");
+        }
+        finally
+        {
+            route.UnbindVirtualInputBridge();
             route.Stop();
         }
     }

@@ -271,9 +271,9 @@
                     <Border Style="{StaticResource StageCard}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SectionHeader}"
-                                       Text="VIRTUAL INPUT"/>
+                                       Text="VIRTUAL INPUT (MAX 1)"/>
                             <TextBlock Style="{StaticResource MutedCaption}"
-                                       Text="Windows recording endpoint: other applications select it as a microphone. AuralWeave supplies the audio."/>
+                                       Text="One Windows recording endpoint per computer: other apps select it as a microphone."/>
                             <StackPanel x:Name="VirtualInputDevices" Margin="0,16,0,16"/>
                             <Button x:Name="InstallVirtualInputButton"
                                     Content="+ INSTALL VIRTUAL INPUT"
@@ -287,9 +287,9 @@
                     <Border Style="{StaticResource StageCard}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SectionHeader}"
-                                       Text="VIRTUAL OUTPUT"/>
+                                       Text="VIRTUAL OUTPUT (MAX 1)"/>
                             <TextBlock Style="{StaticResource MutedCaption}"
-                                       Text="Windows playback endpoint: other applications play audio into it. AuralWeave receives it as a source."/>
+                                       Text="One Windows playback endpoint per computer: other apps play audio into it."/>
                             <StackPanel x:Name="VirtualOutputDevices" Margin="0,16,0,16"/>
                             <Button x:Name="InstallVirtualOutputButton"
                                     Content="+ INSTALL VIRTUAL OUTPUT"

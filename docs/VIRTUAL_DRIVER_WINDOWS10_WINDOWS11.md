@@ -18,8 +18,8 @@ AuralWeave code remain MIT; the source under
 ## Current implementation
 
 - `AuralWeaveVirtualAudio.sln` compiles on VS 2026 + WDK 28000.
-- One INF maps 16 possible virtual recording PnP identities and 16
-  possible virtual playback PnP identities to distinct role-specific
+- One INF maps one virtual recording PnP identity and one
+  virtual playback PnP identity to distinct role-specific
   installation/interface sections; a single kernel service backs them.
 - Kernel `StartDevice` compares the root PnP hardware identity against
   the permitted four-digit IDs and registers only the corresponding

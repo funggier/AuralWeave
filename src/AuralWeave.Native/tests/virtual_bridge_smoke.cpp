@@ -118,16 +118,16 @@ int wmain(int argc, wchar_t* argv[]) {
 
         const VirtualBridgeFormat stereo{48000, 2, 128};
         auto in1 = VirtualAudioBridge::create(VirtualEndpointRole::input, 1, stereo);
-        auto in2 = VirtualAudioBridge::create(VirtualEndpointRole::input, 2, stereo);
+        auto in2 = VirtualAudioBridge::create(VirtualEndpointRole::input, 1, stereo);
         auto out1 = VirtualAudioBridge::create(
             VirtualEndpointRole::output, 1, {48000, 1, 128});
         require(in1.name() != in2.name() && in1.name() != out1.name(),
-                "different role/slot instances have isolated random mapping names");
+                "separate transport sessions/roles have isolated random mapping names");
 
         auto peer1 = VirtualAudioBridge::attach(
             in1.name(), VirtualEndpointRole::input, 1);
         auto peer2 = VirtualAudioBridge::attach(
-            in2.name(), VirtualEndpointRole::input, 2);
+            in2.name(), VirtualEndpointRole::input, 1);
         auto outPeer = VirtualAudioBridge::attach(
             out1.name(), VirtualEndpointRole::output, 1);
         require(peer1.format().channels == 2 && outPeer.format().channels == 1,
@@ -143,14 +143,20 @@ int wmain(int argc, wchar_t* argv[]) {
         try {
             auto bad = VirtualAudioBridge::attach(in1.name(),
                 VirtualEndpointRole::input, 2);
-        } catch (const std::runtime_error&) { rejected = true; }
-        require(rejected, "wrong instance ID is rejected");
+        } catch (const std::exception&) { rejected = true; }
+        require(rejected, "additional endpoint slots are rejected");
         rejected = false;
         try {
             auto bad = VirtualAudioBridge::create(
-                VirtualEndpointRole::output, 17);
+                VirtualEndpointRole::output, 2);
         } catch (const std::invalid_argument&) { rejected = true; }
         require(rejected, "unreserved endpoint ID is rejected");
+        rejected = false;
+        try {
+            auto bad = VirtualAudioBridge::attach(in1.name(),
+                VirtualEndpointRole::input, 2);
+        } catch (const std::exception&) { rejected = true; }
+        require(rejected, "attaching an unreserved second endpoint is rejected");
         rejected = false;
         try {
             auto bad = VirtualAudioBridge::create(
@@ -208,7 +214,7 @@ int wmain(int argc, wchar_t* argv[]) {
         // Actual independent Windows process reads on a virtual-mic bus.
         auto write257 = signal(257, 2, 0.125f);
         PROCESS_INFORMATION reader = spawn(argv[0], L"--reader", in2.name(),
-                                           VirtualEndpointRole::input, 2);
+                                           VirtualEndpointRole::input, 1);
         std::uint32_t written = 0;
         const ULONGLONG send_deadline = GetTickCount64() + 5000;
         while (written < 257 && GetTickCount64() < send_deadline) {
@@ -222,9 +228,9 @@ int wmain(int argc, wchar_t* argv[]) {
         // Child-produced audio flows in the opposite direction through a
         // virtual-output bus, including sustained ring-pressure / wrap.
         auto out2 = VirtualAudioBridge::create(VirtualEndpointRole::output,
-                                               2, {48000, 1, 256});
+                                               1, {48000, 1, 256});
         PROCESS_INFORMATION writer = spawn(argv[0], L"--writer", out2.name(),
-                                           VirtualEndpointRole::output, 2);
+                                           VirtualEndpointRole::output, 1);
         std::vector<float> received(16000);
         std::uint32_t read = 0;
         const ULONGLONG recv_deadline = GetTickCount64() + 6000;
@@ -239,11 +245,11 @@ int wmain(int argc, wchar_t* argv[]) {
         // Stable exported C ABI is usable by the desktop/native control
         // plane without leaking C++ objects across module boundaries.
         wchar_t c_name[160]{};
-        void* owner = aw_bridge_create(1, 3, 48000, 2, 128,
+        void* owner = aw_bridge_create(1, 1, 48000, 2, 128,
                                        c_name, 160);
         require(owner && wcslen(c_name) > 30,
                 "stable C ABI creates user-mode PCM session with mapping name");
-        void* subscriber = aw_bridge_attach(c_name, 1, 3);
+        void* subscriber = aw_bridge_attach(c_name, 1, 1);
         require(subscriber != nullptr, "stable C ABI attaches exact role/slot");
         const auto c_data = signal(12, 2, 0.18f);
         std::vector<float> c_received(c_data.size());
@@ -262,7 +268,7 @@ int wmain(int argc, wchar_t* argv[]) {
                 "C ABI observes owner shutdown without dangling handles");
         aw_bridge_close(subscriber);
 
-        void* bad_role = aw_bridge_attach(c_name, 2, 3);
+        void* bad_role = aw_bridge_attach(c_name, 2, 1);
         require(bad_role == nullptr,
                 "C ABI rejects attachment with incorrect role");
         wchar_t message[220]{};

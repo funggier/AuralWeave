@@ -56,8 +56,8 @@ static_assert(alignof(SharedHeader) == 64);
            f.capacity_frames >= 64 && f.capacity_frames <= 32768;
 }
 void check_identity(VirtualEndpointRole role, std::uint32_t slot) {
-    if (!valid_role(role) || slot < 1 || slot > 16)
-        throw std::invalid_argument("Virtual endpoint requires role input/output and slot 1-16");
+    if (!valid_role(role) || slot != 1)
+        throw std::invalid_argument("Virtual endpoint requires input/output role and singleton slot 1");
 }
 [[nodiscard]] std::wstring new_name(VirtualEndpointRole role,
                                     std::uint32_t slot) {

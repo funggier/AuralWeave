@@ -121,7 +121,7 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Portable Filter Preset Save/Load/Import/Export, without source/output persistence
 - [x] Increased spacing in mode buttons, preset controls, and two Virtual Driver cards
 - [ ] Build and sign actual virtual audio kernel drivers, create independent virtual endpoint instances, implement install flow
-- [ ] Design real-time multi-instance driver-to-native-core IPC and audio clock handling
+- [ ] Design real-time single-input/output driver-to-native-core IPC and audio clock handling
 
 ## Virtual Driver toolchain checkpoint (2026-11-25)
 
@@ -132,7 +132,7 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Script and verify repeatable toolchain checks / compile-only build
 - [ ] Develop Windows 10 compatible AuralWeave-owned virtual input/output drivers
 - [ ] Validate complete INF/API/catalog and production signing
-- [ ] Implement low-latency multi-instance audio transport to Native C++ core
+- [ ] Implement low-latency single-input/output audio transport to Native C++ core
 - [ ] Test secure install, per-device removal, restart, and portable relocation
 
 ## Windows 10 / Windows 11 virtual driver prototype checkpoint
@@ -141,7 +141,7 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Produce unsigned AuralWeaveVirtualAudio.sys kernel prototype
 - [x] Separate Virtual Input/Virtual Output INF interface registrations
 - [x] Select endpoint direction based on exact root PnP hardware ID
-- [x] Reserve up to 16 unique IDs per endpoint role
+- [x] Reserve only one active ID per endpoint role
 - [x] Target Windows 10 2004+ and Windows 11 x64 from shared INF
 - [x] Pass WDK build, InfVerif /w /u and Inf2Cat signability checks
 - [x] Guard manager discovery by class, exact ID and service
@@ -153,9 +153,9 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 
 ## Virtual PCM user-mode transport checkpoint (2026-11-25)
 
-- [x] Implement isolated multi-instance Float32 Shared Memory SPSC rings
+- [x] Implement isolated Float32 Shared Memory SPSC sessions
 - [x] Implement versioned mapping metadata and read/write frame cursors
-- [x] Support user-mode virtual input/output role and slot 1-16
+- [x] Support user-mode virtual input/output roles and only slot 1
 - [x] Implement bounded frame buffering, underrun silence and overrun counters
 - [x] Test actual data transfer between two Windows processes
 - [x] Export a native C ABI and add .NET bridge wrappers
@@ -166,3 +166,17 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [ ] Support the virtual speaker as a selectable source in Studio
 - [ ] Validate clock drift, low latency, multi-device concurrency, PnP teardown
 - [ ] Test on actual Windows 10/11 VMs, obtain valid production signature
+
+
+## One Virtual Input / One Virtual Output (2026-11-25)
+
+- The current INF exposes one PnP hardware ID for each role, both ending in 0001.
+- The AuralWeave PnP manager allows future installation only when no current
+  or legacy device of that role exists; unsigned driver installation stays disabled.
+- Former 0002..0016 prototype IDs are recognized for safe, explicit cleanup.
+- The developer-only Native Studio route now accepts a Virtual Output PCM source
+  through the same ordered Filter graph and optional Virtual Input PCM tap.
+- Windows 10 user-mode test: 57,600 frames consumed, 57,599 frames emitted,
+  Gain applied, zero source overflow, physical output muted.
+- Windows Kernel driver transport, signing and Windows 11 runtime validation
+  have NOT yet been implemented or performed.

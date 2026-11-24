@@ -34,6 +34,7 @@ struct VirtualBridgeCounters {
 // - Entire PCM frame is the atomic unit; sample format is interleaved Float32.
 // - One owner creates a random, Windows-session-local mapping; a peer opens it
 //   using its exact name. Do NOT invent a fixed predictable mapping identifier.
+// - Endpoint slot is fixed to 1 for each direction.
 // - One writer and one reader PER mapping. Duplicating writers/readers is not
 //   supported and must be forbidden by the future routing control plane.
 // - No locks, allocation, waiting or syscalls on write/read hot paths.

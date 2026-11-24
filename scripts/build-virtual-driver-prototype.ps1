@@ -23,17 +23,12 @@ try {
     $lines = @(Get-Content -LiteralPath $inx)
     $inModels = @($lines | Where-Object { $_ -match '^%AW\.Input\.[0-9]{4}%' })
     $outModels = @($lines | Where-Object { $_ -match '^%AW\.Output\.[0-9]{4}%' })
-    if ($inModels.Count -ne 16 -or $outModels.Count -ne 16) {
-        throw "Unexpected INF device count: Input=$($inModels.Count), Output=$($outModels.Count)."
+    if ($inModels.Count -ne 1 -or $outModels.Count -ne 1 -or
+        -not $inModels[0].EndsWith('ROOT\AURALWEAVE_VINPUT_0001') -or
+        -not $outModels[0].EndsWith('ROOT\AURALWEAVE_VOUTPUT_0001')) {
+        throw "Expected exactly one Virtual Input and one Virtual Output PnP model; found Input=$($inModels.Count), Output=$($outModels.Count)."
     }
-    for ($index = 1; $index -le 16; $index++) {
-        $number = $index.ToString('0000')
-        if (-not ($inModels | Where-Object { $_.EndsWith("ROOT\AURALWEAVE_VINPUT_$number") }) -or
-            -not ($outModels | Where-Object { $_.EndsWith("ROOT\AURALWEAVE_VOUTPUT_$number") })) {
-            throw "Missing unique AuralWeave virtual endpoint IDs for device $number"
-        }
-    }
-    Write-Output 'INPUT_OUTPUT_HARDWARE_ID_BANK_16_EACH=PASS'
+    Write-Output 'SINGLE_VIRTUAL_INPUT_AND_SINGLE_VIRTUAL_OUTPUT_INF_IDS=PASS'
     $args = @(
         $project,
         "/p:Configuration=$Configuration",
