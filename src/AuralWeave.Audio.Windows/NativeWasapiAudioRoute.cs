@@ -52,6 +52,19 @@ public sealed class NativeWasapiAudioRoute : IDisposable
         _noiseMode = mode;
     }
 
+    /// <summary>Publish a fully ordered native processing graph. Unselected slots are omitted.</summary>
+    public void ReplaceFilterChain(IEnumerable<FilterStage> stages)
+    {
+        ThrowIfDisposed();
+        var all = stages.ToArray();
+        FilterStageRules.Validate(all);
+        var active = all.Where(x => x.Kind != FilterKind.None).ToArray();
+        var kinds = active.Select(x => (int)x.Kind).ToArray();
+        var parameters = active.Select(x => x.Parameter).ToArray();
+        var enabled = active.Select(x => x.Enabled ? 1 : 0).ToArray();
+        if (NativeSetFilterChain(_handle, kinds, parameters, enabled, active.Length) != 1)
+            throw new InvalidOperationException("Native backend rejected filter chain.");
+    }
     public bool IsRunning => _handle != IntPtr.Zero && NativeState(_handle) == 2;
     public long CapturedFrames => _handle == IntPtr.Zero ? 0 : (long)NativeCapturedFrames(_handle);
     public float InputPeak => _handle == IntPtr.Zero ? 0 : NativeInputPeak(_handle);
@@ -172,6 +185,10 @@ public sealed class NativeWasapiAudioRoute : IDisposable
 
     [DllImport(Library, EntryPoint = "aw_input_peak", CallingConvention = CallingConvention.Cdecl)]
     private static extern float NativeInputPeak(IntPtr handle);
+
+    [DllImport(Library, EntryPoint = "aw_set_filter_chain", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeSetFilterChain(IntPtr handle,
+        [In] int[] kinds, [In] float[] parameters, [In] int[] enabled, int count);
 
     [DllImport(Library, EntryPoint = "aw_set_noise_mode", CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeSetNoiseMode(IntPtr handle, int mode);

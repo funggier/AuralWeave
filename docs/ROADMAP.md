@@ -88,3 +88,14 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Skin switching with local portable appearance setting
 - [x] Redesigned Sound Input → Filters → Sound Output UI, per-Gain collapse and Collapse all/Expand all
 - [ ] Fully generic re-orderable native filter chain with repeatable RNNoise, Noise Gate, Limiter, EQ and other modules
+
+## v0.2.0-preview.3 — ordered filter / themed window checkpoint
+
+- [x] Custom dark WindowChrome title bar and resize system behavior
+- [x] Styled ScrollBar thumb/track and Slider using theme resources
+- [x] START/STOP single toggle, monochrome shades
+- [x] Empty Filters section with centered + button / Choose filter... slots
+- [x] Real native ordered filter graph, duplicate RNNoise/Gain/Gate/Limiter instances, moves and bypass
+- [x] WPF ComboBox labels begin with endpoint Name, with {metadata} and no raw ID
+- [ ] Formal listening/latency/clickless graph-swap tests and CPU benchmarking
+- [ ] More filter types, independent per-stage advanced UI, state-preserving transitions

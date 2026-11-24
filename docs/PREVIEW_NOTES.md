@@ -37,3 +37,7 @@ The default is Bypass, which preserves the native low-latency audio path. Select
 - Switch between Monochrome Dark and Graphite skins in the program header. Selection is stored locally at `settings/appearance.json`.
 - UI has Sound Input → Filters → Sound Output stages and collapse controls for filter settings. Actual DSP order is still RNNoise-before-Gain, with repeated Gain instances supported. Arbitrary RNNoise/Gate/Limiter filter routing is not yet implemented.
 - Skins are built-in WPF resource dictionaries. Unsafe third-party XAML themes are not loaded.
+
+## Custom Window + ordered filters (v0.2.0-preview.3)
+
+**This section describes the current preview and supersedes historical notes above about a separate RNNoise section / Gain-only chain.** The app has themed custom Windows title bar controls, styled scrollbars/sliders and START/STOP. The Filters area starts empty; + adds a Choose filter... slot. All currently supported filters (Gain, RNNoise Standard, Gate and Limiter) can repeat, be bypassed, and be reordered in the real native processing graph. Input/output labels start with the exact Windows endpoint Name followed by format details in {braces}. See [ordered filter documentation](ORDERED_FILTER_CHAIN.md) and [v0.2.0-preview.3 notes](releases/v0.2.0-preview.3.md).

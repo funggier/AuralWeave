@@ -26,6 +26,7 @@
 #include "auralweave/audio_engine_api.h"
 #include "auralweave/audio_resampler.hpp"
 #include "auralweave/rnnoise_processor.hpp"
+#include "auralweave/filter_chain.hpp"
 
 using Microsoft::WRL::ComPtr;
 
@@ -155,6 +156,9 @@ public:
             effects_.clear();
             error_.clear();
         }
+        sample_rate_.store(0);
+        channels_.store(0);
+        ordered_chain_.store(nullptr);
         frames_.store(0);
         overruns_.store(0);
         underruns_.store(0);
@@ -183,6 +187,34 @@ public:
     std::uint64_t frames() const noexcept { return frames_.load(); }
     std::uint64_t overruns() const noexcept { return overruns_.load(); }
     std::uint64_t underruns() const noexcept { return underruns_.load(); }
+    bool set_filter_chain(const int* kinds, const float* parameters,
+                          const int* enabled, int count) {
+        if (count < 0 || count > 64 || (count > 0 &&
+            (!kinds || !parameters || !enabled))) return false;
+        std::vector<auralweave::FilterSpec> specs;
+        specs.reserve(static_cast<std::size_t>(count));
+        for (int i = 0; i < count; ++i) {
+            const auto spec = auralweave::FilterSpec{
+                static_cast<auralweave::FilterKind>(kinds[i]),
+                parameters[i], enabled[i] != 0
+            };
+            if (!auralweave::valid_filter_spec(spec)) return false;
+            specs.push_back(spec);
+        }
+        // Build off the render thread, then atomically publish an immutable
+        // ordered graph. If not started yet, the stream builds it on start.
+        std::lock_guard<std::mutex> guard(mutex_);
+        std::shared_ptr<auralweave::FilterChain> prepared;
+        const auto sample_rate = sample_rate_.load();
+        const auto channels = channels_.load();
+        if (sample_rate && channels)
+            prepared = std::make_shared<auralweave::FilterChain>(
+                sample_rate, channels, specs);
+        filter_specs_ = std::move(specs);
+        ordered_chain_enabled_.store(true);
+        if (prepared) ordered_chain_.store(prepared);
+        return true;
+    }
     bool set_noise_mode(int mode) noexcept {
         if (mode < 0 || mode > 1) return false;
         noise_mode_.store(mode);
@@ -228,6 +260,11 @@ private:
     std::wstring error_;
     std::vector<RenderSink> sinks_;
     std::vector<float> effects_;
+    std::vector<auralweave::FilterSpec> filter_specs_;
+    std::atomic<std::shared_ptr<auralweave::FilterChain>> ordered_chain_;
+    std::atomic<bool> ordered_chain_enabled_{false};
+    std::atomic<std::uint32_t> sample_rate_{0};
+    std::atomic<std::uint16_t> channels_{0};
     std::atomic<int> state_{0};  // 0=off, 1=starting, 2=running, 3=error
     std::atomic<std::uint64_t> frames_{0};
     std::atomic<std::uint64_t> overruns_{0};
@@ -246,7 +283,12 @@ private:
     void join(bool mark_stopped) noexcept {
         stop_.signal();
         if (worker_.joinable()) worker_.join();
-        if (mark_stopped) state_.store(0);
+        if (mark_stopped) {
+            sample_rate_.store(0);
+            channels_.store(0);
+            ordered_chain_.store(nullptr);
+            state_.store(0);
+        }
     }
 
     void run() noexcept {
@@ -324,6 +366,15 @@ private:
         MixFormat capture_mix;
         checked(capture->GetMixFormat(&capture_mix.data), "Get capture mix format");
         const FormatInfo in_format = format_info(capture_mix.data);
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            sample_rate_.store(in_format.rate);
+            channels_.store(in_format.channels);
+            if (ordered_chain_enabled_.load()) {
+                ordered_chain_.store(std::make_shared<auralweave::FilterChain>(
+                    in_format.rate, in_format.channels, filter_specs_));
+            }
+        }
         // Prepare RNNoise before starting the capture/render streams. No model
         // allocation in the audio packet callback. Bypass skips process().
         auralweave::RnnoiseProcessor noise(in_format.rate, in_format.channels);
@@ -406,26 +457,34 @@ private:
                     if (std::isfinite(value)) maximum = std::max(maximum, std::fabs(value));
                 peak_.store(std::min(maximum, 1.0F));
 
-                const bool enable_noise = noise_mode_.load() == 1;
-                if (enable_noise) {
-                    if (!noise_was_enabled) noise.reset();
-                    noise.process(samples.data(), frame_count);
-                }
-                noise_was_enabled = enable_noise;
+                // Ordered graph is the new product contract. No selected
+                // filters => zero DSP processing and no denoiser buffering.
+                // Old two-stage API remains only for compatibility tests.
+                if (ordered_chain_enabled_.load()) {
+                    auto chain = ordered_chain_.load();
+                    if (chain && !chain->empty())
+                        chain->process(samples.data(), frame_count);
+                } else {
+                    const bool enable_noise = noise_mode_.load() == 1;
+                    if (enable_noise) {
+                        if (!noise_was_enabled) noise.reset();
+                        noise.process(samples.data(), frame_count);
+                    }
+                    noise_was_enabled = enable_noise;
 
-                std::size_t active_effects{};
-                {
-                    std::lock_guard<std::mutex> guard(mutex_);
-                    active_effects = effects_.size();
-                    std::copy(effects_.begin(), effects_.end(), effects_snapshot.begin());
+                    std::size_t active_effects{};
+                    {
+                        std::lock_guard<std::mutex> guard(mutex_);
+                        active_effects = effects_.size();
+                        std::copy(effects_.begin(), effects_.end(), effects_snapshot.begin());
+                    }
+                    for (std::size_t e = 0; e < active_effects; ++e) {
+                        const float gain = effects_snapshot[e];
+                        if (gain == 1.0F) continue;
+                        for (float& value : samples)
+                            value = std::clamp(value * gain, -1.0F, 1.0F);
+                    }
                 }
-                for (std::size_t e = 0; e < active_effects; ++e) {
-                    const float gain = effects_snapshot[e];
-                    if (gain == 1.0F) continue;
-                    for (float& value : samples)
-                        value = std::clamp(value * gain, -1.0F, 1.0F);
-                }
-
                 // Distribute once-processed PCM into an independent bounded
                 // converter/FIFO per destination; rendering is event-driven.
                 for (auto& sink : sinks_) {
@@ -520,6 +579,14 @@ AW_API std::uint64_t aw_underrun_render_frames(void* handle) noexcept {
 }
 AW_API float aw_input_peak(void* handle) noexcept {
     return handle ? static_cast<NativeRoute*>(handle)->peak() : 0;
+}
+AW_API int aw_set_filter_chain(void* handle, const int* kinds,
+                                const float* parameters, const int* enabled,
+                                int count) noexcept {
+    if (!handle) return 0;
+    try { return static_cast<NativeRoute*>(handle)->set_filter_chain(
+        kinds, parameters, enabled, count) ? 1 : 0; }
+    catch (...) { return 0; }
 }
 AW_API int aw_set_noise_mode(void* handle, int mode) noexcept {
     return handle && static_cast<NativeRoute*>(handle)->set_noise_mode(mode) ? 1 : 0;

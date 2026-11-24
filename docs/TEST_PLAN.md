@@ -72,3 +72,13 @@ Observed: native 30-second muted smoke yielded **0 post-warmup overruns and 0 po
 - Real hardware muted mixed-rate: Line In 192k -> Speakers 192k + ASUS VG249 48k; 483,840 captured frames, 0 overruns, 2,401 cumulative startup underruns, **zero additional underruns or overruns after warmup**, no engine error; Stop succeeded.
 - User reported Native C++ audio felt immediate with no perceptible delay; no calibrated millisecond measurement has been taken.
 - Still required: prolonged real-audio testing, different rate/channel configurations, high-quality resampling and host-device hotplug validation.
+
+## v0.2.0-preview.3 end-to-end UI and Native checks
+
+- Desktop Release build: 0 warnings / 0 errors.
+- Core data tests: 22 passed, including exact Windows Name-first endpoint labels, loopback metadata, no leaked raw IDs, empty/repeated filter slots and invalid-parameter rejection.
+- Native DSP tests: zero-filter exact bypass, repeated Gain and RNNoise instances, per-instance Gate and Limiter, and genuine processing-order differences passed.
+- Real muted hardware audio: 192 kHz Line In to two outputs, live ordered filter chain → reordered chain → empty bypass. 833,280 total captured frames, 0 buffer overruns, 2,401 startup underrun frames, no reported engine error. No subjective audio-quality or calibrated latency claim.
+- Portable v0.2.0-preview.3 launched and UI Automation verified **actual selected text** `Line In (Realtek(R) Audio) {192 kHz · Stereo}`, `Headphones (Realtek USB2.0 Audio) {192 kHz · Stereo}`, and `Choose filter...` after invoking +.
+- Custom window maximize and restore through its themed title-bar button passed in UI Automation.
+- ZIP verified to include EXE/native DLL/MIT/RNNoise notice, exclude NAudio and .pdb; local Products copies were not overwritten.

@@ -1,7 +1,9 @@
 #include "auralweave/route_graph.hpp"
 #include "auralweave/audio_resampler.hpp"
 #include "auralweave/rnnoise_processor.hpp"
+#include "auralweave/filter_chain.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -33,6 +35,55 @@ int wmain(int argc, wchar_t* argv[]) {
                "reorder effect instances");
         expect(graph.remove_effect(100), "remove individual effect");
 
+        expect(valid_filter_spec(FilterSpec{FilterKind::gain, 1.0F, true}),
+               "valid native Gain filter");
+        expect(!valid_filter_spec(FilterSpec{FilterKind::limiter, -30.0F, true}),
+               "reject invalid limiter ceiling");
+        FilterChain direct(48000, 2, {});
+        std::array<float, 4> direct_pcm{0.3F, -0.4F, 0.8F, -0.9F};
+        direct.process(direct_pcm.data(), 2);
+        expect(direct.empty() && direct_pcm[0] == 0.3F && direct_pcm[3] == -0.9F,
+               "zero filters preserves PCM unchanged");
+
+        FilterChain gain_twice(48000, 1, {
+            {FilterKind::gain, 0.5F, true},
+            {FilterKind::gain, 0.5F, true}
+        });
+        std::array<float, 2> twice{0.8F, -0.8F};
+        gain_twice.process(twice.data(), twice.size());
+        expect(std::fabs(twice[0] - 0.2F) < 0.0001F,
+               "two independent Gain instances process sequentially");
+
+        FilterChain limiter_gain(48000, 1, {
+            {FilterKind::limiter, -6.0F, true},
+            {FilterKind::gain, 0.5F, true}
+        });
+        FilterChain gain_limiter(48000, 1, {
+            {FilterKind::gain, 0.5F, true},
+            {FilterKind::limiter, -6.0F, true}
+        });
+        float a = 1.0F, b = 1.0F;
+        limiter_gain.process(&a, 1);
+        gain_limiter.process(&b, 1);
+        expect(a < b - 0.1F, "real DSP filter order changes output");
+
+        FilterChain gate(48000, 1, {{FilterKind::noise_gate, -45.0F, true}});
+        std::vector<float> soft(4800, 0.00001F);
+        gate.process(soft.data(), soft.size());
+        expect(soft.back() < 0.000007F,
+               "noise gate attenuates below-threshold signal");
+
+        FilterChain repeated_noise(48000, 1, {
+            {FilterKind::rnnoise, 0.0F, true},
+            {FilterKind::rnnoise, 0.0F, true},
+            {FilterKind::gain, 1.0F, true}
+        });
+        std::vector<float> noise_frame(480 * 2, 0.01F);
+        repeated_noise.process(noise_frame.data(), 960);
+        expect(repeated_noise.size() == 3 &&
+               std::all_of(noise_frame.begin(), noise_frame.end(),
+                   [](float f){ return std::isfinite(f) && std::fabs(f) <= 1.0F; }),
+               "RNNoise may repeat as separately owned ordered filter instances");
         StreamResampler down(192000, 2, 48000, 2);
         std::vector<float> down_input(1920 * 2, .25F);
         down.push(down_input.data(), 1920);

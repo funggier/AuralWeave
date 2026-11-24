@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shell;
 using System.Windows.Threading;
 using AuralWeave.Audio.Windows;
 using AuralWeave.Core;
@@ -10,16 +12,32 @@ namespace AuralWeave.Desktop;
 
 public partial class MainWindow : Window
 {
+    private sealed record FilterOption(FilterKind Kind, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    private static readonly FilterOption[] FilterOptions =
+    [
+        new(FilterKind.None, "Choose filter..."),
+        new(FilterKind.Gain, "Gain"),
+        new(FilterKind.RnnoiseStandard, "RNNoise Standard"),
+        new(FilterKind.NoiseGate, "Noise Gate"),
+        new(FilterKind.Limiter, "Limiter")
+    ];
+
+    private readonly List<FilterStage> _filters = [];
+    private readonly HashSet<Guid> _collapsedFilters = [];
     private readonly List<OutputRoute> _outputs = [];
-    private readonly List<AudioEffectInstance> _effects = [];
     private readonly DispatcherTimer _meterTimer;
+    private readonly DispatcherTimer _filterDebounceTimer;
     private IReadOnlyList<AudioEndpoint> _captureDevices = [];
     private IReadOnlyList<AudioEndpoint> _renderDevices = [];
     private NativeWasapiAudioRoute? _route;
-    private bool _updating;
-    private bool _initializingSkin = true;
+    private bool _refreshingOutputs;
+    private bool _refreshingFilters;
+    private bool _loadingSkin = true;
     private bool _collapseAllNext = true;
-    private readonly HashSet<Guid> _collapsedEffects = [];
 
     public MainWindow()
     {
@@ -27,58 +45,69 @@ public partial class MainWindow : Window
         var skin = SkinManager.Load();
         SkinManager.Apply(skin, false);
         SkinCombo.SelectedIndex = skin == SkinManager.GraphiteSkin ? 1 : 0;
-        _initializingSkin = false;
-        UpdateFilterCount();
-        RefreshDevices();
-        RefreshEffectRows();
-        _meterTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _loadingSkin = false;
+        StateChanged += (_, _) => UpdateWindowCaption();
+        UpdateWindowCaption();
+        _filterDebounceTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(125)
+        };
+        _filterDebounceTimer.Tick += (_, _) =>
+        {
+            _filterDebounceTimer.Stop();
+            ApplyFilters();
+        };
+        _meterTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
         _meterTimer.Tick += (_, _) => UpdateMeters();
+        RefreshFilterRows();
+        RefreshDevices();
         _meterTimer.Start();
+    }
+
+    private void TitleBarMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximize();
+            return;
+        }
+        try { DragMove(); }
+        catch (InvalidOperationException) { /* Drag gesture ended before drag began. */ }
+    }
+
+    private void TitleBarMouseRightButtonUp(object sender, MouseButtonEventArgs e) =>
+        SystemCommands.ShowSystemMenu(this, PointToScreen(e.GetPosition(this)));
+
+    private void MinimizeWindowClicked(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState.Minimized;
+
+    private void MaximizeWindowClicked(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+    private void CloseWindowClicked(object sender, RoutedEventArgs e) => Close();
+
+    private void ToggleMaximize() =>
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal : WindowState.Maximized;
+
+    private void UpdateWindowCaption()
+    {
+        if (MaximizeWindowButton is not null)
+            MaximizeWindowButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
     }
 
     private void SkinChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_initializingSkin || SkinCombo is null) return;
+        if (_loadingSkin || SkinCombo is null) return;
         var skin = SkinCombo.SelectedIndex == 1
             ? SkinManager.GraphiteSkin : SkinManager.DefaultSkin;
         try { SkinManager.Apply(skin, true); }
-        catch (Exception error) { Status("Skin loading failed: " + error.Message, true); }
+        catch (Exception ex) { Status("Skin could not be changed: " + ex.Message, true); }
     }
 
-    private void UpdateFilterCount()
-    {
-        if (FilterCountLabel is null || NoiseCombo is null) return;
-        var count = _effects.Count + (NoiseCombo.SelectedIndex == 1 ? 1 : 0);
-        FilterCountLabel.Text = count == 0 ? "· direct path" : $"· {count} active / configured";
-    }
-
-    private void ToggleAllFiltersClicked(object sender, RoutedEventArgs e)
-    {
-        if (_collapseAllNext)
-        {
-            _collapsedEffects.Clear();
-            foreach (var effect in _effects) _collapsedEffects.Add(effect.Id);
-            NoiseSettingsPanel.Visibility = Visibility.Collapsed;
-            NoiseSettingsToggle.Content = "⌄";
-            GlobalFilterExpandButton.Content = "Expand all";
-        }
-        else
-        {
-            _collapsedEffects.Clear();
-            NoiseSettingsPanel.Visibility = Visibility.Visible;
-            NoiseSettingsToggle.Content = "⌃";
-            GlobalFilterExpandButton.Content = "Collapse all";
-        }
-        _collapseAllNext = !_collapseAllNext;
-        RefreshEffectRows();
-    }
-
-    private void ToggleNoiseSettingsClicked(object sender, RoutedEventArgs e)
-    {
-        var expanded = NoiseSettingsPanel.Visibility == Visibility.Visible;
-        NoiseSettingsPanel.Visibility = expanded ? Visibility.Collapsed : Visibility.Visible;
-        NoiseSettingsToggle.Content = expanded ? "⌄" : "⌃";
-    }
     private void RefreshClicked(object sender, RoutedEventArgs e) => RefreshDevices();
 
     private void RefreshDevices()
@@ -86,15 +115,16 @@ public partial class MainWindow : Window
         if (_route is not null) return;
         try
         {
-            var oldInput = (InputCombo.SelectedItem as AudioEndpoint)?.Id;
+            var oldInputId = (InputCombo.SelectedItem as AudioEndpoint)?.Id;
             _captureDevices = NativeAudioDeviceCatalog.CaptureDevices();
             _renderDevices = NativeAudioDeviceCatalog.RenderDevices();
             InputCombo.ItemsSource = _captureDevices;
-            InputCombo.SelectedItem = _captureDevices.FirstOrDefault(x => x.Id == oldInput)
-                ?? _captureDevices.FirstOrDefault(x => x.IsDefault)
+            InputCombo.SelectedItem = _captureDevices.FirstOrDefault(x => x.Id == oldInputId)
+                ?? _captureDevices.FirstOrDefault(x => x.IsDefault && x.Kind == AudioEndpointKind.Capture)
+                ?? _captureDevices.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture)
                 ?? _captureDevices.FirstOrDefault();
             DeviceCountLabel.Text =
-                $"{_captureDevices.Count} input/loopback sources · {_renderDevices.Count} outputs detected";
+                $"{_captureDevices.Count} input/loopback sources  ·  {_renderDevices.Count} outputs detected";
             RefreshOutputRows();
             Status("Devices refreshed. Route is stopped.");
         }
@@ -104,331 +134,384 @@ public partial class MainWindow : Window
     private void AddOutputClicked(object sender, RoutedEventArgs e)
     {
         if (_route is not null || OutputChoiceCombo.SelectedItem is not AudioEndpoint device) return;
+        if (_outputs.Any(x => x.EndpointId == device.Id)) return;
         _outputs.Add(new OutputRoute(Guid.NewGuid(), device.Id, Muted: true));
         RefreshOutputRows();
     }
 
     private void RefreshOutputRows()
     {
-        if (_updating) return;
-        _updating = true;
+        if (_refreshingOutputs) return;
+        _refreshingOutputs = true;
         try
         {
-            OutputPanel.Children.Clear();
             var running = _route is not null;
-            foreach (var (output, index) in _outputs.Select((x, i) => (x, i)).ToArray())
+            OutputPanel.Children.Clear();
+            foreach (var (output, index) in _outputs.Select((item, i) => (item, i)).ToArray())
             {
-                var row = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Margin = new Thickness(0, 0, 0, 8)
-                };
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(116) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(52) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.Children.Add(new TextBlock
                 {
-                    Text = $"{index + 1}.",
-                    Width = 23,
+                    Text = $"{index + 1:00}",
                     VerticalAlignment = VerticalAlignment.Center
                 });
-                var choices = _renderDevices
-                    .Where(d => d.Id == output.EndpointId ||
-                                !_outputs.Any(o => o.EndpointId == d.Id))
-                    .ToList();
+
+                var choices = _renderDevices.Where(d => d.Id == output.EndpointId ||
+                    !_outputs.Any(selected => selected.EndpointId == d.Id)).ToList();
                 var chosen = choices.FirstOrDefault(d => d.Id == output.EndpointId);
                 if (chosen is null)
                 {
-                    chosen = new AudioEndpoint(output.EndpointId, "Disconnected: " + output.EndpointId,
+                    chosen = new AudioEndpoint(output.EndpointId, "Unavailable output",
                         AudioEndpointKind.Render);
                     choices.Insert(0, chosen);
                 }
-                var select = new ComboBox
+                var combo = new ComboBox
                 {
-                    Width = 270,
                     DisplayMemberPath = nameof(AudioEndpoint.DisplayName),
                     ItemsSource = choices,
                     SelectedItem = chosen,
-                    IsEnabled = !running
+                    IsEnabled = !running,
+                    Margin = new Thickness(0, 0, 9, 0),
+                    ToolTip = chosen.DisplayName
                 };
-                select.SelectionChanged += (_, _) =>
+                Grid.SetColumn(combo, 1);
+                combo.SelectionChanged += (_, _) =>
                 {
-                    if (_updating || select.SelectedItem is not AudioEndpoint replacement) return;
-                    var idx = _outputs.FindIndex(o => o.Id == output.Id);
-                    if (idx < 0) return;
-                    if (_outputs.Any(o => o.Id != output.Id && o.EndpointId == replacement.Id)) return;
-                    _outputs[idx] = _outputs[idx] with { EndpointId = replacement.Id };
+                    if (_refreshingOutputs || combo.SelectedItem is not AudioEndpoint replacement) return;
+                    var i = _outputs.FindIndex(x => x.Id == output.Id);
+                    if (i < 0 || _outputs.Any(x => x.Id != output.Id &&
+                                                x.EndpointId == replacement.Id)) return;
+                    _outputs[i] = _outputs[i] with { EndpointId = replacement.Id };
                     RefreshOutputRows();
                 };
-                row.Children.Add(select);
+                row.Children.Add(combo);
 
                 var mute = new CheckBox
                 {
                     Content = "Mute",
-                    Margin = new Thickness(12, 0, 7, 0),
-                    IsChecked = output.Muted
+                    IsChecked = output.Muted,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 10, 0)
                 };
+                Grid.SetColumn(mute, 2);
                 mute.Checked += (_, _) => ChangeOutput(output.Id, null, true);
                 mute.Unchecked += (_, _) => ChangeOutput(output.Id, null, false);
                 row.Children.Add(mute);
 
-                var volume = new Slider
+                var slider = new Slider
                 {
-                    Minimum = 0, Maximum = 2,
-                    Value = output.Gain, Width = 95,
+                    Minimum = 0, Maximum = 2, Value = output.Gain,
                     VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = "Gain 0.00x to 2.00x"
+                    ToolTip = "Output gain (0.00x - 2.00x)"
                 };
-                var gainLabel = new TextBlock
+                Grid.SetColumn(slider, 3);
+                row.Children.Add(slider);
+                var gainText = new TextBlock
                 {
-                    Width = 46, Margin = new Thickness(5, 0, 0, 0),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Text = $"{output.Gain:0.00}x"
+                    Text = $"{output.Gain:0.00}x",
+                    TextAlignment = TextAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Center
                 };
-                volume.ValueChanged += (_, _) =>
+                Grid.SetColumn(gainText, 4);
+                row.Children.Add(gainText);
+                slider.ValueChanged += (_, _) =>
                 {
-                    gainLabel.Text = $"{volume.Value:0.00}x";
-                    ChangeOutput(output.Id, (float)volume.Value, null);
+                    gainText.Text = $"{slider.Value:0.00}x";
+                    ChangeOutput(output.Id, (float)slider.Value, null);
                 };
-                row.Children.Add(volume);
-                row.Children.Add(gainLabel);
-
-                var remove = new Button { Content = "−", Width = 35, IsEnabled = !running };
-                remove.Click += (_, _) =>
+                var remove = MakeAction("−", "Remove output", !running, () =>
                 {
-                    _outputs.RemoveAll(o => o.Id == output.Id);
+                    _outputs.RemoveAll(x => x.Id == output.Id);
                     RefreshOutputRows();
-                };
+                });
+                Grid.SetColumn(remove, 5);
                 row.Children.Add(remove);
                 OutputPanel.Children.Add(row);
             }
 
-            var choicesToAdd = AudioRouteRules.AvailableOutputs(_renderDevices, _outputs);
-            var preferredId = (OutputChoiceCombo.SelectedItem as AudioEndpoint)?.Id;
-            OutputChoiceCombo.ItemsSource = choicesToAdd;
-            OutputChoiceCombo.SelectedItem = choicesToAdd.FirstOrDefault(x => x.Id == preferredId)
-                ?? choicesToAdd.FirstOrDefault();
-            OutputChoiceCombo.IsEnabled = choicesToAdd.Count != 0 && !running;
-            AddOutputButton.IsEnabled = choicesToAdd.Count != 0 && !running;
-            OutputHint.Text = choicesToAdd.Count == 0
-                ? "Every available output is selected. Remove one to make it available again."
-                : $"{choicesToAdd.Count} unselected output(s) available. New outputs start muted for safety; unmute explicitly.";
+            var available = AudioRouteRules.AvailableOutputs(_renderDevices, _outputs);
+            var previous = (OutputChoiceCombo.SelectedItem as AudioEndpoint)?.Id;
+            OutputChoiceCombo.ItemsSource = available;
+            OutputChoiceCombo.SelectedItem = available.FirstOrDefault(x => x.Id == previous)
+                ?? available.FirstOrDefault();
+            OutputChoiceCombo.IsEnabled = available.Count > 0 && !running;
+            AddOutputButton.IsEnabled = available.Count > 0 && !running;
+            OutputHint.Text = available.Count == 0
+                ? "All outputs are selected. Remove one to make it available again."
+                : $"{available.Count} unused output(s) · new outputs start muted to prevent feedback";
         }
-        finally { _updating = false; }
+        finally { _refreshingOutputs = false; }
     }
 
     private void ChangeOutput(Guid id, float? gain, bool? mute)
     {
-        var index = _outputs.FindIndex(o => o.Id == id);
-        if (index < 0) return;
-        var current = _outputs[index];
-        var updated = current with
-        {
-            Gain = gain ?? current.Gain,
-            Muted = mute ?? current.Muted
-        };
-        _outputs[index] = updated;
+        var i = _outputs.FindIndex(o => o.Id == id);
+        if (i < 0) return;
+        var item = _outputs[i];
+        var updated = item with { Gain = gain ?? item.Gain, Muted = mute ?? item.Muted };
+        _outputs[i] = updated;
         try { _route?.SetOutputLevel(id, updated.Gain, updated.Muted); }
-        catch (Exception ex) { Status("Output control: " + ex.Message, true); }
+        catch (Exception ex) { Status("Output settings: " + ex.Message, true); }
     }
 
-    private void NoiseModeChanged(object sender, SelectionChangedEventArgs e)
+    private void AddFilterClicked(object sender, RoutedEventArgs e)
     {
-        // This event may fire during InitializeComponent before both controls exist.
-        if (NoiseCombo is null || NoiseModelCombo is null) return;
-        var selected = NoiseCombo.SelectedIndex == 1
-            ? NoiseProcessingMode.RnnoiseStandard
-            : NoiseProcessingMode.Bypass;
-        NoiseModelCombo.IsEnabled = selected == NoiseProcessingMode.RnnoiseStandard;
-        NoiseDescription.Text = selected == NoiseProcessingMode.Bypass
-            ? "Bypass: no RNNoise DSP or input resampling is performed."
-            : "RNNoise Standard: 48 kHz / 480 samples per 10 ms frame. Changing modes may briefly reset the DSP state.";
-        UpdateFilterCount();
-        try
+        if (_filters.Count >= 64)
         {
-            _route?.SetNoiseMode(selected);
-            if (_route is not null)
-                Status("Noise reduction: " + (selected == NoiseProcessingMode.Bypass
-                    ? "Bypass" : "RNNoise Standard"));
-        }
-        catch (Exception error)
-        {
-            Status("Noise mode could not be changed: " + error.Message, true);
-        }
-    }
-    private void AddEffectClicked(object sender, RoutedEventArgs e)
-    {
-        var effect = new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect);
-        _effects.Add(effect);
-        if (!_collapseAllNext) _collapsedEffects.Add(effect.Id);
-        ApplyEffects();
-        UpdateFilterCount();
-        RefreshEffectRows();
-    }
-
-    private void RefreshEffectRows()
-    {
-        EffectsPanel.Children.Clear();
-        UpdateFilterCount();
-        if (_effects.Count == 0)
-        {
-            EffectsPanel.Children.Add(new TextBlock
-            {
-                Text = "No Gain filters — signal passes through unchanged.",
-                Margin = new Thickness(0, 5, 0, 5)
-            });
+            Status("The filter chain supports up to 64 slots.", true);
             return;
         }
+        _filters.Add(new FilterStage(Guid.NewGuid()));
+        RefreshFilterRows();
+    }
 
-        foreach (var (effect, index) in _effects.Select((x, i) => (x, i)).ToArray())
+    private void ToggleAllFiltersClicked(object sender, RoutedEventArgs e)
+    {
+        if (_collapseAllNext)
         {
-            var collapsed = _collapsedEffects.Contains(effect.Id);
-            var card = new Border
-            {
-                CornerRadius = new CornerRadius(7),
-                Padding = new Thickness(12),
-                BorderThickness = new Thickness(1),
-                Margin = new Thickness(0, 0, 0, 7)
-            };
-            card.SetResourceReference(Border.BackgroundProperty, "PanelBackground");
-            card.SetResourceReference(Border.BorderBrushProperty, "PanelStroke");
-            var body = new StackPanel();
-            var header = new DockPanel { LastChildFill = true };
-
-            var actions = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-
-            Button MakeAction(string title, bool enabled, Action action)
-            {
-                var button = new Button
-                {
-                    Content = title,
-                    Width = 35,
-                    MinHeight = 30,
-                    IsEnabled = enabled,
-                    Padding = new Thickness(0)
-                };
-                button.Click += (_, _) => action();
-                return button;
-            }
-
-            actions.Children.Add(MakeAction("↑", index > 0, () => MoveEffect(effect.Id, -1)));
-            actions.Children.Add(MakeAction("↓", index < _effects.Count - 1,
-                () => MoveEffect(effect.Id, 1)));
-            actions.Children.Add(MakeAction(collapsed ? "⌄" : "⌃", true, () =>
-            {
-                if (!_collapsedEffects.Add(effect.Id)) _collapsedEffects.Remove(effect.Id);
-                RefreshEffectRows();
-            }));
-            actions.Children.Add(MakeAction("−", true, () =>
-            {
-                _effects.RemoveAll(x => x.Id == effect.Id);
-                _collapsedEffects.Remove(effect.Id);
-                ApplyEffects();
-                RefreshEffectRows();
-            }));
-            DockPanel.SetDock(actions, Dock.Right);
-            header.Children.Add(actions);
-
-            var identity = new StackPanel { Orientation = Orientation.Horizontal };
-            identity.Children.Add(new TextBlock
-            {
-                Text = $"{index + 1:00}",
-                Width = 37,
-                VerticalAlignment = VerticalAlignment.Center,
-                FontWeight = FontWeights.SemiBold
-            });
-            var enabledBox = new CheckBox
-            {
-                Content = "Gain",
-                IsChecked = effect.Enabled,
-                VerticalAlignment = VerticalAlignment.Center,
-                FontWeight = FontWeights.SemiBold
-            };
-            enabledBox.Checked += (_, _) => ChangeEffect(effect.Id, true, null);
-            enabledBox.Unchecked += (_, _) => ChangeEffect(effect.Id, false, null);
-            identity.Children.Add(enabledBox);
-            header.Children.Add(identity);
-            body.Children.Add(header);
-
-            if (!collapsed)
-            {
-                var details = new Grid { Margin = new Thickness(37, 12, 8, 4) };
-                details.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
-                details.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                details.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
-                var label = new TextBlock
-                {
-                    Text = "Gain level",
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                details.Children.Add(label);
-                var slider = new Slider
-                {
-                    Minimum = 0, Maximum = 2, Value = effect.Gain,
-                    TickFrequency = .05,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    ToolTip = "Gain 0.00x to 2.00x"
-                };
-                Grid.SetColumn(slider, 1);
-                details.Children.Add(slider);
-                var gainLabel = new TextBlock
-                {
-                    Text = $"{effect.Gain:0.00}×",
-                    TextAlignment = TextAlignment.Right,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(7, 0, 0, 0)
-                };
-                Grid.SetColumn(gainLabel, 2);
-                details.Children.Add(gainLabel);
-                slider.ValueChanged += (_, _) =>
-                {
-                    gainLabel.Text = $"{slider.Value:0.00}×";
-                    ChangeEffect(effect.Id, null, (float)slider.Value);
-                };
-                body.Children.Add(details);
-            }
-            card.Child = body;
-            EffectsPanel.Children.Add(card);
+            _collapsedFilters.Clear();
+            foreach (var filter in _filters) _collapsedFilters.Add(filter.Id);
         }
+        else _collapsedFilters.Clear();
+        _collapseAllNext = !_collapseAllNext;
+        RefreshFilterRows();
     }
-    private void ChangeEffect(Guid id, bool? enabled, float? gain)
+
+    private void MoveFilter(Guid id, int direction)
     {
-        var index = _effects.FindIndex(x => x.Id == id);
-        if (index < 0) return;
-        var current = _effects[index];
-        _effects[index] = current with
+        var i = _filters.FindIndex(x => x.Id == id);
+        var j = i + direction;
+        if (i < 0 || j < 0 || j >= _filters.Count) return;
+        (_filters[i], _filters[j]) = (_filters[j], _filters[i]);
+        ApplyFilters();
+        RefreshFilterRows();
+    }
+
+    private void UpdateFilter(Guid id, FilterKind? kind = null, bool? enabled = null,
+                              float? parameter = null, bool refresh = false)
+    {
+        var i = _filters.FindIndex(x => x.Id == id);
+        if (i < 0) return;
+        var item = _filters[i];
+        var finalKind = kind ?? item.Kind;
+        _filters[i] = item with
         {
-            Enabled = enabled ?? current.Enabled,
-            Gain = gain ?? current.Gain
+            Kind = finalKind,
+            Parameter = kind.HasValue
+                ? FilterStage.DefaultParameter(finalKind) : parameter ?? item.Parameter,
+            Enabled = enabled ?? item.Enabled
         };
-        ApplyEffects();
+        _filterDebounceTimer.Stop();
+        if (refresh) RefreshFilterRows();
+        ApplyFilters();
     }
 
-    private void MoveEffect(Guid id, int direction)
+    private void ApplyFilters()
     {
-        var index = _effects.FindIndex(x => x.Id == id);
-        var next = index + direction;
-        if (index < 0 || next < 0 || next >= _effects.Count) return;
-        (_effects[index], _effects[next]) = (_effects[next], _effects[index]);
-        ApplyEffects();
-        RefreshEffectRows();
+        try { _route?.ReplaceFilterChain(_filters); }
+        catch (Exception ex) { Status("Filter chain: " + ex.Message, true); }
     }
 
-    private void ApplyEffects()
+    private void QueueFilterParameter(Guid id, float value)
     {
-        try { _route?.ReplaceEffects(_effects); }
-        catch (Exception ex) { Status("Effect configuration: " + ex.Message, true); }
+        var i = _filters.FindIndex(x => x.Id == id);
+        if (i < 0) return;
+        _filters[i] = _filters[i] with { Parameter = value };
+        // Keep slider dragging responsive without rebuilding an RNNoise graph
+        // for every pixel of movement. DSP parameters commit after idle.
+        if (_route is null) return;
+        _filterDebounceTimer.Stop();
+        _filterDebounceTimer.Start();
+    }
+
+    private static Button MakeAction(string text, string description,
+                                     bool enabled, Action action)
+    {
+        var button = new Button
+        {
+            Content = text,
+            ToolTip = description,
+            Width = 34,
+            MinHeight = 31,
+            Padding = new Thickness(0),
+            IsEnabled = enabled
+        };
+        button.Click += (_, _) => action();
+        return button;
+    }
+
+    private void RefreshFilterRows()
+    {
+        if (_refreshingFilters) return;
+        _refreshingFilters = true;
+        try
+        {
+            FiltersPanel.Children.Clear();
+            FilterCountLabel.Text = _filters.Count == 0
+                ? "· direct path" : $"· {_filters.Count} slot(s)";
+            GlobalFilterExpandButton.IsEnabled = _filters.Count > 0;
+            GlobalFilterExpandButton.Content = _collapseAllNext ? "Collapse all" : "Expand all";
+            FilterHelpText.Visibility = _filters.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            foreach (var (filter, index) in _filters.Select((f, i) => (f, i)).ToArray())
+            {
+                var collapsed = _collapsedFilters.Contains(filter.Id);
+                var card = new Border
+                {
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(13),
+                    BorderThickness = new Thickness(1),
+                    Margin = new Thickness(0, 0, 0, 9)
+                };
+                card.SetResourceReference(Border.BackgroundProperty, "SubtleBackground");
+                card.SetResourceReference(Border.BorderBrushProperty, "PanelStroke");
+                var body = new StackPanel();
+                var header = new Grid();
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(66) });
+                header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                header.Children.Add(new TextBlock
+                {
+                    Text = $"{index + 1:00}",
+                    FontWeight = FontWeights.SemiBold,
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+                var choices = new ComboBox
+                {
+                    ItemsSource = FilterOptions,
+                    DisplayMemberPath = nameof(FilterOption.Label),
+                    SelectedItem = FilterOptions.First(x => x.Kind == filter.Kind),
+                    Margin = new Thickness(0, 0, 12, 0),
+                    ToolTip = "Choose the processing type for this filter slot"
+                };
+                Grid.SetColumn(choices, 1);
+                choices.SelectionChanged += (_, _) =>
+                {
+                    if (_refreshingFilters || choices.SelectedItem is not FilterOption choice) return;
+                    UpdateFilter(filter.Id, kind: choice.Kind, refresh: true);
+                };
+                header.Children.Add(choices);
+                var toggle = new CheckBox
+                {
+                    Content = "On",
+                    IsEnabled = filter.Kind != FilterKind.None,
+                    IsChecked = filter.Enabled,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 8, 0)
+                };
+                Grid.SetColumn(toggle, 2);
+                toggle.Checked += (_, _) => UpdateFilter(filter.Id, enabled: true);
+                toggle.Unchecked += (_, _) => UpdateFilter(filter.Id, enabled: false);
+                header.Children.Add(toggle);
+
+                var actions = new StackPanel { Orientation = Orientation.Horizontal };
+                actions.Children.Add(MakeAction("↑", "Move filter up", index > 0,
+                    () => MoveFilter(filter.Id, -1)));
+                actions.Children.Add(MakeAction("↓", "Move filter down",
+                    index < _filters.Count - 1, () => MoveFilter(filter.Id, 1)));
+                actions.Children.Add(MakeAction(collapsed ? "⌄" : "⌃",
+                    collapsed ? "Expand settings" : "Collapse settings", true, () =>
+                    {
+                        if (!_collapsedFilters.Add(filter.Id))
+                            _collapsedFilters.Remove(filter.Id);
+                        RefreshFilterRows();
+                    }));
+                actions.Children.Add(MakeAction("−", "Remove filter", true, () =>
+                {
+                    _filters.RemoveAll(x => x.Id == filter.Id);
+                    _collapsedFilters.Remove(filter.Id);
+                    ApplyFilters();
+                    RefreshFilterRows();
+                }));
+                Grid.SetColumn(actions, 3);
+                header.Children.Add(actions);
+                body.Children.Add(header);
+
+                if (!collapsed)
+                {
+                    if (filter.Kind == FilterKind.None)
+                    {
+                        body.Children.Add(MutedText(
+                            "Choose a filter type above. This empty slot does not process audio."));
+                    }
+                    else if (filter.Kind == FilterKind.RnnoiseStandard)
+                    {
+                        body.Children.Add(MutedText(
+                            "RNNoise Standard · Xiph v0.1.1 · 48 kHz / 10 ms frames. " +
+                            "Each instance has its own processing state."));
+                    }
+                    else
+                    {
+                        (double min, double max, string label, string suffix) = filter.Kind switch
+                        {
+                            FilterKind.Gain => (0, 2, "Gain level", "x"),
+                            FilterKind.NoiseGate => (-80, 0, "Threshold · 5 ms attack / 80 ms release", "dB"),
+                            FilterKind.Limiter => (-24, 0, "Ceiling · zero-lookahead peak limiting", "dB"),
+                            _ => (0, 1, "Parameter", "")
+                        };
+                        var row = new Grid { Margin = new Thickness(8, 13, 8, 4) };
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(230) });
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+                        row.Children.Add(new TextBlock
+                        {
+                            Text = label, VerticalAlignment = VerticalAlignment.Center
+                        });
+                        var slider = new Slider
+                        {
+                            Minimum = min, Maximum = max, Value = filter.Parameter,
+                            IsEnabled = filter.Enabled,
+                            VerticalAlignment = VerticalAlignment.Center,
+                            ToolTip = label
+                        };
+                        Grid.SetColumn(slider, 1);
+                        row.Children.Add(slider);
+                        var level = new TextBlock
+                        {
+                            Text = $"{filter.Parameter:0.00} {suffix}",
+                            TextAlignment = TextAlignment.Right,
+                            VerticalAlignment = VerticalAlignment.Center
+                        };
+                        Grid.SetColumn(level, 2);
+                        row.Children.Add(level);
+                        slider.ValueChanged += (_, _) =>
+                        {
+                            level.Text = $"{slider.Value:0.00} {suffix}";
+                            QueueFilterParameter(filter.Id, (float)slider.Value);
+                        };
+                        body.Children.Add(row);
+                    }
+                }
+                card.Child = body;
+                FiltersPanel.Children.Add(card);
+            }
+        }
+        finally { _refreshingFilters = false; }
+    }
+
+    private static TextBlock MutedText(string text)
+    {
+        var block = new TextBlock
+        {
+            Text = text,
+            Margin = new Thickness(8, 12, 8, 3),
+            TextWrapping = TextWrapping.Wrap
+        };
+        block.SetResourceReference(TextBlock.ForegroundProperty, "SecondaryText");
+        return block;
     }
 
     private void StartStopClicked(object sender, RoutedEventArgs e)
     {
-        if (_route is not null)
-        {
-            StopCurrentRoute();
-            return;
-        }
-        StartCurrentRoute();
+        if (_route is not null) StopCurrentRoute();
+        else StartCurrentRoute();
     }
 
     private void StartCurrentRoute()
@@ -436,7 +519,7 @@ public partial class MainWindow : Window
         if (_route is not null) return;
         if (InputCombo.SelectedItem is not AudioEndpoint input)
         {
-            Status("Select an input source first.", true);
+            Status("Choose an input source first.", true);
             return;
         }
         if (_outputs.Count == 0)
@@ -449,18 +532,16 @@ public partial class MainWindow : Window
         try
         {
             candidate = new NativeWasapiAudioRoute();
-            candidate.SetNoiseMode(NoiseCombo.SelectedIndex == 1
-                ? NoiseProcessingMode.RnnoiseStandard : NoiseProcessingMode.Bypass);
-            candidate.ReplaceEffects(_effects);
+            candidate.ReplaceFilterChain(_filters);
             candidate.Start(input.Id, _outputs);
             _route = candidate;
-            StartButton.Content = "Stop route";
+            StartButton.Content = "STOP";
             StartButton.SetResourceReference(Control.BackgroundProperty, "StopButtonBrush");
             StartButton.SetResourceReference(Control.ForegroundProperty, "PrimaryText");
             RefreshButton.IsEnabled = false;
             InputCombo.IsEnabled = false;
             RefreshOutputRows();
-            Status($"Route started (Native C++): {input.DisplayName} → {_outputs.Count} output(s).");
+            Status($"Native route started: {input.DisplayName} · {_outputs.Count} output(s)");
         }
         catch (Exception ex)
         {
@@ -472,12 +553,13 @@ public partial class MainWindow : Window
     private void StopCurrentRoute()
     {
         if (_route is null) return;
+        _filterDebounceTimer.Stop();
         try { _route.Dispose(); }
         catch (Exception ex) { Status("Stop warning: " + ex.Message, true); }
         finally
         {
             _route = null;
-            StartButton.Content = "Start route";
+            StartButton.Content = "START";
             StartButton.SetResourceReference(Control.BackgroundProperty, "Accent");
             StartButton.SetResourceReference(Control.ForegroundProperty, "AccentText");
             RefreshButton.IsEnabled = true;
@@ -495,34 +577,36 @@ public partial class MainWindow : Window
         var route = _route;
         if (route is null) return;
         InputLevel.Value = route.InputPeak * 100;
-        FrameCountLabel.Text = $"{route.CapturedFrames:N0} frames captured";
+        FrameCountLabel.Text = $"{route.CapturedFrames:N0} frames";
+        var overrun = route.DroppedRenderFrames;
+        var underrun = route.UnderrunRenderFrames;
         var metrics = route.GetOutputTelemetry();
-        var dropped = route.DroppedRenderFrames;
-        var underruns = route.UnderrunRenderFrames;
-        OutputStatusLabel.Text = (dropped > 0 ? $"Buffer overruns: {dropped:N0} | " : "")
-            + (underruns > 0 ? $"Buffer underruns: {underruns:N0} | " : "") + string.Join("  |  ", metrics.Select((x, i) =>
-            $"Output {i + 1}: {(double.IsNaN(x.BufferedMilliseconds) ? "native backend" : x.BufferedMilliseconds.ToString("0") + " ms buffered")}" +
-            (x.Error is null ? "" : $" ERROR {x.Error}")));
-        if (!string.IsNullOrEmpty(route.LastError))
-            Status("Audio error: " + route.LastError, true);
+        OutputStatusLabel.Text =
+            (overrun > 0 ? $"Buffer overruns: {overrun:N0}  ·  " : "") +
+            (underrun > 0 ? $"Buffer underruns: {underrun:N0}  ·  " : "") +
+            string.Join("  ·  ", metrics.Select((x, i) =>
+                $"Output {i + 1}: Native WASAPI" + (x.Error is null ? "" : $" ERROR {x.Error}")));
+        var error = route.LastError;
         if (!route.IsRunning)
         {
-            var err = route.LastError;
             StopCurrentRoute();
-            if (!string.IsNullOrWhiteSpace(err))
-                Status("Capture stopped: " + err, true);
+            if (!string.IsNullOrWhiteSpace(error))
+                Status("Audio stopped: " + error, true);
         }
     }
 
     private void Status(string message, bool error = false)
     {
+        if (StatusLabel is null) return;
         StatusLabel.Text = message;
-        StatusLabel.SetResourceReference(TextBlock.ForegroundProperty, error ? "ErrorText" : "Accent");
+        StatusLabel.SetResourceReference(TextBlock.ForegroundProperty,
+            error ? "ErrorText" : "Accent");
     }
 
     protected override void OnClosing(CancelEventArgs e)
     {
         _meterTimer.Stop();
+        _filterDebounceTimer.Stop();
         StopCurrentRoute();
         base.OnClosing(e);
     }

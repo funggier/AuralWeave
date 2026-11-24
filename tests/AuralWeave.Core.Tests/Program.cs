@@ -77,4 +77,58 @@ catch (ArgumentException ex) when (ex.Message.Contains("unique"))
     Verify(true, "duplicate instance ID rejected");
 }
 
+var lineIn = new AudioEndpoint("capture:{id}", "Line In (Realtek(R) Audio)",
+    AudioEndpointKind.Capture, true, 192000, 2);
+Verify(lineIn.DisplayName.StartsWith(lineIn.Name + " {", StringComparison.Ordinal),
+    "endpoint display starts with the exact Windows Name");
+Verify(lineIn.DisplayName.Contains("192 kHz") &&
+       lineIn.DisplayName.Contains("Stereo") &&
+       !lineIn.DisplayName.Contains(lineIn.Id),
+    "additional format metadata follows Name without leaking ID");
+var playback = lineIn with { Kind = AudioEndpointKind.Loopback, Name = "Speakers (Realtek(R) Audio)" };
+Verify(playback.DisplayName.StartsWith(playback.Name + " {") &&
+       playback.DisplayName.Contains("Loopback"),
+    "playback loopback uses friendly name then metadata in braces");
+Verify(lineIn.ToString() == lineIn.DisplayName,
+    "closed ComboBox selection renders friendly label rather than record dump");
+var strangeRate = lineIn with { SampleRate = 44100, Channels = 1 };
+Verify(strangeRate.DisplayName.Contains("44.1 kHz · Mono"),
+    "noninteger kHz and mono label formatted correctly");
+
+var slots = new[]
+{
+    new FilterStage(Guid.NewGuid()),
+    new FilterStage(Guid.NewGuid(), FilterKind.RnnoiseStandard, true, 0f),
+    new FilterStage(Guid.NewGuid(), FilterKind.RnnoiseStandard, true, 0f),
+    new FilterStage(Guid.NewGuid(), FilterKind.NoiseGate, true, -45f),
+    new FilterStage(Guid.NewGuid(), FilterKind.Limiter, true, -1f),
+    new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, 0.5f)
+};
+FilterStageRules.Validate(slots);
+Verify(slots[0].Kind == FilterKind.None &&
+       slots.Count(x => x.Kind == FilterKind.RnnoiseStandard) == 2,
+    "blank slot and repeated RNNoise filters are accepted");
+Verify(FilterStage.DefaultParameter(FilterKind.Gain) == 1f &&
+       FilterStage.DefaultParameter(FilterKind.Limiter) == -1f,
+    "new filter parameters have safe defaults");
+try
+{
+    FilterStageRules.Validate(new[] { slots[1], slots[1] });
+    throw new Exception("duplicate filter IDs should fail");
+}
+catch (ArgumentException)
+{
+    Verify(true, "duplicate filter instance IDs are rejected");
+}
+try
+{
+    FilterStageRules.Validate(new[] {
+        new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, float.NaN)
+    });
+    throw new Exception("invalid filter parameter accepted");
+}
+catch (ArgumentException)
+{
+    Verify(true, "NaN filter parameters are rejected");
+}
 Console.WriteLine($"All {count} tests passed.");

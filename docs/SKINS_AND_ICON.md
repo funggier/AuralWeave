@@ -25,3 +25,10 @@ Skins are currently built into the app. **Untrusted external XAML skins are not 
 ## Filters UI scope
 
 The current audio backend processes noise suppression (Bypass/RNNoise) before repeated Gain effects. Collapsing panels only changes visual state. Full modular reordering/repeating of arbitrary filters, including RNNoise, Noise Gate and Limiter, remains a separate native-DSP development milestone.
+
+## Custom Chrome and themed scrollbar (preview.3)
+
+- WPF WindowChrome renders a dark title bar and custom minimize/maximize/restore/close controls, while preserving the native resize border.
+- Scrollbar track/thumb and gain/threshold slider styles share DynamicResource skin color tokens; no default bright controls.
+- START is a light gray button; STOP is muted charcoal-gray. Control labels are uppercase.
+- Filter UI starts with zero stages and adds Choose filter... instances. Processing now uses the native ordered filter graph; see [ORDERED_FILTER_CHAIN.md](ORDERED_FILTER_CHAIN.md).

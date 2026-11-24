@@ -24,6 +24,10 @@ AW_API std::uint64_t aw_dropped_render_frames(void* handle) noexcept;
 AW_API std::uint64_t aw_underrun_render_frames(void* handle) noexcept;
 AW_API float aw_input_peak(void* handle) noexcept;
 // 0 = DSP Bypass (unaltered fast path); 1 = built-in RNNoise v0.1.1 standard model.
+// Full ordered native filter chain; kinds: Gain=1, RNNoise=2, Gate=3, Limiter=4.
+// Empty chain is an exact bypass. Each instance has independent DSP state.
+AW_API int aw_set_filter_chain(void* handle, const int* kinds, const float* parameters,
+                               const int* enabled, int count) noexcept;
 AW_API int aw_set_noise_mode(void* handle, int mode) noexcept;
 AW_API int aw_set_effects(void* handle, const float* gains, const int* enabled, int count) noexcept;
 AW_API int aw_set_output(void* handle, int index, float gain, int muted) noexcept;
