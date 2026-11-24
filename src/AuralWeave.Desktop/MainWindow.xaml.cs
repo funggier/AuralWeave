@@ -135,7 +135,7 @@ public partial class MainWindow : Window
     {
         if (_route is not null || OutputChoiceCombo.SelectedItem is not AudioEndpoint device) return;
         if (_outputs.Any(x => x.EndpointId == device.Id)) return;
-        _outputs.Add(new OutputRoute(Guid.NewGuid(), device.Id, Muted: true));
+        _outputs.Add(new OutputRoute(Guid.NewGuid(), device.Id, Muted: false));
         RefreshOutputRows();
     }
 
@@ -244,7 +244,7 @@ public partial class MainWindow : Window
             AddOutputButton.IsEnabled = available.Count > 0 && !running;
             OutputHint.Text = available.Count == 0
                 ? "All outputs are selected. Remove one to make it available again."
-                : $"{available.Count} unused output(s) · new outputs start muted to prevent feedback";
+                : $"{available.Count} unused output(s) · new outputs start unmuted (use headphones / low gain)";
         }
         finally { _refreshingOutputs = false; }
     }
@@ -267,7 +267,7 @@ public partial class MainWindow : Window
             Status("The filter chain supports up to 64 slots.", true);
             return;
         }
-        _filters.Add(new FilterStage(Guid.NewGuid()));
+        _filters.Add(new FilterStage(Guid.NewGuid(), Enabled: true));
         RefreshFilterRows();
     }
 

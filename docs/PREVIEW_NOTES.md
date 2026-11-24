@@ -41,3 +41,12 @@ The default is Bypass, which preserves the native low-latency audio path. Select
 ## Custom Window + ordered filters (v0.2.0-preview.3)
 
 **This section describes the current preview and supersedes historical notes above about a separate RNNoise section / Gain-only chain.** The app has themed custom Windows title bar controls, styled scrollbars/sliders and START/STOP. The Filters area starts empty; + adds a Choose filter... slot. All currently supported filters (Gain, RNNoise Standard, Gate and Limiter) can repeat, be bypassed, and be reordered in the real native processing graph. Input/output labels start with the exact Windows endpoint Name followed by format details in {braces}. See [ordered filter documentation](ORDERED_FILTER_CHAIN.md) and [v0.2.0-preview.3 notes](releases/v0.2.0-preview.3.md).
+
+## v0.2.0 release behavior
+
+The supported packaged application now uses the white-gray AN ribbon icon
+with transparent surroundings. Filter slots start **enabled** (but the blank
+Choose filter... type is inert). Added output destinations now start
+**unmuted**; use headphones or low hardware volume to avoid microphone
+feedback. See `docs/releases/v0.2.0.md` for the release's feature set and
+limitations. Older notes above describe historical previews.

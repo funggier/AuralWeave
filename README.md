@@ -76,3 +76,11 @@ The current local preview includes the silver/charcoal transparent program icon,
 ## Current local preview: Custom Window and ordered Filters
 
 The new local `v0.2.0-preview.3` supports a themed custom title bar and scrollbars, START/STOP, and a truly ordered Native C++ filter graph. Filters start empty and + creates a Choose filter... slot. Gain, RNNoise Standard, Noise Gate and Limiter may be repeated or reordered, with DSP processed in visual order. Device dropdowns display the actual Windows Name first followed by audio metadata in braces. See [ordered filters](docs/ORDERED_FILTER_CHAIN.md). GitHub v0.1.0 release remains unchanged.
+
+## Windows v0.2.0 release
+
+The latest packaged version uses the white/silver 3D AN ribbon app icon,
+the fully custom dark window, and an ordered native Filter Chain. New filters
+are enabled and newly added output devices are **unmuted** by default;
+be careful of microphone feedback. The native audio path remains C++ WASAPI.
+See [release notes](docs/releases/v0.2.0.md).

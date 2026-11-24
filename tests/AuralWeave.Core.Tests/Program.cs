@@ -105,6 +105,10 @@ var slots = new[]
     new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, 0.5f)
 };
 FilterStageRules.Validate(slots);
+Verify(new FilterStage(Guid.NewGuid()).Enabled,
+    "new filter slots are enabled (unmuted) by default");
+Verify(!new OutputRoute(Guid.NewGuid(), "speaker:example").Muted,
+    "new output route model defaults to unmuted");
 Verify(slots[0].Kind == FilterKind.None &&
        slots.Count(x => x.Kind == FilterKind.RnnoiseStandard) == 2,
     "blank slot and repeated RNNoise filters are accepted");

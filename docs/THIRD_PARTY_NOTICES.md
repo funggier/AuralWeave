@@ -3,7 +3,7 @@
 AuralWeave original source: MIT License, Copyright (c) 2026 funggier.
 See the repository root `LICENSE`.
 
-## Included in native v0.2.0-preview.1
+## Included in native v0.2.0
 
 **RNNoise** — Xiph.Org, pinned upstream `v0.1.1`,
 commit `6cbfd53eb348a8d394e0757b4025c6ded34eb2b6`.

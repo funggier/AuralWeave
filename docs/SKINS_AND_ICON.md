@@ -2,7 +2,7 @@
 
 ## Source artwork
 
-The monochrome icon is based on the user-selected woven audio wave with left input dots, two output arrows, and central equalizer bars. The background **outside** the rounded-square icon is alpha transparent; the dark fill **inside** the rounded square is intentional for legibility.
+The current program icon is the project-owner-selected **white–gray dimensional AN ribbon** with no tile, border, arrows, or equalizer bars. The surrounding canvas is genuinely alpha transparent.
 
 Assets:
 - `src/AuralWeave.Desktop/Assets/AuralWeave-Monochrome.png` — transparent monochrome application art, optimized for WPF resource packaging.
@@ -32,3 +32,14 @@ The current audio backend processes noise suppression (Bypass/RNNoise) before re
 - Scrollbar track/thumb and gain/threshold slider styles share DynamicResource skin color tokens; no default bright controls.
 - START is a light gray button; STOP is muted charcoal-gray. Control labels are uppercase.
 - Filter UI starts with zero stages and adds Choose filter... instances. Processing now uses the native ordered filter graph; see [ORDERED_FILTER_CHAIN.md](ORDERED_FILTER_CHAIN.md).
+
+## v0.2.0 AN ribbon artwork
+
+The official AuralWeave icon was replaced with the project owner's selected
+**white-to-gray AN satin ribbon**. It has dimensional soft silver shading
+(not flat design), no surrounding dark tile, and a truly transparent external
+background. The image is centered for Windows icon sizes (16/24/32/48/64/128/
+256). To regenerate the image from the project-owner's source PNG, use
+`python scripts/prepare-an-ribbon-icon.py source.png src/AuralWeave.Desktop/Assets/AuralWeave-Monochrome.png`
+and then `scripts/make-icon.ps1`. Generated PNG/ICO artifacts are committed
+so building does **not** depend on access to the source image in Downloads.

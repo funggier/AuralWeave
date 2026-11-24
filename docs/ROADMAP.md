@@ -99,3 +99,11 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] WPF ComboBox labels begin with endpoint Name, with {metadata} and no raw ID
 - [ ] Formal listening/latency/clickless graph-swap tests and CPU benchmarking
 - [ ] More filter types, independent per-stage advanced UI, state-preserving transitions
+
+## v0.2.0 release (2026-11-24)
+
+- [x] Ship AN silver/gray ribbon logo with transparent background in program EXE and PNG
+- [x] Default newly added outputs to unmuted; newly added filter slots enabled
+- [x] Verify ZIP contents, launch, native/managed tests and release documentation
+- [ ] User listening checks with microphone + speakers at safe volumes
+- [ ] Quantify per-filter CPU use and actual capture-to-output latency

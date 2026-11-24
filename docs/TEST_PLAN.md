@@ -82,3 +82,12 @@ Observed: native 30-second muted smoke yielded **0 post-warmup overruns and 0 po
 - Portable v0.2.0-preview.3 launched and UI Automation verified **actual selected text** `Line In (Realtek(R) Audio) {192 kHz · Stereo}`, `Headphones (Realtek USB2.0 Audio) {192 kHz · Stereo}`, and `Choose filter...` after invoking +.
 - Custom window maximize and restore through its themed title-bar button passed in UI Automation.
 - ZIP verified to include EXE/native DLL/MIT/RNNoise notice, exclude NAudio and .pdb; local Products copies were not overwritten.
+
+## v0.2.0 release validation
+
+- Native C++/RNNoise and .NET Release builds passed with no warnings/errors.
+- Core route/data tests passed: 24 of 24, including fresh enabled Filter slots and unmuted OutputRoute defaults.
+- Portable Windows x64 GUI Automation: newly added output Mute checkbox **Off**; new filter dropdown **Choose filter...**; native device labels begin with the Windows endpoint Name.
+- EXE file version **0.2.0.0**; AN ribbon PNG 512x512 with transparent corners; Windows ICO has seven embedded sizes.
+- Portable ZIP includes EXE, Native DLL, MIT project license, RNNoise BSD license, release notes and third-party notices; no NAudio or PDB.
+- Audio quality/feedback, live audible latency, and hotplug recovery are not guaranteed by the muted automated tests.
