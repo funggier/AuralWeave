@@ -34,3 +34,11 @@ Native model and MSVC compatibility changes are recorded in [RNNOISE_INTEGRATION
 ## v0.2.0-preview.3 checkpoint — new route filters / custom chrome
 
 Native C++ ordered filter chain is now integrated and tested: initial empty bypass, repeatable Gain/RNNoise/Gate/Limiter, per-instance bypass, true processing order, and live graph replacement. WindowChrome + grayscale scrollbars/sliders are in the Desktop UI. Windows endpoint names are shown before audio-format metadata in braces and raw IDs remain internal. See [ORDERED_FILTER_CHAIN.md](ORDERED_FILTER_CHAIN.md). Older sections in this document describe previous milestones.
+
+## Local v0.3.0-preview.1 checkpoint
+
+- UI: Studio / Virtual Driver selector; a single Virtual Driver page with separate Virtual Input (recording) and Virtual Output (playback) cards; increased margins for mode selector, preset controls and driver action areas.
+- Presets: Save/Load/Import/Export current ordered Filters as portable .awfilter JSON files, without Sound Input or Output device selection.
+- Driver manager: Win32 SetupAPI enumerates reserved AuralWeave-family PnP hardware IDs independent of the executable folder; guarded per-instance removal with explicit confirmation and UAC is available for future matching devices.
+- Not yet implemented: first-party signed virtual audio kernel driver, installation or creation of virtual endpoints, IPC audio bridge. Install controls remain intentionally disabled.
+- Validation: 32 Core tests, real Windows two-mode UI test, native PnP scan (zero matching installed), Portable ZIP and custom WindowChrome maximize/restore across three displays passed.

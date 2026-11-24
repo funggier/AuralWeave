@@ -113,3 +113,12 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Ensure close/minimize/restore remain visible with top-docked taskbar
 - [x] Verify multi-monitor maximize/restore, minimize and close (3 displays)
 - [x] Add repeatable `scripts/test-window-workarea.ps1` regression test
+## v0.3.0-preview.1
+
+- [x] Mode selector (Studio / Virtual Driver) and two Virtual Input/Output cards in a single driver-manager page
+- [x] Windows PnP discovery of AuralWeave-owned device IDs after relocation
+- [x] Guarded per-device removal UI (confirmation + UAC); no arbitrary PnP modifications
+- [x] Portable Filter Preset Save/Load/Import/Export, without source/output persistence
+- [x] Increased spacing in mode buttons, preset controls, and two Virtual Driver cards
+- [ ] Build and sign actual virtual audio kernel drivers, create independent virtual endpoint instances, implement install flow
+- [ ] Design real-time multi-instance driver-to-native-core IPC and audio clock handling

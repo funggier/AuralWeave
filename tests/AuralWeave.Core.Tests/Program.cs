@@ -135,4 +135,67 @@ catch (ArgumentException)
 {
     Verify(true, "NaN filter parameters are rejected");
 }
+var presetTestFolder = Path.Combine(AppContext.BaseDirectory,
+    "preset-tests-" + Guid.NewGuid().ToString("N"));
+try
+{
+    var presetStore = new FilterPresetStore(presetTestFolder);
+    var presetFilters = new[]
+    {
+        new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, .7f),
+        new FilterStage(Guid.NewGuid(), FilterKind.RnnoiseStandard, false, 0f),
+        new FilterStage(Guid.NewGuid(), FilterKind.RnnoiseStandard, true, 0f),
+        new FilterStage(Guid.NewGuid(), FilterKind.Limiter, true, -3f)
+    };
+    var preset = presetStore.Create("Voice Natural", presetFilters);
+    var saved = presetStore.Save(preset);
+    Verify(File.Exists(saved.FilePath) && saved.Name == "Voice Natural",
+        "Filter preset saves within portable-relative folder");
+    var jsonText = File.ReadAllText(saved.FilePath);
+    Verify(!jsonText.Contains("EndpointId", StringComparison.OrdinalIgnoreCase) &&
+           !jsonText.Contains("SourceId", StringComparison.OrdinalIgnoreCase) &&
+           !jsonText.Contains("AudioInput", StringComparison.OrdinalIgnoreCase),
+        "Filter presets never serialize input or output endpoints");
+    var loaded = FilterPresetStore.ReadFile(saved.FilePath);
+    var restored = FilterPresetStore.Restore(loaded);
+    Verify(restored.Select(x => x.Kind).SequenceEqual(presetFilters.Select(x => x.Kind)) &&
+           restored.Select(x => x.Enabled).SequenceEqual(presetFilters.Select(x => x.Enabled)),
+        "Filter presets retain order, repeated types and enabled states");
+    Verify(restored.Zip(presetFilters).All(x =>
+                x.First.Id != x.Second.Id && x.First.Parameter == x.Second.Parameter),
+        "Imported filters receive new instance IDs while preserving parameters");
+    Verify(presetStore.List().Count == 1 && presetStore.List()[0].Name == "Voice Natural",
+        "Saved presets are automatically discoverable");
+
+    var importedPath = Path.Combine(presetTestFolder, "external.awfilter");
+    FilterPresetStore.WriteFile(importedPath, preset);
+    Verify(FilterPresetStore.ReadFile(importedPath).Filters.Count == 4,
+        "Import/Export share the same strict file format");
+
+    try
+    {
+        FilterPresetStore.ReadFile(saved.FilePath + ".missing");
+        throw new Exception("Missing preset unexpectedly loaded");
+    }
+    catch (FileNotFoundException)
+    {
+        Verify(true, "Missing preset file fails without changing current filters");
+    }
+    try
+    {
+        File.WriteAllText(Path.Combine(presetTestFolder, "tampered.awfilter"),
+            jsonText.Replace("\"SchemaVersion\": 1", "\"SchemaVersion\": 999"));
+        FilterPresetStore.ReadFile(Path.Combine(presetTestFolder, "tampered.awfilter"));
+        throw new Exception("Unsupported preset schema was accepted");
+    }
+    catch (InvalidDataException)
+    {
+        Verify(true, "Future or corrupt preset schema is rejected");
+    }
+}
+finally
+{
+    if (Directory.Exists(presetTestFolder))
+        Directory.Delete(presetTestFolder, recursive: true);
+}
 Console.WriteLine($"All {count} tests passed.");

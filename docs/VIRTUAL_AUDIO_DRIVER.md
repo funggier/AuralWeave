@@ -1,27 +1,44 @@
-# Virtual Audio Driver — Future Optional Module
+# Virtual Audio Driver — Manager UI and Future Kernel Package
 
-## Objective
+## Current status: v0.3.0-preview.1
 
-Expose virtual Windows audio endpoints so other applications can send audio to AuralWeave and consume its processed output.
+The Native C++ studio and virtual-driver **management UI** are separate concerns. The management page is now implemented, but the **actual virtual audio kernel driver is not**.
 
-Windows endpoint naming from the **user perspective**:
+The UI contains **two cards on one page**:
 
-- Virtual Playback endpoint: other software chooses it as an output; AuralWeave receives that stream as an input
-- Virtual Recording endpoint: other software chooses it as a microphone; AuralWeave provides the processed stream
+| UI card | Windows endpoint type | Direction from a Windows application |
+| --- | --- | --- |
+| Virtual Input | Recording endpoint (virtual microphone) | AuralWeave provides audio that the app receives |
+| Virtual Output | Render endpoint (virtual speaker) | The app plays audio into AuralWeave |
 
-This directionality is important to avoid naming confusion.
+This distinction is based on Windows' endpoint types, not internal WASAPI source/target terminology.
 
-## Strategy
+## Discovery independent of executable path
 
-1. First validate routing with physical WASAPI capture/render and Windows loopback endpoints.
-2. Develop a signed/installed optional driver separately from the portable application.
-3. Evaluate the Microsoft SysVAD sample as a development reference, **not** a ready-to-distribute complete audio router.
-4. Design IPC/ring-buffer boundaries between user-mode core and optional virtual endpoints.
-5. Validate install/uninstall, audio path, Windows 10 compatibility, endpoint visibility, signature requirements, reboot/restart behavior, and security.
-6. Keep driver optional. Existing audio routing must operate without it.
+The manager uses Windows SetupAPI PnP enumeration and reads hardware IDs, device instance IDs and friendly names. It **does not** look only in the app's folder and **does not** treat ordinary devices containing the string "AuralWeave" as owned.
 
-## Constraints
+Reserved future root-enumerated hardware ID families:
 
-Driver installation/removal may require elevation and the applicable Windows driver signing/distribution process. The driver's binaries/configurations cannot be considered relocatable after OS installation the same way as the portable app.
+- `ROOT\AURALWEAVE_VINPUT_####`
+- `ROOT\AURALWEAVE_VOUTPUT_####`
 
-Do not install, disable, or replace other audio drivers without an explicit separate user action. Before reusing upstream driver sample code, verify and retain its applicable notices/license.
+The exact INF packages must match these IDs before any signed distribution or installation; no driver is presently installed or bundled.
+
+The manager lists every installed matching instance and offers a per-device removal action. Removal first rechecks ownership, requests explicit confirmation, and invokes Windows' PnPUtil on that **one instance** with UAC. This removes that device node; it does not automatically delete a potentially shared OEM driver-store package.
+
+## Why Install is disabled
+
+A functional virtual audio device requires more than an INF file: a compiled signed driver package with correct endpoint descriptors, Windows 10 compatibility, and a verified audio transport/IPC path to the AuralWeave core. Microsoft SysVAD is a *reference implementation*, not a bundled AuralWeave driver. The Windows SDK alone is not proof that the WDK build tools and signing pipeline are available.
+
+The current UI deliberately does not provide a fake install action. Never use `pnputil /add-driver` alone as evidence that an independent ROOT-enumerated virtual endpoint was created; that command primarily registers a driver package and installs it on matching existing devices.
+
+## Engineering work remaining
+
+1. Build AuralWeave-owned kernel audio miniport(s) for virtual recording and playback endpoints, based on appropriately licensed Windows driver reference code.
+2. Design authenticated per-instance IPC shared memory / ring buffers between user-mode audio core and driver, with bounded latency, clock handling and security boundaries.
+3. Support creating additional independent instances with fixed signed hardware IDs. Ensure no cross-instance audio leakage and stable device naming.
+4. Build and sign driver INF/SYS/CAT packages with appropriate Windows 10 kernel signing rules. Never disable secure boot, disable driver-signature enforcement or turn on test signing as part of normal application operation.
+5. Add verified install flow (UAC, valid INF and signature, installed endpoint check, reboot handling), plus per-device uninstall and optional separate package cleanup only when no instances rely on it.
+6. Test clean install/uninstall/reboot, multi-instance performance, endpoint visibility, migration after moving the portable folder, and security.
+
+The existing physical input/output Native C++ route must continue working when this optional module is absent.

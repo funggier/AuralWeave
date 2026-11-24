@@ -17,6 +17,26 @@ try
         Console.WriteLine($"  {output.DisplayName} | default={output.IsDefault}" +
             $" | {output.SampleRate} Hz / {output.Channels} ch | id={output.Id}");
 
+    if (args.Contains("--test-virtual-driver-discovery"))
+    {
+        if (!AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VINPUT_0001", out var inputRole) ||
+            inputRole != VirtualAudioEndpointRole.Input ||
+            !AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VOUTPUT_0002", out var outputRole) ||
+            outputRole != VirtualAudioEndpointRole.Output ||
+            AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"USB\VID_1234&PID_5678", out _) ||
+            AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VINPUTOTHER", out _))
+            throw new InvalidOperationException(
+                "Virtual Driver ownership matching is incorrect.");
+        var installed = AuralWeaveVirtualDrivers.EnumerateInstalled();
+        Console.WriteLine($"PASS: Windows SetupAPI discovery; {installed.Count} owned devices found.");
+        foreach (var device in installed)
+            Console.WriteLine($"  [{device.Role}] {device.Name} ({device.InstanceId})");
+        Console.WriteLine("PASS: unrelated PnP devices never match AuralWeave namespace.");
+    }
     var single = args.Contains("--smoke-native") || args.Contains("--smoke-silent");
     var mixed = args.Contains("--smoke-native-multi") ||
                 args.Contains("--soak-native-multi") ||

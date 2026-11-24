@@ -76,12 +76,14 @@
                         <ComboBoxItem Content="Monochrome Dark"/>
                         <ComboBoxItem Content="Graphite"/>
                     </ComboBox>
+                    <StackPanel x:Name="StudioHeaderActions" Orientation="Horizontal">
                     <Button x:Name="RefreshButton" Content="↻  Refresh devices"
                             Click="RefreshClicked" Margin="0,0,8,0"/>
                     <Button x:Name="StartButton" Content="START" Click="StartStopClicked"
                             Background="{DynamicResource Accent}"
                             Foreground="{DynamicResource AccentText}" MinWidth="120"
                             FontWeight="SemiBold"/>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </Border>
@@ -108,6 +110,23 @@
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel MaxWidth="1020" Margin="24,24,24,18">
+                <!-- Two-mode selector; the Virtual Driver page contains TWO cards,
+                     one for each direction, on the SAME page. -->
+                <Grid Margin="0,0,0,26">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="StudioModeButton" Grid.Column="0" Content="STUDIO"
+                            FontWeight="SemiBold" Height="48" Margin="0,0,12,0"
+                            Click="ShowStudioModeClicked"
+                            Background="{DynamicResource Accent}"
+                            Foreground="{DynamicResource AccentText}"/>
+                    <Button x:Name="VirtualModeButton" Grid.Column="1" Content="VIRTUAL DRIVER"
+                            FontWeight="SemiBold" Height="48" Margin="12,0,0,0"
+                            Click="ShowVirtualDriverModeClicked"/>
+                </Grid>
+                <StackPanel x:Name="StudioPanel">
                 <Border Style="{StaticResource StageCard}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,14">
@@ -154,7 +173,53 @@
                                     MinWidth="112" HorizontalAlignment="Right"/>
                         </DockPanel>
 
-                        <StackPanel x:Name="FiltersPanel" Margin="0,0,0,12"/>
+                        <Border Background="{DynamicResource SubtleBackground}"
+                                BorderBrush="{DynamicResource PanelStroke}"
+                                BorderThickness="1" CornerRadius="8" Padding="12"
+                                Margin="0,0,0,14">
+                            <StackPanel>
+                                <TextBlock Text="FILTER PRESETS" FontSize="11"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource SecondaryText}"
+                                           Margin="0,0,0,9"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="PresetCombo" DisplayMemberPath="Name"
+                                              MinWidth="190" Margin="0,0,12,0"/>
+                                    <Button Grid.Column="1" Content="LOAD"
+                                            Click="LoadPresetClicked" Padding="12,7" Margin="0,2,7,2"/>
+                                    <Button Grid.Column="2" Content="REFRESH"
+                                            Click="RefreshPresetsClicked" Padding="10,7" Margin="5,2,2,2"/>
+                                </Grid>
+                                <Grid Margin="0,9,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="PresetNameBox" Text="My Filters"
+                                             ToolTip="Filter preset name; source and output devices are never saved"
+                                             Padding="10,8" MinHeight="36"
+                                             Background="{DynamicResource FieldBackground}"
+                                             Foreground="{DynamicResource PrimaryText}"
+                                             BorderBrush="{DynamicResource FieldStroke}"
+                                             BorderThickness="1" VerticalContentAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="SAVE"
+                                            Click="SavePresetClicked" Margin="12,2,5,2"/>
+                                    <Button Grid.Column="2" Content="IMPORT"
+                                            Click="ImportPresetClicked" Margin="5,2,5,2"/>
+                                    <Button Grid.Column="3" Content="EXPORT"
+                                            Click="ExportPresetClicked" Margin="5,2,2,2"/>
+                                </Grid>
+                                <TextBlock Text="Preset saves only Filter types, settings, enabled states, and order — never Sound Input or Output."
+                                           Style="{StaticResource MutedCaption}" FontSize="11"
+                                           Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>                        <StackPanel x:Name="FiltersPanel" Margin="0,0,0,12"/>
                         <Button x:Name="AddFilterButton" Style="{StaticResource AddFilterButton}"
                                 Content="+" Click="AddFilterClicked"
                                 ToolTip="Add an empty filter slot"/>
@@ -194,6 +259,51 @@
                                    Style="{StaticResource MutedCaption}"/>
                     </StackPanel>
                 </Border>
+                </StackPanel>
+                <StackPanel x:Name="VirtualDriverPanel" Visibility="Collapsed">
+                    <TextBlock Text="VIRTUAL DRIVER MANAGEMENT"
+                               FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <TextBlock Text="Installed AuralWeave-family devices are discovered from Windows Plug and Play, even if you move the portable program folder."
+                               Style="{StaticResource MutedCaption}" Margin="0,0,0,14"/>
+                    <Button x:Name="RefreshVirtualDriversButton"
+                            Content="REFRESH INSTALLED DEVICES" HorizontalAlignment="Left"
+                            Click="RefreshVirtualDriversClicked" Margin="0,0,0,17"/>
+                    <Border Style="{StaticResource StageCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionHeader}"
+                                       Text="VIRTUAL INPUT"/>
+                            <TextBlock Style="{StaticResource MutedCaption}"
+                                       Text="Windows recording endpoint: other applications select it as a microphone. AuralWeave supplies the audio."/>
+                            <StackPanel x:Name="VirtualInputDevices" Margin="0,16,0,16"/>
+                            <Button x:Name="InstallVirtualInputButton"
+                                    Content="+ INSTALL VIRTUAL INPUT"
+                                    IsEnabled="False" HorizontalAlignment="Left"
+                                    Click="InstallVirtualInputClicked"/>
+                            <TextBlock x:Name="VirtualInputPackageStatus" Style="{StaticResource MutedCaption}"
+                                       Margin="0,13,0,0"
+                                       Text="Installation unavailable: AuralWeave signed virtual-input driver package has not been built."/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource StageCard}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource SectionHeader}"
+                                       Text="VIRTUAL OUTPUT"/>
+                            <TextBlock Style="{StaticResource MutedCaption}"
+                                       Text="Windows playback endpoint: other applications play audio into it. AuralWeave receives it as a source."/>
+                            <StackPanel x:Name="VirtualOutputDevices" Margin="0,16,0,16"/>
+                            <Button x:Name="InstallVirtualOutputButton"
+                                    Content="+ INSTALL VIRTUAL OUTPUT"
+                                    IsEnabled="False" HorizontalAlignment="Left"
+                                    Click="InstallVirtualOutputClicked"/>
+                            <TextBlock x:Name="VirtualOutputPackageStatus" Style="{StaticResource MutedCaption}"
+                                       Margin="0,13,0,0"
+                                       Text="Installation unavailable: AuralWeave signed virtual-output driver package has not been built."/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="VirtualDriverSummary" Style="{StaticResource MutedCaption}"
+                               Margin="0,2,0,16"
+                               Text="Windows driver installation/removal requires administrator approval. No test-signing changes are made automatically."/>
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

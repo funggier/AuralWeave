@@ -65,6 +65,7 @@ public partial class MainWindow : Window
         };
         _meterTimer.Tick += (_, _) => UpdateMeters();
         RefreshFilterRows();
+        RefreshPresetList();
         RefreshDevices();
         _meterTimer.Start();
     }

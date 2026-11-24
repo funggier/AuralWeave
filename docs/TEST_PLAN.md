@@ -110,3 +110,10 @@ bounding rectangles and tests minimize, restoration and close.
 - [x] Maximize / restore / minimize / close actions succeed
 
 This is a UI-only fix. Native WASAPI code and routing were not modified.
+## v0.3.0-preview.1 — mode/preset/virtual driver diagnostics
+
+- Managed Core: 32/32 tests including exact Filter Preset roundtrip, repeated RNNoise, enabled states, excluded audio device identifiers, strict schema checking and local discovery.
+- Native device-discovery diagnostics: SetupAPI enumerated zero owned devices on the test machine; reserved INPUT/OUTPUT hardware IDs were recognized; unrelated hardware IDs rejected.
+- Real Windows WPF UI automation: switch Studio → Virtual Driver → Studio; verify both Virtual Input and Virtual Output cards; verify PnP discovery ran successfully.
+- Layout gaps: mode selector and Filter Preset button groups have expanded spacing; Virtual Input/Output installation status margins increased.
+- Actual installation and audio transport require a future signed driver package; buttons remain disabled until then.

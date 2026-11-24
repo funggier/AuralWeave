@@ -91,3 +91,6 @@ each monitor, ensuring the custom minimize, restore and close buttons remain
 visible even when the taskbar is docked at the top. See
 [release notes](docs/releases/v0.2.1.md) and the repeatable
 `scripts/test-window-workarea.ps1` regression test.
+## Local v0.3.0-preview.1: Virtual Driver Manager + Filter Presets
+
+The Studio page now has portable Filter Presets (SAVE/LOAD/IMPORT/EXPORT without recording Sound Input or Output). The new Virtual Driver page has two separate cards on one page for Windows Virtual Input (recording) and Virtual Output (playback). Windows PnP discovery recognizes reserved AuralWeave hardware IDs even after the app is relocated. **No signed virtual audio driver ships yet, so INSTALL remains disabled.** See [Virtual driver design](docs/VIRTUAL_AUDIO_DRIVER.md), [Filter presets](docs/FILTER_PRESETS.md), and [preview notes](docs/releases/v0.3.0-preview.1.md).
