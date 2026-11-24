@@ -132,3 +132,22 @@ This is a UI-only fix. Native WASAPI code and routing were not modified.
 - NOT YET TESTED: Windows 11 runtime, Windows 10 installed driver,
   concurrent devices, PCM transport, HLK, Microsoft signing, or
   portable-folder relocation of a real installed driver.
+
+## Native virtual PCM IPC tests (2026-11-25)
+
+- Native Windows C++ bridge: real separate process writes and reads
+  16,000 sequential PCM frames with exact Float32 equality.
+- Ring wrap, frame alignment, independent roles/slots, invalid
+  format/ID, full-buffer rejection and zero-padded underruns passed.
+- C ABI create/attach/read/write/close/statistics/error paths passed.
+- Native Studio physical output graph remains independent of the
+  optional, post-filter Virtual Input tap.
+- Windows 10 real capture smoke: Line In 192 kHz -> Gain DSP ->
+  Virtual Input PCM mapping 48 kHz, with physical render output muted.
+  Continuous consumer reported captured 232,320 frames, produced
+  58,080 bridge frames, read 57,120 frames, and **zero bridge
+  overrun frames** during 1.2 seconds. Polling read requests sometimes
+  underrun; this is a functional test, NOT measured end-to-end latency.
+- Full build-windows.ps1 with WPF, Diagnostics, Core and 32 managed
+  tests passed; no compiler warnings/errors.
+- Kernel transport and Windows 11 runtime tests NOT YET performed.

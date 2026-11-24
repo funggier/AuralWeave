@@ -150,3 +150,19 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [ ] Test on Windows 10 22H2 and Windows 11 VMs
 - [ ] Pass HLK and obtain production Microsoft driver signature
 - [ ] Implement verified, optional administrator install/uninstall
+
+## Virtual PCM user-mode transport checkpoint (2026-11-25)
+
+- [x] Implement isolated multi-instance Float32 Shared Memory SPSC rings
+- [x] Implement versioned mapping metadata and read/write frame cursors
+- [x] Support user-mode virtual input/output role and slot 1-16
+- [x] Implement bounded frame buffering, underrun silence and overrun counters
+- [x] Test actual data transfer between two Windows processes
+- [x] Export a native C ABI and add .NET bridge wrappers
+- [x] Bind optional post-filter Studio tap to a Virtual Input shared channel
+- [x] Test muted real WASAPI capture -> Gain -> 48-kHz PCM ring -> independent reader
+- [ ] Design safe kernel/user ABI and per-device security authorization
+- [ ] Bind WaveRT input/output miniport stream to each corresponding PCM ring
+- [ ] Support the virtual speaker as a selectable source in Studio
+- [ ] Validate clock drift, low latency, multi-device concurrency, PnP teardown
+- [ ] Test on actual Windows 10/11 VMs, obtain valid production signature

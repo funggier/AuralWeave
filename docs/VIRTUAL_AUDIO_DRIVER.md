@@ -78,3 +78,24 @@ statements above describe the previous milestone.
 
 See [Windows 10/11 target matrix](VIRTUAL_DRIVER_WINDOWS10_WINDOWS11.md)
 and [Kernel prototype README](../src/AuralWeave.VirtualDriver/Kernel/README.md).
+
+## User-mode PCM transport checkpoint (2026-11-25)
+
+A second implementation stage now runs inside the Native C++ audio
+engine: Studio can optionally publish its *post-filter* PCM to a
+separate virtual-input Shared Memory ring, while its physical
+outputs keep working. Float32 mono/stereo rings are per-instance,
+bounded, interprocess, and expose overflow/underrun counters.
+Managed developer APIs and a stable C ABI are available.
+
+The opposite shared Virtual Output channel passes interprocess
+tests. It is **not** wired into a real WaveRT render device or
+Studio source selection. The Windows 10 muted route diagnostic
+demonstrated 192-kHz capture -> filters -> 48-kHz bridge with
+zero dropped frames in the tested continuous-consumer interval.
+
+Kernel-side audio transfer, Windows 11 runtime verification,
+signed driver installation and fully isolated Windows endpoints
+are still pending. GUI Install remains disabled.
+
+See [Virtual PCM Bridge](VIRTUAL_PCM_BRIDGE.md).

@@ -51,6 +51,55 @@ try
             Console.WriteLine($"  [{device.Role}] {device.Name} ({device.InstanceId})");
         Console.WriteLine("PASS: unrelated PnP devices never match AuralWeave namespace.");
     }
+    if (args.Contains("--smoke-virtual-bridge"))
+    {
+        // Safe real-WASAPI capture test: muted physical output, optional
+        // user-mode shared PCM tap. NEVER installs a Windows driver.
+        var input = sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture && x.IsDefault)
+            ?? sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture)
+            ?? throw new InvalidOperationException("No usable capture endpoint.");
+        var output = outputs.FirstOrDefault(x => x.IsDefault)
+            ?? outputs.FirstOrDefault()
+            ?? throw new InvalidOperationException("No usable render endpoint.");
+        Console.WriteLine("VIRTUAL PCM TAP: native physical capture -> filters -> user-mode bridge; output muted.");
+        using var route = new NativeWasapiAudioRoute();
+        using var owner = NativeVirtualAudioBridge.Create(1, 3, 48000, 2, 4096);
+        using var peer = NativeVirtualAudioBridge.Attach(owner.Name, 1, 3);
+        route.ReplaceFilterChain([
+            new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, 0.75f)
+        ]);
+        route.Start(input.Id, [new OutputRoute(Guid.NewGuid(), output.Id, 1f, true)]);
+        try
+        {
+            route.BindVirtualInputBridge(owner);
+            // Consume continuously; avoid intentionally saturating the
+            // bounded ring before beginning playback.
+            var buffer = new float[1920]; // 960 stereo frames per read
+            ulong framesReceived = 0;
+            var end = DateTime.UtcNow.AddMilliseconds(1200);
+            while (DateTime.UtcNow < end)
+            {
+                framesReceived += peer.Read(buffer);
+                await Task.Delay(5);
+            }
+            var stats = owner.GetStats();
+            var captures = route.CapturedFrames;
+            Console.WriteLine($"Capture frames: {captures}; bridge wrote: {stats.FramesWritten}; " +
+                $"bridge read: {framesReceived}; dropped: {stats.OverflowFrames}; " +
+                $"underruns: {stats.UnderflowFrames}; rate: {stats.SampleRate}; " +
+                $"channels: {stats.Channels}");
+            if (captures <= 0 || stats.FramesWritten == 0 || framesReceived == 0 ||
+                stats.SampleRate != 48000 || stats.Channels != 2 || route.LastError is not null)
+                throw new InvalidOperationException("Post-filter Virtual Input PCM tap did not stream.");
+            Console.WriteLine("PASS: WASAPI capture -> active native Filter Chain -> shared PCM tap -> independent consumer.");
+            route.UnbindVirtualInputBridge();
+        }
+        finally
+        {
+            route.Stop();
+        }
+    }
+
     var single = args.Contains("--smoke-native") || args.Contains("--smoke-silent");
     var mixed = args.Contains("--smoke-native-multi") ||
                 args.Contains("--soak-native-multi") ||

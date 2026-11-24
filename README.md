@@ -120,3 +120,21 @@ exists yet.** The Virtual Driver page INSTALL buttons remain disabled.
 Kernel source is under its own [MS-PL license](src/AuralWeave.VirtualDriver/Kernel/LICENSE.MS-PL.txt),
 not covered by the MIT root license. See
 [Windows 10 and Windows 11 driver progress](docs/VIRTUAL_DRIVER_WINDOWS10_WINDOWS11.md).
+
+## User-mode Virtual PCM Bridge (2026-11-25)
+
+The native Windows C++ engine now has an opt-in, independently buffered
+post-filter PCM bridge for future virtual microphones. It uses isolated,
+versioned, session-local Shared Memory mappings, with one writer and one
+reader per mapping. Input/output roles and slots remain distinct; the
+developer-facing C ABI and .NET wrapper are in the repository.
+
+A real Windows 10 muted hardware smoke verified 192-kHz capture,
+ordered Gain filter, conversion to 48-kHz stereo Shared PCM and
+continuous consumption without dropped frames. The Virtual Output
+shared channel also passed cross-process tests, but is not connected
+to a WaveRT endpoint or Studio source selector.
+
+This is **not yet a working installed kernel virtual audio driver**.
+No driver install option has been enabled. For architecture, tests and
+limitations see [Virtual PCM Bridge](docs/VIRTUAL_PCM_BRIDGE.md).

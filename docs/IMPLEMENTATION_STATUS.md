@@ -63,3 +63,15 @@ Device discovery is hardened to the MEDIA class, AuralWeave service
 and exact ID bank. No live PCM driver transport, Windows 11 runtime
 tests, HLK, signing or install yet. The driver binary is excluded
 from portable app publication.
+
+## Native user-mode PCM bridge (2026-11-25)
+
+C++ SPSC Shared Memory transport is implemented with per-role/slot
+isolation, bounded PCM, random session name, Float32 mono/stereo,
+cross-process tests, C ABI and managed wrappers. Studio now supports
+a developer-only post-filter tap for a future virtual microphone;
+physical outputs remain unchanged. Real WASAPI 192-kHz capture
+resampled to a 48-kHz Shared PCM tap and was consumed without
+overrun in a 1.2-second test. The unsigned kernel prototype is
+still NOT attached to this transport, and virtual output input
+selection, Windows 11 VM tests and Microsoft signing remain pending.

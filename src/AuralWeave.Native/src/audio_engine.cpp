@@ -27,6 +27,8 @@
 #include "auralweave/audio_resampler.hpp"
 #include "auralweave/rnnoise_processor.hpp"
 #include "auralweave/filter_chain.hpp"
+#include "auralweave/virtual_audio_bridge.hpp"
+#include "auralweave/virtual_audio_bridge_api.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -110,6 +112,38 @@ struct RenderSink final {
     std::vector<float> scratch;
 };
 
+// The route owns a separate, optional post-filter PCM tap. It does not affect
+// physical WASAPI outputs. Allocation is done by the UI/control thread before
+// publishing the tap; streaming uses preallocated buffers.
+struct VirtualInputTap final {
+    explicit VirtualInputTap(auralweave::VirtualAudioBridge&& connected,
+                             std::uint32_t input_rate, std::uint16_t input_channels)
+        : bridge(std::move(connected)),
+          resampler(input_rate, input_channels,
+                    bridge.format().sample_rate,
+                    bridge.format().channels, 100),
+          pcm(static_cast<std::size_t>(4096) * bridge.format().channels),
+          channels(bridge.format().channels) {}
+    void process(const float* samples, std::uint32_t frames) noexcept {
+        resampler.push(samples, frames);
+        for (;;) {
+            const auto chunk = std::min<std::size_t>(
+                resampler.buffered_frames(), pcm.size() / channels);
+            if (chunk == 0) break;
+            const auto actual = resampler.pop(pcm.data(), chunk);
+            if (actual == 0) break;
+            // If the bridge is full, it records dropped PCM. Physical routes
+            // keep running; the slow consumer never blocks real-time audio.
+            bridge.write(pcm.data(), static_cast<std::uint32_t>(actual));
+        }
+    }
+
+    auralweave::VirtualAudioBridge bridge;
+    auralweave::StreamResampler resampler;
+    std::vector<float> pcm;
+    std::uint16_t channels{};
+};
+
 class NativeRoute final {
 public:
     NativeRoute() : stop_(true) {}
@@ -159,6 +193,7 @@ public:
         sample_rate_.store(0);
         channels_.store(0);
         ordered_chain_.store(nullptr);
+        virtual_tap_.store(nullptr);
         frames_.store(0);
         overruns_.store(0);
         underruns_.store(0);
@@ -222,6 +257,24 @@ public:
     }
     float peak() const noexcept { return peak_.load(); }
 
+    bool bind_virtual_input(const wchar_t* name, std::uint32_t slot) {
+        if (!name || slot < 1 || slot > 16 || state_.load() != 2)
+            return false;
+        const auto rate = sample_rate_.load();
+        const auto channels = channels_.load();
+        if (!rate || !channels) return false;
+        auto connected = auralweave::VirtualAudioBridge::attach(
+            name, auralweave::VirtualEndpointRole::input, slot);
+        auto prepared = std::make_shared<VirtualInputTap>(
+            std::move(connected), rate, channels);
+        // The existing tap may still be processing on the audio worker, but
+        // shared_ptr keeps it alive until that packet is complete.
+        virtual_tap_.store(std::move(prepared));
+        return true;
+    }
+
+    void unbind_virtual_input() noexcept { virtual_tap_.store(nullptr); }
+
     std::wstring error() {
         std::lock_guard<std::mutex> lock(mutex_);
         return error_;
@@ -262,6 +315,7 @@ private:
     std::vector<float> effects_;
     std::vector<auralweave::FilterSpec> filter_specs_;
     std::atomic<std::shared_ptr<auralweave::FilterChain>> ordered_chain_;
+    std::atomic<std::shared_ptr<VirtualInputTap>> virtual_tap_;
     std::atomic<bool> ordered_chain_enabled_{false};
     std::atomic<std::uint32_t> sample_rate_{0};
     std::atomic<std::uint16_t> channels_{0};
@@ -283,6 +337,7 @@ private:
     void join(bool mark_stopped) noexcept {
         stop_.signal();
         if (worker_.joinable()) worker_.join();
+        virtual_tap_.store(nullptr);
         if (mark_stopped) {
             sample_rate_.store(0);
             channels_.store(0);
@@ -485,6 +540,12 @@ private:
                             value = std::clamp(value * gain, -1.0F, 1.0F);
                     }
                 }
+                // Optional virtual microphone tap receives exactly the same
+                // post-filter samples as physical outputs. It cannot stall
+                // capture or any hardware render sink.
+                if (auto tap = virtual_tap_.load())
+                    tap->process(samples.data(), frame_count);
+
                 // Distribute once-processed PCM into an independent bounded
                 // converter/FIFO per destination; rendering is event-driven.
                 for (auto& sink : sinks_) {
@@ -610,4 +671,23 @@ AW_API void aw_last_error(void* handle, wchar_t* buffer, std::size_t capacity) n
         const std::wstring message = static_cast<NativeRoute*>(handle)->error();
         wcsncpy_s(buffer, capacity, message.c_str(), _TRUNCATE);
     } catch (...) { buffer[0] = L'\0'; }
+}
+
+
+// Optional user-mode session transport hook. This is NOT a Kernel Driver
+// endpoint and is intentionally not enabled by the Studio interface yet.
+AW_BRIDGE_API int aw_route_bind_virtual_input(
+    void* native_route, const wchar_t* exact_name, uint32_t input_slot) noexcept {
+    if (!native_route) return 0;
+    try {
+        return static_cast<NativeRoute*>(native_route)->bind_virtual_input(
+            exact_name, input_slot) ? 1 : 0;
+    } catch (...) {
+        return 0;
+    }
+}
+
+AW_BRIDGE_API void aw_route_unbind_virtual_input(void* native_route) noexcept {
+    if (native_route)
+        static_cast<NativeRoute*>(native_route)->unbind_virtual_input();
 }
