@@ -84,3 +84,10 @@ the fully custom dark window, and an ordered native Filter Chain. New filters
 are enabled and newly added output devices are **unmuted** by default;
 be careful of microphone feedback. The native audio path remains C++ WASAPI.
 See [release notes](docs/releases/v0.2.0.md).
+## Windows v0.2.1 maintenance fix
+
+Custom maximize now respects the Windows taskbar's usable Work Area on
+each monitor, ensuring the custom minimize, restore and close buttons remain
+visible even when the taskbar is docked at the top. See
+[release notes](docs/releases/v0.2.1.md) and the repeatable
+`scripts/test-window-workarea.ps1` regression test.

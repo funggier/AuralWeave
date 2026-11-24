@@ -50,3 +50,9 @@ Choose filter... type is inert). Added output destinations now start
 **unmuted**; use headphones or low hardware volume to avoid microphone
 feedback. See `docs/releases/v0.2.0.md` for the release's feature set and
 limitations. Older notes above describe historical previews.
+## v0.2.1 maximized window fix
+
+Custom WindowChrome on Windows 10 now constrains maximized bounds to each
+monitor's work area; taskbars at the top/other edges no longer obscure the
+custom window title bar. Three-display maximize/restore and minimize/close
+UI Automation checks passed. See `docs/releases/v0.2.1.md`.

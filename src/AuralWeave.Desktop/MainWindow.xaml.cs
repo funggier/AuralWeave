@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private readonly List<FilterStage> _filters = [];
     private readonly HashSet<Guid> _collapsedFilters = [];
     private readonly List<OutputRoute> _outputs = [];
+    private readonly WindowWorkAreaMaximizer _workAreaMaximizer;
     private readonly DispatcherTimer _meterTimer;
     private readonly DispatcherTimer _filterDebounceTimer;
     private IReadOnlyList<AudioEndpoint> _captureDevices = [];
@@ -42,6 +43,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _workAreaMaximizer = new WindowWorkAreaMaximizer(this);
         var skin = SkinManager.Load();
         SkinManager.Apply(skin, false);
         SkinCombo.SelectedIndex = skin == SkinManager.GraphiteSkin ? 1 : 0;

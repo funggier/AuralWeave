@@ -91,3 +91,22 @@ Observed: native 30-second muted smoke yielded **0 post-warmup overruns and 0 po
 - EXE file version **0.2.0.0**; AN ribbon PNG 512x512 with transparent corners; Windows ICO has seven embedded sizes.
 - Portable ZIP includes EXE, Native DLL, MIT project license, RNNoise BSD license, release notes and third-party notices; no NAudio or PDB.
 - Audio quality/feedback, live audible latency, and hotplug recovery are not guaranteed by the muted automated tests.
+## v0.2.1: Custom Window maximize/taskbar regression
+
+Reproduction on v0.2.0 (Windows 10, Taskbar at top):
+- Monitor 1 usable work area: `(0,30)-(2560,1440)`.
+- Maximized window before fix: `(-7,-7)-(2567,1447)`; custom 39px caption bar clipped/hidden by taskbar.
+- Maximized window after fix: `(0,30)-(2560,1440)`; minimize, restore and close controls remain visible.
+
+The new `scripts/test-window-workarea.ps1` launches the real WPF application,
+moves it between all connected monitors, maximizes/restores, and asserts the
+window exactly respects each monitor's Work Area. It checks caption button
+bounding rectangles and tests minimize, restoration and close.
+
+- [x] Windows 10 DISPLAY1, primary, top taskbar
+- [x] Windows 10 DISPLAY2, secondary, top taskbar
+- [x] Windows 10 DISPLAY3, secondary, top taskbar
+- [x] All three caption controls visible in maximized state
+- [x] Maximize / restore / minimize / close actions succeed
+
+This is a UI-only fix. Native WASAPI code and routing were not modified.

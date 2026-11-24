@@ -107,3 +107,9 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Verify ZIP contents, launch, native/managed tests and release documentation
 - [ ] User listening checks with microphone + speakers at safe volumes
 - [ ] Quantify per-filter CPU use and actual capture-to-output latency
+## v0.2.1 Maintenance Release (2026-11-24)
+
+- [x] Fix custom WindowChrome maximize geometry to respect monitor Work Area
+- [x] Ensure close/minimize/restore remain visible with top-docked taskbar
+- [x] Verify multi-monitor maximize/restore, minimize and close (3 displays)
+- [x] Add repeatable `scripts/test-window-workarea.ps1` regression test
