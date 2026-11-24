@@ -68,7 +68,11 @@ try {
         Get-ChildItem -LiteralPath $target -File -Filter '*.pdb' |
             Remove-Item -Force
 
-        $archive = Join-Path $root 'dist\AuralWeave-Windows-x64-Preview.zip'
+                $csprojXml = [xml](Get-Content -LiteralPath (Join-Path $root 'src\AuralWeave.Desktop\AuralWeave.Desktop.csproj') -Raw)
+        $version = [string]$csprojXml.Project.PropertyGroup.Version
+        if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid application release version: $version" }
+        Copy-Item -LiteralPath (Join-Path $root "docs\releases\v$version.md") -Destination (Join-Path $target 'RELEASE_NOTES.md') -Force
+        $archive = Join-Path $root ("dist\AuralWeave-v$version-Windows-x64.zip")
         Compress-Archive -Path (Join-Path $target '*') -DestinationPath $archive -CompressionLevel Optimal -Force
         if (!(Test-Path -LiteralPath $archive)) { throw 'Portable ZIP was not created' }
 
