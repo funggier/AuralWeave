@@ -50,3 +50,16 @@ reference/WIL are installed. Driver toolchain checker passes.
 Full upstream reference source compiles in compile-only mode.
 No actual AuralWeave virtual audio driver binary has been created,
 signed, validated, installed or released yet.
+
+## Kernel prototype compiled — Windows 10 + Windows 11 target (2026-11-25)
+
+A new AuralWeave-branded unsigned WDM/PortCls virtual audio
+prototype now compiles into `AuralWeaveVirtualAudio.sys`. It
+selects capture or render KS interfaces according to independently
+enumerated AuralWeave root hardware IDs. Maximum reserved ID bank:
+16 input + 16 output. Windows 10 build 19041+ / Windows 11 x64 INF
+model selection; InfVerif /w /u and Inf2Cat /nocat signability pass.
+Device discovery is hardened to the MEDIA class, AuralWeave service
+and exact ID bank. No live PCM driver transport, Windows 11 runtime
+tests, HLK, signing or install yet. The driver binary is excluded
+from portable app publication.

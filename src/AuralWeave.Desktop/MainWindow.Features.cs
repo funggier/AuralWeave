@@ -202,7 +202,7 @@ public partial class MainWindow
                 "No AuralWeave Virtual Output devices installed.");
             VirtualDriverSummary.Text = $"{installed.Count} owned virtual device(s) found. " +
                 "Discovery uses Windows PnP identity, not the portable folder location. " +
-                "Unsigned/unbuilt driver packages cannot be installed.";
+                "Unsigned/unbridged kernel prototypes cannot be installed.";
         }
         catch (Exception ex)
         {

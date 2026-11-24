@@ -22,13 +22,16 @@ public sealed record AuralWeaveVirtualDevice(
 
 public static class AuralWeaveVirtualDrivers
 {
-    // Must match future signed INF packages; no actual driver ships yet.
+    // Matches the 16-ID-per-role prototype INF; no signed driver ships yet.
     public const string InputHardwarePrefix = "ROOT\\AURALWEAVE_VINPUT";
     public const string OutputHardwarePrefix = "ROOT\\AURALWEAVE_VOUTPUT";
 
     private const uint DigcfAllclasses = 0x00000004;
     private const uint SpdrpHardwareId = 0x00000001;
     private const uint SpdrpDeviceDesc = 0x00000000;
+    private const uint SpdrpService = 0x00000004;
+    private const string ExpectedServiceName = "AuralWeaveVirtualAudio";
+    private static readonly Guid MediaClassGuid = new("4d36e96c-e325-11ce-bfc1-08002be10318");
     private const uint SpdrpFriendlyName = 0x0000000C;
     private const int ErrorNoMoreItems = 259;
 
@@ -55,6 +58,11 @@ public static class AuralWeaveVirtualDrivers
                     if (error == ErrorNoMoreItems) break;
                     throw new Win32Exception(error, "PnP device enumeration failed.");
                 }
+
+                if (data.ClassGuid != MediaClassGuid ||
+                    !ReadProperty(infoSet, ref data, SpdrpService).Equals(
+                        ExpectedServiceName, StringComparison.OrdinalIgnoreCase))
+                    continue;
 
                 var ids = ReadProperty(infoSet, ref data, SpdrpHardwareId)
                     .Split('\0', StringSplitOptions.RemoveEmptyEntries);
@@ -104,11 +112,24 @@ public static class AuralWeaveVirtualDrivers
         return false;
     }
 
-    private static bool IsOwnHardwareId(string candidate, string prefix) =>
-        candidate.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
-        (candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
-         candidate.Length > prefix.Length &&
-         candidate[prefix.Length] is '_' or '&');
+    private static bool IsOwnHardwareId(string candidate, string prefix)
+    {
+        // Only the hardware IDs explicitly enumerated in the INF belong
+        // to this driver. Never remove a generic/foreign PnP device because
+        // its name or a misleading prefix happens to contain AuralWeave.
+        if (candidate.Length != prefix.Length + 5 ||
+            !candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            candidate[prefix.Length] != '_')
+            return false;
+
+        var number = 0;
+        foreach (var c in candidate.AsSpan(prefix.Length + 1))
+        {
+            if (c is < '0' or > '9') return false;
+            number = number * 10 + (c - '0');
+        }
+        return number is >= 1 and <= 16;
+    }
 
     private static string ReadProperty(
         IntPtr infoSet, ref SpDevinfoData data, uint property)

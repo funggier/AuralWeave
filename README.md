@@ -104,3 +104,19 @@ See [Driver Toolchain Setup](docs/DRIVER_DEVELOPMENT_SETUP.md),
 compile-only** tests. A signed and installable AuralWeave virtual
 audio driver is **not yet shipped**; Studio remains fully usable
 without any optional kernel driver.
+
+## Virtual Audio Kernel Prototype — Windows 10 & 11 (2026-11-25)
+
+This development checkpoint adds a separately licensed **MS-PL**
+`AuralWeaveVirtualAudio.sys` source prototype with different PnP
+registrations for Virtual Input (recording) and Virtual Output
+(playback). The INF reserves 16 IDs of each type and targets
+Windows 10 build 19041+ and Windows 11 x64.
+
+`scripts/build-virtual-driver-prototype.ps1` performs compile-only
+WDK build, InfVerif Windows/Universal checks and Inf2Cat signability
+tests. **No driver is installed or signed, and no audio bridge to Studio
+exists yet.** The Virtual Driver page INSTALL buttons remain disabled.
+Kernel source is under its own [MS-PL license](src/AuralWeave.VirtualDriver/Kernel/LICENSE.MS-PL.txt),
+not covered by the MIT root license. See
+[Windows 10 and Windows 11 driver progress](docs/VIRTUAL_DRIVER_WINDOWS10_WINDOWS11.md).

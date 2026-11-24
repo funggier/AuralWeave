@@ -28,7 +28,21 @@ try
             AuralWeaveVirtualDrivers.TryIdentifyRole(
                 @"USB\VID_1234&PID_5678", out _) ||
             AuralWeaveVirtualDrivers.TryIdentifyRole(
-                @"ROOT\AURALWEAVE_VINPUTOTHER", out _))
+                @"ROOT\AURALWEAVE_VINPUTOTHER", out _) ||
+            AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VINPUT", out _) ||
+            AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VINPUT_0000", out _) ||
+            AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VOUTPUT_0017", out _) ||
+            AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VOUTPUT_0001&EXTRA", out _) ||
+            !AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"root\auralweave_vinput_0016", out var input16) ||
+            input16 != VirtualAudioEndpointRole.Input ||
+            !AuralWeaveVirtualDrivers.TryIdentifyRole(
+                @"ROOT\AURALWEAVE_VOUTPUT_0016", out var output16) ||
+            output16 != VirtualAudioEndpointRole.Output)
             throw new InvalidOperationException(
                 "Virtual Driver ownership matching is incorrect.");
         var installed = AuralWeaveVirtualDrivers.EnumerateInstalled();

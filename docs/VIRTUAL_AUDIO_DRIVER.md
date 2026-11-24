@@ -54,3 +54,27 @@ virtual audio kernel endpoints; production Windows 10 INF;
 per-instance full-duplex audio transport and multi-instance
 device management. The Manager INSTALL controls remain disabled
 until those pieces are actually built and tested.
+
+## Windows 10 + 11 x64 kernel prototype (2026-11-25)
+
+A separate **compile-only** prototype now lives under
+`src/AuralWeave.VirtualDriver/Kernel`, adapted from Microsoft's
+MS-PL Simple Audio Sample. The binary is called
+`AuralWeaveVirtualAudio.sys` and the INF separates 16 possible
+Virtual Input hardware IDs from 16 possible Virtual Output IDs.
+The kernel compares the physical PnP hardware ID before registering
+only the requested WaveRT endpoint direction.
+
+**Validation passed:** WDK driver compilation; InfVerif Windows
+and Universal INF checks; Inf2Cat signability for representative
+Windows 10 and Windows 11 x64 targets. No Windows 11 VM runtime,
+HLK or Microsoft driver-signing results yet.
+
+This is a substantial engineering prototype, NOT a working virtual
+microphone/speaker product. There is no user-to-kernel PCM transport,
+multi-instance stream isolation has not been tested, and INSTALL
+remains intentionally disabled. The earlier "not implemented"
+statements above describe the previous milestone.
+
+See [Windows 10/11 target matrix](VIRTUAL_DRIVER_WINDOWS10_WINDOWS11.md)
+and [Kernel prototype README](../src/AuralWeave.VirtualDriver/Kernel/README.md).

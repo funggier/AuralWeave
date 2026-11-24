@@ -117,3 +117,18 @@ This is a UI-only fix. Native WASAPI code and routing were not modified.
 - Real Windows WPF UI automation: switch Studio → Virtual Driver → Studio; verify both Virtual Input and Virtual Output cards; verify PnP discovery ran successfully.
 - Layout gaps: mode selector and Filter Preset button groups have expanded spacing; Virtual Input/Output installation status margins increased.
 - Actual installation and audio transport require a future signed driver package; buttons remain disabled until then.
+
+## Windows 10/11 virtual audio kernel prototype QA
+
+- Compiler: Visual Studio 2026 / WDK 10.0.28000.0 x64.
+- `scripts/build-virtual-driver-prototype.ps1` passed: .SYS built;
+  `InfVerif /w` and `InfVerif /u` both passed; Inf2Cat
+  `/nocat` signability passed with no errors or warnings.
+- INF targets Windows 10 build 19041+ and Windows 11; candidate
+  device IDs are 0001-0016 for each of Input and Output.
+- Managed PnP ownership checks reject unrelated/bare/malformed
+  hardware IDs; available classes and service are checked.
+- Current Windows 10 development host: 0 owned devices installed.
+- NOT YET TESTED: Windows 11 runtime, Windows 10 installed driver,
+  concurrent devices, PCM transport, HLK, Microsoft signing, or
+  portable-folder relocation of a real installed driver.

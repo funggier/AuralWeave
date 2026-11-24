@@ -134,3 +134,19 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [ ] Validate complete INF/API/catalog and production signing
 - [ ] Implement low-latency multi-instance audio transport to Native C++ core
 - [ ] Test secure install, per-device removal, restart, and portable relocation
+
+## Windows 10 / Windows 11 virtual driver prototype checkpoint
+
+- [x] Adapt licensed Microsoft audio miniport sample for AuralWeave
+- [x] Produce unsigned AuralWeaveVirtualAudio.sys kernel prototype
+- [x] Separate Virtual Input/Virtual Output INF interface registrations
+- [x] Select endpoint direction based on exact root PnP hardware ID
+- [x] Reserve up to 16 unique IDs per endpoint role
+- [x] Target Windows 10 2004+ and Windows 11 x64 from shared INF
+- [x] Pass WDK build, InfVerif /w /u and Inf2Cat signability checks
+- [x] Guard manager discovery by class, exact ID and service
+- [ ] Implement real low-latency per-instance audio bridge to Studio
+- [ ] Verify per-instance stream isolation, PnP lifecycle and timing
+- [ ] Test on Windows 10 22H2 and Windows 11 VMs
+- [ ] Pass HLK and obtain production Microsoft driver signature
+- [ ] Implement verified, optional administrator install/uninstall

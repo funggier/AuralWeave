@@ -281,7 +281,7 @@
                                     Click="InstallVirtualInputClicked"/>
                             <TextBlock x:Name="VirtualInputPackageStatus" Style="{StaticResource MutedCaption}"
                                        Margin="0,13,0,0"
-                                       Text="Installation unavailable: AuralWeave signed virtual-input driver package has not been built."/>
+                                       Text="Installation unavailable: unsigned Windows 10/11 driver prototype is not yet audio-bridged or Microsoft-signed."/>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource StageCard}">
@@ -297,7 +297,7 @@
                                     Click="InstallVirtualOutputClicked"/>
                             <TextBlock x:Name="VirtualOutputPackageStatus" Style="{StaticResource MutedCaption}"
                                        Margin="0,13,0,0"
-                                       Text="Installation unavailable: AuralWeave signed virtual-output driver package has not been built."/>
+                                       Text="Installation unavailable: unsigned Windows 10/11 driver prototype is not yet audio-bridged or Microsoft-signed."/>
                         </StackPanel>
                     </Border>
                     <TextBlock x:Name="VirtualDriverSummary" Style="{StaticResource MutedCaption}"
