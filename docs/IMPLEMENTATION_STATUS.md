@@ -42,3 +42,11 @@ Native C++ ordered filter chain is now integrated and tested: initial empty bypa
 - Driver manager: Win32 SetupAPI enumerates reserved AuralWeave-family PnP hardware IDs independent of the executable folder; guarded per-instance removal with explicit confirmation and UAC is available for future matching devices.
 - Not yet implemented: first-party signed virtual audio kernel driver, installation or creation of virtual endpoints, IPC audio bridge. Install controls remain intentionally disabled.
 - Validation: 32 Core tests, real Windows two-mode UI test, native PnP scan (zero matching installed), Portable ZIP and custom WindowChrome maximize/restore across three displays passed.
+
+## Driver development toolchain (2026-11-25)
+
+WDK 28000, SDK 28000, VS 2026 WDK integration and pinned SysVAD
+reference/WIL are installed. Driver toolchain checker passes.
+Full upstream reference source compiles in compile-only mode.
+No actual AuralWeave virtual audio driver binary has been created,
+signed, validated, installed or released yet.

@@ -42,3 +42,15 @@ The current UI deliberately does not provide a fake install action. Never use `p
 6. Test clean install/uninstall/reboot, multi-instance performance, endpoint visibility, migration after moving the portable folder, and security.
 
 The existing physical input/output Native C++ route must continue working when this optional module is absent.
+
+## Toolchain preparation completed
+
+VS 2026 WDK integration, WDK/SDK build 28000, Inf2Cat, PortCls
+and WIL are installed/available. Reference-only SysVAD compilation
+passes through `scripts/build-sysvad-reference.ps1`.
+
+**Still not implemented:** AuralWeave-branded, signed and installable
+virtual audio kernel endpoints; production Windows 10 INF;
+per-instance full-duplex audio transport and multi-instance
+device management. The Manager INSTALL controls remain disabled
+until those pieces are actually built and tested.

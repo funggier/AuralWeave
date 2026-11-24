@@ -122,3 +122,15 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Increased spacing in mode buttons, preset controls, and two Virtual Driver cards
 - [ ] Build and sign actual virtual audio kernel drivers, create independent virtual endpoint instances, implement install flow
 - [ ] Design real-time multi-instance driver-to-native-core IPC and audio clock handling
+
+## Virtual Driver toolchain checkpoint (2026-11-25)
+
+- [x] Install matching Windows SDK and WDK build 28000
+- [x] Install Visual Studio 2026 WDK integration
+- [x] Restore pinned Microsoft SysVAD + WIL source for reference
+- [x] Compile reference kernel SYS and sample APO DLLs, without installation
+- [x] Script and verify repeatable toolchain checks / compile-only build
+- [ ] Develop Windows 10 compatible AuralWeave-owned virtual input/output drivers
+- [ ] Validate complete INF/API/catalog and production signing
+- [ ] Implement low-latency multi-instance audio transport to Native C++ core
+- [ ] Test secure install, per-device removal, restart, and portable relocation

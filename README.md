@@ -94,3 +94,13 @@ visible even when the taskbar is docked at the top. See
 ## Local v0.3.0-preview.1: Virtual Driver Manager + Filter Presets
 
 The Studio page now has portable Filter Presets (SAVE/LOAD/IMPORT/EXPORT without recording Sound Input or Output). The new Virtual Driver page has two separate cards on one page for Windows Virtual Input (recording) and Virtual Output (playback). Windows PnP discovery recognizes reserved AuralWeave hardware IDs even after the app is relocated. **No signed virtual audio driver ships yet, so INSTALL remains disabled.** See [Virtual driver design](docs/VIRTUAL_AUDIO_DRIVER.md), [Filter presets](docs/FILTER_PRESETS.md), and [preview notes](docs/releases/v0.3.0-preview.1.md).
+
+## Windows Virtual Driver development
+
+Driver development dependencies are now installed and verified.
+See [Driver Toolchain Setup](docs/DRIVER_DEVELOPMENT_SETUP.md),
+`scripts/check-driver-toolchain.ps1`, and
+`scripts/build-sysvad-reference.ps1` for repeatable **reference
+compile-only** tests. A signed and installable AuralWeave virtual
+audio driver is **not yet shipped**; Studio remains fully usable
+without any optional kernel driver.
