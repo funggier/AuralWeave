@@ -17,10 +17,18 @@ public partial class MainWindow : Window
     private IReadOnlyList<AudioEndpoint> _renderDevices = [];
     private NativeWasapiAudioRoute? _route;
     private bool _updating;
+    private bool _initializingSkin = true;
+    private bool _collapseAllNext = true;
+    private readonly HashSet<Guid> _collapsedEffects = [];
 
     public MainWindow()
     {
         InitializeComponent();
+        var skin = SkinManager.Load();
+        SkinManager.Apply(skin, false);
+        SkinCombo.SelectedIndex = skin == SkinManager.GraphiteSkin ? 1 : 0;
+        _initializingSkin = false;
+        UpdateFilterCount();
         RefreshDevices();
         RefreshEffectRows();
         _meterTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -28,6 +36,49 @@ public partial class MainWindow : Window
         _meterTimer.Start();
     }
 
+    private void SkinChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializingSkin || SkinCombo is null) return;
+        var skin = SkinCombo.SelectedIndex == 1
+            ? SkinManager.GraphiteSkin : SkinManager.DefaultSkin;
+        try { SkinManager.Apply(skin, true); }
+        catch (Exception error) { Status("Skin loading failed: " + error.Message, true); }
+    }
+
+    private void UpdateFilterCount()
+    {
+        if (FilterCountLabel is null || NoiseCombo is null) return;
+        var count = _effects.Count + (NoiseCombo.SelectedIndex == 1 ? 1 : 0);
+        FilterCountLabel.Text = count == 0 ? "· direct path" : $"· {count} active / configured";
+    }
+
+    private void ToggleAllFiltersClicked(object sender, RoutedEventArgs e)
+    {
+        if (_collapseAllNext)
+        {
+            _collapsedEffects.Clear();
+            foreach (var effect in _effects) _collapsedEffects.Add(effect.Id);
+            NoiseSettingsPanel.Visibility = Visibility.Collapsed;
+            NoiseSettingsToggle.Content = "⌄";
+            GlobalFilterExpandButton.Content = "Expand all";
+        }
+        else
+        {
+            _collapsedEffects.Clear();
+            NoiseSettingsPanel.Visibility = Visibility.Visible;
+            NoiseSettingsToggle.Content = "⌃";
+            GlobalFilterExpandButton.Content = "Collapse all";
+        }
+        _collapseAllNext = !_collapseAllNext;
+        RefreshEffectRows();
+    }
+
+    private void ToggleNoiseSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        var expanded = NoiseSettingsPanel.Visibility == Visibility.Visible;
+        NoiseSettingsPanel.Visibility = expanded ? Visibility.Collapsed : Visibility.Visible;
+        NoiseSettingsToggle.Content = expanded ? "⌄" : "⌃";
+    }
     private void RefreshClicked(object sender, RoutedEventArgs e) => RefreshDevices();
 
     private void RefreshDevices()
@@ -189,6 +240,7 @@ public partial class MainWindow : Window
         NoiseDescription.Text = selected == NoiseProcessingMode.Bypass
             ? "Bypass: no RNNoise DSP or input resampling is performed."
             : "RNNoise Standard: 48 kHz / 480 samples per 10 ms frame. Changing modes may briefly reset the DSP state.";
+        UpdateFilterCount();
         try
         {
             _route?.SetNoiseMode(selected);
@@ -203,80 +255,143 @@ public partial class MainWindow : Window
     }
     private void AddEffectClicked(object sender, RoutedEventArgs e)
     {
-        _effects.Add(new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect));
+        var effect = new AudioEffectInstance(Guid.NewGuid(), AudioRouteRules.GainEffect);
+        _effects.Add(effect);
+        if (!_collapseAllNext) _collapsedEffects.Add(effect.Id);
         ApplyEffects();
+        UpdateFilterCount();
         RefreshEffectRows();
     }
 
     private void RefreshEffectRows()
     {
         EffectsPanel.Children.Clear();
+        UpdateFilterCount();
         if (_effects.Count == 0)
         {
             EffectsPanel.Children.Add(new TextBlock
             {
-                Text = "No effects — signal passes through unchanged.",
-                Foreground = Brushes.LightGray,
-                Margin = new Thickness(0, 4, 0, 4)
+                Text = "No Gain filters — signal passes through unchanged.",
+                Margin = new Thickness(0, 5, 0, 5)
             });
             return;
         }
 
         foreach (var (effect, index) in _effects.Select((x, i) => (x, i)).ToArray())
         {
-            var row = new StackPanel
+            var collapsed = _collapsedEffects.Contains(effect.Id);
+            var card = new Border
+            {
+                CornerRadius = new CornerRadius(7),
+                Padding = new Thickness(12),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 0, 0, 7)
+            };
+            card.SetResourceReference(Border.BackgroundProperty, "PanelBackground");
+            card.SetResourceReference(Border.BorderBrushProperty, "PanelStroke");
+            var body = new StackPanel();
+            var header = new DockPanel { LastChildFill = true };
+
+            var actions = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Margin = new Thickness(0, 0, 0, 8)
+                HorizontalAlignment = HorizontalAlignment.Right
             };
-            row.Children.Add(new TextBlock
-            {
-                Text = $"{index + 1}. Gain",
-                Width = 92,
-                VerticalAlignment = VerticalAlignment.Center
-            });
-            var enabled = new CheckBox { Content = "On", Width = 58, IsChecked = effect.Enabled };
-            enabled.Checked += (_, _) => ChangeEffect(effect.Id, true, null);
-            enabled.Unchecked += (_, _) => ChangeEffect(effect.Id, false, null);
-            row.Children.Add(enabled);
 
-            var gainLabel = new TextBlock
+            Button MakeAction(string title, bool enabled, Action action)
             {
-                Text = $"{effect.Gain:0.00}x",
-                Width = 55, VerticalAlignment = VerticalAlignment.Center
-            };
-            var gain = new Slider
-            {
-                Minimum = 0, Maximum = 2, Value = effect.Gain,
-                Width = 160, VerticalAlignment = VerticalAlignment.Center,
-                ToolTip = "Gain 0.00x to 2.00x"
-            };
-            gain.ValueChanged += (_, _) =>
-            {
-                gainLabel.Text = $"{gain.Value:0.00}x";
-                ChangeEffect(effect.Id, null, (float)gain.Value);
-            };
-            row.Children.Add(gain);
-            row.Children.Add(gainLabel);
+                var button = new Button
+                {
+                    Content = title,
+                    Width = 35,
+                    MinHeight = 30,
+                    IsEnabled = enabled,
+                    Padding = new Thickness(0)
+                };
+                button.Click += (_, _) => action();
+                return button;
+            }
 
-            var up = new Button { Content = "↑", Width = 34, IsEnabled = index > 0 };
-            up.Click += (_, _) => MoveEffect(effect.Id, -1);
-            row.Children.Add(up);
-            var down = new Button { Content = "↓", Width = 34, IsEnabled = index < _effects.Count - 1 };
-            down.Click += (_, _) => MoveEffect(effect.Id, 1);
-            row.Children.Add(down);
-            var remove = new Button { Content = "−", Width = 34 };
-            remove.Click += (_, _) =>
+            actions.Children.Add(MakeAction("↑", index > 0, () => MoveEffect(effect.Id, -1)));
+            actions.Children.Add(MakeAction("↓", index < _effects.Count - 1,
+                () => MoveEffect(effect.Id, 1)));
+            actions.Children.Add(MakeAction(collapsed ? "⌄" : "⌃", true, () =>
+            {
+                if (!_collapsedEffects.Add(effect.Id)) _collapsedEffects.Remove(effect.Id);
+                RefreshEffectRows();
+            }));
+            actions.Children.Add(MakeAction("−", true, () =>
             {
                 _effects.RemoveAll(x => x.Id == effect.Id);
+                _collapsedEffects.Remove(effect.Id);
                 ApplyEffects();
                 RefreshEffectRows();
+            }));
+            DockPanel.SetDock(actions, Dock.Right);
+            header.Children.Add(actions);
+
+            var identity = new StackPanel { Orientation = Orientation.Horizontal };
+            identity.Children.Add(new TextBlock
+            {
+                Text = $"{index + 1:00}",
+                Width = 37,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = FontWeights.SemiBold
+            });
+            var enabledBox = new CheckBox
+            {
+                Content = "Gain",
+                IsChecked = effect.Enabled,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = FontWeights.SemiBold
             };
-            row.Children.Add(remove);
-            EffectsPanel.Children.Add(row);
+            enabledBox.Checked += (_, _) => ChangeEffect(effect.Id, true, null);
+            enabledBox.Unchecked += (_, _) => ChangeEffect(effect.Id, false, null);
+            identity.Children.Add(enabledBox);
+            header.Children.Add(identity);
+            body.Children.Add(header);
+
+            if (!collapsed)
+            {
+                var details = new Grid { Margin = new Thickness(37, 12, 8, 4) };
+                details.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(90) });
+                details.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                details.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+                var label = new TextBlock
+                {
+                    Text = "Gain level",
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                details.Children.Add(label);
+                var slider = new Slider
+                {
+                    Minimum = 0, Maximum = 2, Value = effect.Gain,
+                    TickFrequency = .05,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Gain 0.00x to 2.00x"
+                };
+                Grid.SetColumn(slider, 1);
+                details.Children.Add(slider);
+                var gainLabel = new TextBlock
+                {
+                    Text = $"{effect.Gain:0.00}×",
+                    TextAlignment = TextAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(7, 0, 0, 0)
+                };
+                Grid.SetColumn(gainLabel, 2);
+                details.Children.Add(gainLabel);
+                slider.ValueChanged += (_, _) =>
+                {
+                    gainLabel.Text = $"{slider.Value:0.00}×";
+                    ChangeEffect(effect.Id, null, (float)slider.Value);
+                };
+                body.Children.Add(details);
+            }
+            card.Child = body;
+            EffectsPanel.Children.Add(card);
         }
     }
-
     private void ChangeEffect(Guid id, bool? enabled, float? gain)
     {
         var index = _effects.FindIndex(x => x.Id == id);
@@ -340,8 +455,8 @@ public partial class MainWindow : Window
             candidate.Start(input.Id, _outputs);
             _route = candidate;
             StartButton.Content = "Stop route";
-            StartButton.Background = new SolidColorBrush(Color.FromRgb(214, 111, 98));
-            StartButton.Foreground = Brushes.White;
+            StartButton.SetResourceReference(Control.BackgroundProperty, "StopButtonBrush");
+            StartButton.SetResourceReference(Control.ForegroundProperty, "PrimaryText");
             RefreshButton.IsEnabled = false;
             InputCombo.IsEnabled = false;
             RefreshOutputRows();
@@ -363,8 +478,8 @@ public partial class MainWindow : Window
         {
             _route = null;
             StartButton.Content = "Start route";
-            StartButton.Background = new SolidColorBrush(Color.FromRgb(112, 224, 173));
-            StartButton.Foreground = new SolidColorBrush(Color.FromRgb(16, 38, 27));
+            StartButton.SetResourceReference(Control.BackgroundProperty, "Accent");
+            StartButton.SetResourceReference(Control.ForegroundProperty, "AccentText");
             RefreshButton.IsEnabled = true;
             InputCombo.IsEnabled = true;
             InputLevel.Value = 0;
@@ -402,7 +517,7 @@ public partial class MainWindow : Window
     private void Status(string message, bool error = false)
     {
         StatusLabel.Text = message;
-        StatusLabel.Foreground = error ? Brushes.LightCoral : Brushes.LightGreen;
+        StatusLabel.SetResourceReference(TextBlock.ForegroundProperty, error ? "ErrorText" : "Accent");
     }
 
     protected override void OnClosing(CancelEventArgs e)

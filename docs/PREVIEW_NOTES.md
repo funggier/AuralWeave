@@ -30,3 +30,10 @@ This is an experimental preview, not a final product release.
 ## RNNoise notes
 
 The default is Bypass, which preserves the native low-latency audio path. Selecting RNNoise introduces 48-kHz frame processing and resampling when required. Change modes during playback to compare quality, but do not assume RNNoise latency matches Bypass.
+
+## Monochrome skin / icon preview (v0.2.0-preview.2)
+
+- Transparent monochrome AuralWeave icon now embedded into EXE and window; no installation is required.
+- Switch between Monochrome Dark and Graphite skins in the program header. Selection is stored locally at `settings/appearance.json`.
+- UI has Sound Input → Filters → Sound Output stages and collapse controls for filter settings. Actual DSP order is still RNNoise-before-Gain, with repeated Gain instances supported. Arbitrary RNNoise/Gate/Limiter filter routing is not yet implemented.
+- Skins are built-in WPF resource dictionaries. Unsafe third-party XAML themes are not loaded.

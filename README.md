@@ -68,3 +68,7 @@ Running either script is optional; no automatic startup or virtual audio driver 
 ## Post-v0.1.0 local preview
 
 Optional RNNoise v0.1.1 Standard processing is implemented in the source tree with an offline build and live Bypass/RNNoise switching. The published GitHub `v0.1.0` remains unchanged; see [integration details](docs/RNNOISE_INTEGRATION.md).
+
+## Appearance — Monochrome Skin Preview
+
+The current local preview includes the silver/charcoal transparent program icon, embedded multi-size Windows .ico, and a WPF UI skin selector (Monochrome Dark / Graphite). The new desktop flow is Sound Input → Filters → Sound Output. See [Skins and icon](docs/SKINS_AND_ICON.md). Audio processing remains Native C++ only; arbitrary filter reordering and repeatable non-Gain DSP are planned, not shipped.

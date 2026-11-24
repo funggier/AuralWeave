@@ -80,3 +80,11 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [x] Preserve pure Bypass as default with no extra denoising DSP
 - [ ] High-fidelity sample-rate conversion, audible QA and timing measurement
 - [ ] Support compatible Little / Custom RNNoise models after source/ABI/licensing review
+
+## Monochrome UI / icon milestone (2026-11-24)
+
+- [x] Grayscale transparent icon and seven-size Windows .ico embedded in EXE
+- [x] Monochrome Dark + Graphite WPF skin resource dictionaries
+- [x] Skin switching with local portable appearance setting
+- [x] Redesigned Sound Input → Filters → Sound Output UI, per-Gain collapse and Collapse all/Expand all
+- [ ] Fully generic re-orderable native filter chain with repeatable RNNoise, Noise Gate, Limiter, EQ and other modules
