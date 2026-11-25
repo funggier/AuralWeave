@@ -6,7 +6,7 @@ using Microsoft.Win32.SafeHandles;
 namespace AuralWeave.Audio.Windows;
 
 /// <summary>
-/// Exact v1 METHOD_BUFFERED control-packet codec. Independent of whether
+/// Exact v2 METHOD_BUFFERED control-packet codec. Independent of whether
 /// an installable/signed kernel driver exists. Device access is admin-only.
 /// WAVEFORMAT: virtual mic PCM_S32 stereo @48k, virtual speaker PCM_S16
 /// stereo @48k. No pointer/handle is sent through the IOCTL.
@@ -14,9 +14,9 @@ namespace AuralWeave.Audio.Windows;
 public static class VirtualKernelPcmProtocol
 {
     public const uint Magic = 0x31575041;
-    public const uint Version = 1;
+    public const uint Version = 2;
     public const uint Ioctl = 0x0022E000;
-    public const int HeaderSize = 64;
+    public const int HeaderSize = 80;
     public const int MaxFrames = 2048;
     public const int MaxPayload = 16384;
     public const uint InputRole = 1;
@@ -31,7 +31,7 @@ public static class VirtualKernelPcmProtocol
     public readonly record struct Header(
         uint Opcode, uint Role, uint Format, uint SampleRate,
         uint Channels, uint Bits, uint Frames, uint PayloadBytes,
-        ulong RequestId);
+        ulong RequestId, ulong Generation = 0, ulong WaveRtFrames = 0);
 
     public static byte[] Encode(Header header, ReadOnlySpan<byte> payload)
     {
@@ -62,6 +62,8 @@ public static class VirtualKernelPcmProtocol
         U32(span, 48, 0);
         U32(span, 52, 0);
         BinaryPrimitives.WriteUInt64LittleEndian(span[56..], header.RequestId);
+        BinaryPrimitives.WriteUInt64LittleEndian(span[64..], header.Generation);
+        BinaryPrimitives.WriteUInt64LittleEndian(span[72..], header.WaveRtFrames);
         payload.CopyTo(span[HeaderSize..]);
         return bytes;
     }
@@ -90,6 +92,7 @@ public static class VirtualKernelPcmProtocol
         var frames = U32(buffer, 40);
         var payloadBytes = U32(buffer, 44);
         var isMetadata = opcode is Hello or Status;
+        var waveRtFrames = BinaryPrimitives.ReadUInt64LittleEndian(buffer[72..]);
         if (role is not (InputRole or OutputRole) ||
             opcode is not (Hello or InputWrite or OutputRead or Status) ||
             format != (role == InputRole ? Signed32Format : Signed16Format) ||
@@ -99,10 +102,12 @@ public static class VirtualKernelPcmProtocol
             (!isMetadata && (rate == 0 || frames > MaxFrames)) ||
             (opcode == Hello && frames != 0) ||
             (isMetadata && payloadBytes != 0) ||
+            (rate == 0 && (frames != 0 || waveRtFrames != 0)) ||
             payloadBytes > MaxPayload)
             throw new InvalidDataException("Kernel PCM reply contains invalid format, role, operation or bounds.");
         return new Header(opcode, role, format, rate, channels, bits,
-            frames, payloadBytes, BinaryPrimitives.ReadUInt64LittleEndian(buffer[56..]));
+            frames, payloadBytes, BinaryPrimitives.ReadUInt64LittleEndian(buffer[56..]),
+            BinaryPrimitives.ReadUInt64LittleEndian(buffer[64..]), waveRtFrames);
     }
 }
 
@@ -181,42 +186,45 @@ public sealed class VirtualKernelPcmClient(IVirtualKernelPcmExchange exchange)
 {
     private long _sequence;
 
-    private byte[] Call(uint role, uint opcode, uint format, uint bits,
-                        uint frames, ReadOnlySpan<byte> payload, int maxResponse)
+    private (VirtualKernelPcmProtocol.Header Header, byte[] Bytes) Call(
+        uint role, uint opcode, uint format, uint bits, uint frames,
+        ReadOnlySpan<byte> payload, int maxResponse, ulong generation = 0)
     {
         var requestId = (ulong)Interlocked.Increment(ref _sequence);
         var request = VirtualKernelPcmProtocol.Encode(
             new VirtualKernelPcmProtocol.Header(opcode, role, format,
-                48000, 2, bits, frames, (uint)payload.Length, requestId), payload);
+                48000, 2, bits, frames, (uint)payload.Length, requestId, generation), payload);
         var reply = exchange.Exchange(request, maxResponse);
         var result = VirtualKernelPcmProtocol.Decode(reply);
         if (result.RequestId != requestId || result.Role != role ||
             result.Opcode != opcode || result.Format != format ||
-            result.Bits != bits ||
+            result.Bits != bits || result.Generation == 0 ||
+            (generation != 0 && result.Generation != generation &&
+             (result.Frames != 0 || result.PayloadBytes != 0)) ||
             (opcode is VirtualKernelPcmProtocol.InputWrite or VirtualKernelPcmProtocol.OutputRead &&
              (result.SampleRate != 48000 || result.Channels != 2)) ||
             (opcode != VirtualKernelPcmProtocol.Status &&
              result.Frames > VirtualKernelPcmProtocol.MaxFrames))
             throw new InvalidDataException("Kernel reply does not match request format or correlation ID.");
-        return reply;
+        return (result, reply);
     }
 
     public VirtualKernelPcmProtocol.Header Query(uint role)
     {
         var format = role == VirtualKernelPcmProtocol.InputRole
             ? VirtualKernelPcmProtocol.Signed32Format : VirtualKernelPcmProtocol.Signed16Format;
-        var reply = Call(role, VirtualKernelPcmProtocol.Status, format,
+        return Call(role, VirtualKernelPcmProtocol.Status, format,
             format == VirtualKernelPcmProtocol.Signed32Format ? 32u : 16u,
-            0, ReadOnlySpan<byte>.Empty, VirtualKernelPcmProtocol.HeaderSize);
-        return VirtualKernelPcmProtocol.Decode(reply);
+            0, ReadOnlySpan<byte>.Empty, VirtualKernelPcmProtocol.HeaderSize).Header;
     }
 
     /// <summary>Send [-1,+1] Float32 stereo audio to PCM32 microphone.</summary>
-    public uint WriteMicrophone(ReadOnlySpan<float> pcmStereo)
+    public uint WriteMicrophone(ReadOnlySpan<float> pcmStereo, ulong generation)
     {
         if (pcmStereo.Length == 0 || pcmStereo.Length % 2 != 0 ||
             pcmStereo.Length > VirtualKernelPcmProtocol.MaxFrames * 2)
             throw new ArgumentException("Expected 1..2048 stereo frames.", nameof(pcmStereo));
+        ArgumentOutOfRangeException.ThrowIfZero(generation);
         var payload = new byte[pcmStereo.Length * sizeof(int)];
         for (var i = 0; i < pcmStereo.Length; ++i)
         {
@@ -227,11 +235,10 @@ public sealed class VirtualKernelPcmClient(IVirtualKernelPcmExchange exchange)
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(i * 4), value);
         }
         var frames = (uint)pcmStereo.Length / 2u;
-        var reply = Call(VirtualKernelPcmProtocol.InputRole,
+        var decoded = Call(VirtualKernelPcmProtocol.InputRole,
             VirtualKernelPcmProtocol.InputWrite,
             VirtualKernelPcmProtocol.Signed32Format, 32u,
-            frames, payload, VirtualKernelPcmProtocol.HeaderSize);
-        var decoded = VirtualKernelPcmProtocol.Decode(reply);
+            frames, payload, VirtualKernelPcmProtocol.HeaderSize, generation).Header;
         if (decoded.PayloadBytes != 0 || decoded.Frames > frames)
             throw new InvalidDataException("Kernel microphone ACK has invalid size.");
         return decoded.Frames;
@@ -239,16 +246,16 @@ public sealed class VirtualKernelPcmClient(IVirtualKernelPcmExchange exchange)
 
     /// <summary>Read stereo PCM16 output as Float32 without stealing other
     /// clients' user-mode data. Only the single trusted broker should read.</summary>
-    public float[] ReadSpeaker(int frames)
+    public float[] ReadSpeaker(int frames, ulong generation)
     {
         if (frames is < 1 or > VirtualKernelPcmProtocol.MaxFrames)
             throw new ArgumentOutOfRangeException(nameof(frames));
-        var reply = Call(VirtualKernelPcmProtocol.OutputRole,
+        ArgumentOutOfRangeException.ThrowIfZero(generation);
+        var (header, reply) = Call(VirtualKernelPcmProtocol.OutputRole,
             VirtualKernelPcmProtocol.OutputRead,
             VirtualKernelPcmProtocol.Signed16Format, 16u,
             (uint)frames, ReadOnlySpan<byte>.Empty,
-            VirtualKernelPcmProtocol.HeaderSize + frames * 4);
-        var header = VirtualKernelPcmProtocol.Decode(reply);
+            VirtualKernelPcmProtocol.HeaderSize + frames * 4, generation);
         if (header.Frames > frames || header.PayloadBytes != header.Frames * 4u)
             throw new InvalidDataException("Kernel speaker reply frame alignment failed.");
         var result = new float[header.Frames * 2u];

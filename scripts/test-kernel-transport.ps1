@@ -14,8 +14,10 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 $exe = Join-Path $out 'AuralWeavePcmWireSmoke.exe'
 $lib = '"' + (Join-Path $sourceDir 'aw_pcm_wire.cpp') + '"'
 $tests = '"' + (Join-Path $sourceDir 'aw_pcm_wire_smoke.cpp') + '"'
+$queue = '"' + (Join-Path $root 'src\AuralWeave.VirtualDriver\Kernel\Source\Main\aw_kernel_pcm_queue.cpp') + '"'
+$shim = '/I"' + (Join-Path $root 'tests\KernelPcmUserMode') + '"'
 $compile = 'cl /nologo /std:c++20 /O2 /EHsc /W4 /WX /utf-8 ' +
-    $lib + ' ' + $tests + ' /Fe:"' + $exe + '"'
+    $shim + ' ' + $lib + ' ' + $queue + ' ' + $tests + ' /Fe:"' + $exe + '"'
 Push-Location $out
 try {
     & cmd.exe /d /s /c ('call "' + $vcvars + '" >nul && ' + $compile)

@@ -37,9 +37,9 @@ https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcl
 https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/controlling-device-access
 https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/buffer-descriptions-for-i-o-control-codes
 
-## PCM protocol v1
+## PCM protocol v2
 
-One exact 64-byte, versioned header; up to 16,384 PCM payload bytes;
+One exact 80-byte, versioned header with generation and WaveRT frame position; up to 16,384 PCM payload bytes;
 1–2,048 frames per audio command. Requests have a RequestId that must
 be matched by the client to the reply. The kernel checks the entire
 header and payload byte counts before accessing the PCM data.
@@ -54,9 +54,13 @@ Operations:
   return the actual frames and payload.
 - GET_STATUS: return actual stream format and queued frame count.
 
-A buffered read or write returns a successful header with zero transferred frames when its role has no attached WaveRT stream. Output mirroring also returns zero for protected streams. The queue checks its active format and protection under its own spin lock before copying PCM. Incompatible active format remains a protocol error.
+A role becomes active when its WaveRT pin enters RUN. The final pin leaving RUN clears the ring and advances that role's generation. The next RUN starts a fresh generation. Content protection for the output also clears its ring and advances its generation. The two roles maintain independent counters. WaveRT frame position counts the frames processed by that role since the generation began, including microphone underrun silence.
 
-The managed worker accepts idle roles at startup. Its first active cycle can process the microphone or speaker independently. It drains and counts microphone frames discarded by an idle role, and counts active cycles only when either direction delivers frames. A transport failure still stops the worker. Coverage uses the user-mode mock and WDK compile checks. Event-driven pacing, cancellation, role generations and real kernel execution remain pending.
+A transfer includes the generation from the last status read. The kernel checks the generation, active format and copy protection under the queue lock. A stale generation, idle role or protected output yields a zero-frame result. Incompatible active format returns an error. The managed client rejects an audio reply that cites a different generation. A whole device reopen still needs a new handle and a fresh service connection.
+
+The managed worker remains timer based, accepts idle roles at startup and counts active cycles when either direction delivers frames. Its reference pump discards microphone data when the role is idle. The generation handshake guards in-flight IOCTLs, and future service-managed client channels must also purge their own buffered PCM across a reconnect. Event-driven pacing, cancellation and real kernel execution remain pending.
+
+Two standalone checks cover packet rejection, the actual queue implementation compiled with test-only lock primitives, and managed restart races with a mock driver.
 
 The currently advertised WaveRT formats are 48,000 Hz stereo signed
 PCM32 integer for the virtual microphone and 48,000 Hz stereo signed

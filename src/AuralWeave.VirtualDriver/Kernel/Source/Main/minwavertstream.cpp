@@ -99,7 +99,10 @@ Return Value:
     KeFlushQueuedDpcs();
     if (m_AwPcmAttached)
     {
-        AwKernelPcmDetach(m_bCapture ? AW_PCM_WIRE_INPUT : AW_PCM_WIRE_OUTPUT);
+        const auto role = m_bCapture ? AW_PCM_WIRE_INPUT : AW_PCM_WIRE_OUTPUT;
+        if (m_KsState == KSSTATE_RUN)
+            AwKernelPcmSetRunning(role, false);
+        AwKernelPcmDetach(role);
         m_AwPcmAttached = FALSE;
     }
 
@@ -1051,8 +1054,17 @@ NTSTATUS CMiniportWaveRTStream::SetState
     NTSTATUS        ntStatus        = STATUS_SUCCESS;
     KIRQL oldIrql;
 
-    // Spew an event for a pin state change request from portcls
-    //Event type: eMINIPORT_PIN_STATE
+    const bool leavingRun = m_KsState == KSSTATE_RUN && State_ != KSSTATE_RUN;
+    const auto role = m_bCapture ? AW_PCM_WIRE_INPUT : AW_PCM_WIRE_OUTPUT;
+    if (leavingRun) {
+        if (m_ulNotificationIntervalMs > 0) {
+            ExCancelTimer(m_pNotificationTimer, NULL);
+            KeFlushQueuedDpcs();
+        }
+        if (m_AwPcmAttached)
+            AwKernelPcmSetRunning(role, false);
+    }
+
     switch (State_)
     {
         case KSSTATE_STOP:
@@ -1098,9 +1110,6 @@ NTSTATUS CMiniportWaveRTStream::SetState
                 // Pause DMA
                 if (m_ulNotificationIntervalMs > 0)
                 {
-                    ExCancelTimer(m_pNotificationTimer, NULL);
-                    KeFlushQueuedDpcs(); 
-
                     // If pin is transitioning from RUN, save the time since last buffer completion event was sent 
                     // so if the pin goes to RUN state again we can send the buffer completion event at correct time.
                     if (m_ullLastDPCTimeStamp > 0)
@@ -1122,6 +1131,10 @@ NTSTATUS CMiniportWaveRTStream::SetState
             break;
 
         case KSSTATE_RUN:
+            if (m_KsState == KSSTATE_RUN)
+                break;
+            if (m_AwPcmAttached)
+                AwKernelPcmSetRunning(role, true);
             // Start DMA
             LARGE_INTEGER ullPerfCounterTemp;
             ullPerfCounterTemp = KeQueryPerformanceCounter(&m_ullPerformanceCounterFrequency);

@@ -17,8 +17,8 @@ typedef unsigned int aw_pcm_u32;
 typedef unsigned long long aw_pcm_u64;
 typedef unsigned long long aw_pcm_size_t;
 
-#define AW_PCM_WIRE_MAGIC 0x31575041u /* APW1, little-endian */
-#define AW_PCM_WIRE_VERSION 1u
+#define AW_PCM_WIRE_MAGIC 0x31575041u /* AuralWeave PCM magic, little-endian */
+#define AW_PCM_WIRE_VERSION 2u
 #define AW_PCM_WIRE_MAX_FRAMES 2048u
 #define AW_PCM_WIRE_MAX_PAYLOAD 16384u
 #define AW_PCM_WIRE_SLOT 1u
@@ -50,10 +50,12 @@ typedef struct AW_PCM_WIRE_PACKET {
     aw_pcm_u32 flags;
     aw_pcm_u32 reserved;
     aw_pcm_u64 request_id;
+    aw_pcm_u64 generation;       /* expected generation on data commands */
+    aw_pcm_u64 wave_rt_frames;   /* reply-only frame position in this generation */
 } AW_PCM_WIRE_PACKET;
 
 #if defined(__cplusplus)
-static_assert(sizeof(AW_PCM_WIRE_PACKET) == 64, "Transport ABI must not change");
+static_assert(sizeof(AW_PCM_WIRE_PACKET) == 80, "Transport ABI must not change");
 static_assert(sizeof(aw_pcm_u32) == 4 && sizeof(aw_pcm_u64) == 8,
               "Transport requires Windows x64 fixed-width types");
 #endif
@@ -67,7 +69,8 @@ typedef enum AW_PCM_WIRE_STATUS {
     AW_PCM_WIRE_BAD_DIRECTION = 5,
     AW_PCM_WIRE_BAD_FORMAT = 6,
     AW_PCM_WIRE_BAD_OPERATION = 7,
-    AW_PCM_WIRE_BAD_FLAGS = 8
+    AW_PCM_WIRE_BAD_FLAGS = 8,
+    AW_PCM_WIRE_BAD_GENERATION = 9
 } AW_PCM_WIRE_STATUS;
 
 #ifdef __cplusplus
@@ -75,7 +78,7 @@ extern "C" {
 #endif
 
 /* Parse with memcpy before calling: caller must have already validated that
- * at least 64 bytes are accessible. Do not read fields from an unchecked IRP. */
+ * at least sizeof(AW_PCM_WIRE_PACKET) bytes are accessible. Do not read fields from an unchecked IRP. */
 AW_PCM_WIRE_STATUS aw_pcm_wire_validate(
     const AW_PCM_WIRE_PACKET* packet, aw_pcm_size_t received_bytes);
 

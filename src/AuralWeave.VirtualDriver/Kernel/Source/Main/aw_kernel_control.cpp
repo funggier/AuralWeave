@@ -87,12 +87,10 @@ NTSTATUS Exchange(PIRP irp) noexcept {
 
         // No attached stream, or protected playback, is a normal no-progress
         // result for this role. The other role can keep exchanging frames.
-        aw_pcm_u32 copied = 0;
-        if (!AwKernelPcmTransfer(req, data + sizeof(AW_PCM_WIRE_PACKET), copied))
+        if (!AwKernelPcmTransfer(req, data + sizeof(AW_PCM_WIRE_PACKET)))
             return Complete(irp, STATUS_NOT_SUPPORTED);
 
-        req.frame_count = copied;
-        req.payload_bytes = read ? copied * frameBytes : 0;
+        req.payload_bytes = read ? req.frame_count * frameBytes : 0;
         req.total_bytes = sizeof(AW_PCM_WIRE_PACKET) + req.payload_bytes;
         RtlCopyMemory(data, &req, sizeof(req));
         return Complete(irp, STATUS_SUCCESS, req.total_bytes);
@@ -114,6 +112,8 @@ NTSTATUS Exchange(PIRP irp) noexcept {
     req.total_bytes = sizeof(AW_PCM_WIRE_PACKET);
     // For status we return the actual negotiated frame geometry;
     // zero when no compatible WaveRT streams are attached.
+    req.generation = snapshot.generation;
+    req.wave_rt_frames = snapshot.waveRtFrames;
     req.sample_rate = snapshot.sampleRate;
     req.channels = snapshot.channels;
     // With no attached stream, preserve the caller's valid PCM

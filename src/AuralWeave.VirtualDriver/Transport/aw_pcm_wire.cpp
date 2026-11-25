@@ -40,8 +40,12 @@ extern "C" AW_PCM_WIRE_STATUS aw_pcm_wire_validate(
     if ((packet->role != AW_PCM_WIRE_INPUT && packet->role != AW_PCM_WIRE_OUTPUT) ||
         packet->slot != AW_PCM_WIRE_SLOT)
         return AW_PCM_WIRE_BAD_DIRECTION;
-    if (packet->flags != 0 || packet->reserved != 0)
+    if (packet->flags != 0 || packet->reserved != 0 || packet->wave_rt_frames != 0)
         return AW_PCM_WIRE_BAD_FLAGS;
+    const bool transfer = packet->opcode == AW_PCM_WIRE_INPUT_WRITE ||
+        packet->opcode == AW_PCM_WIRE_OUTPUT_READ;
+    if ((packet->generation != 0) != transfer)
+        return AW_PCM_WIRE_BAD_GENERATION;
     if (!supported_format(*packet))
         return AW_PCM_WIRE_BAD_FORMAT;
     if (packet->frame_count > AW_PCM_WIRE_MAX_FRAMES)

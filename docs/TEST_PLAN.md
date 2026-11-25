@@ -263,6 +263,12 @@ UNSIGNED and must NOT be installed on the host Windows 10 computer.
 - Windows 10 UI Automation observed both driver cards refresh after a device-tree notification, including the absent and incomplete-package states. Both Install buttons stayed disabled and the tested page offered no removal or repair action. The notification was simulated, without changing Windows PnP.
 - Two Diagnostics processes from separate Portable folders concurrently routed the same physical Line In to the same 192 kHz and 48 kHz physical outputs in WASAPI Shared Mode, with muted outputs. Both stopped cleanly with zero new overrun or underrun frames after warmup.
 
+## PCM protocol v2 regression (2026-11-25)
+
+- The Windows 10 standalone C++ test links the actual driver queue implementation. It verifies independent role clocks, silence before and after RUN, queue reset on pause, stale-generation rejection and protected speaker mirroring.
+- Managed diagnostics check that old-generation microphone/speaker requests move zero frames and reject unexpected PCM returned for a different generation.
+- The WDK/INF checks compile and validate the unsigned Windows 10 target. Tests of an installed driver remain separate.
+
 ## Approved Windows Virtual Driver acceptance matrix — docs-only plan (2026-11-25)
 
 This checklist is a **future production release gate**, not a claim these Windows
@@ -292,7 +298,7 @@ successfully installed Windows virtual audio device acceptance.
 | VDRV-17 | Multiple Windows users/logon sessions, including permission-restricted clients | Correct per-user/capture permissions and endpoint sharing, no unintended audio disclosure | Security design pending |
 | VDRV-18 | Endpoint Exclusive Mode request and conflict | Document Windows policy behavior; normal Shared Mode clients stay supported without deliberately imposing global Studio-exclusive control | Not tested |
 | VDRV-19 | Move/delete Portable Studio after driver installation | System PnP device does not disappear; trusted background lifecycle and uninstaller are not broken by relocated/deleted Portable folder | Design pending |
-| VDRV-20 | Driver signed with applicable HLK/testing gates on Windows 10 and separately Windows 11 | Actual OS runtime and shared-mode tests pass independently; INF signability alone is insufficient | Win11 and signed driver untested |
+| VDRV-20 | Windows 10 x64 driver signed with applicable HLK/testing gates | Actual Windows 10 22H2 runtime and shared-mode tests pass. Windows 11 runtime can be verified separately when available. | Signed driver untested |
 
 **Test discipline:** Windows 10 22H2 is the real local environment; Windows 11
 remains theoretical until a real test. Run device/driver scenarios in an

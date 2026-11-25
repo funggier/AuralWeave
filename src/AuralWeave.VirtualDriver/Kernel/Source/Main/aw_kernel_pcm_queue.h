@@ -13,13 +13,13 @@ struct AwKernelPcmSnapshot {
     aw_pcm_u32 channels;
     aw_pcm_u32 bitsPerSample;
     aw_pcm_u32 queuedFrames;
+    aw_pcm_u64 generation;
+    aw_pcm_u64 waveRtFrames;
 };
 bool AwKernelPcmDescribe(aw_pcm_u32 role, AwKernelPcmSnapshot* result) noexcept;
 
-// Exchange data for one already validated control request. Idle or protected
-// streams transfer zero frames. An incompatible active format is an error.
-bool AwKernelPcmTransfer(const AW_PCM_WIRE_PACKET& request, aw_pcm_u8* pcm,
-                         aw_pcm_u32& transferred) noexcept;
+// Exchange a validated request and report the observed epoch and position.
+bool AwKernelPcmTransfer(AW_PCM_WIRE_PACKET& request, aw_pcm_u8* pcm) noexcept;
 
 void AwKernelPcmInitialize() noexcept;
 
@@ -28,8 +28,8 @@ void AwKernelPcmInitialize() noexcept;
 bool AwKernelPcmAttach(aw_pcm_u32 role, aw_pcm_u32 sampleRate,
                        aw_pcm_u32 channels, aw_pcm_u32 bitsPerSample) noexcept;
 void AwKernelPcmDetach(aw_pcm_u32 role) noexcept;
-// Erase all queued PCM when DRM restrictions change or stream resets.
-void AwKernelPcmFlush(aw_pcm_u32 role) noexcept;
+// Notify the queue when an attached WaveRT pin enters or leaves RUN.
+void AwKernelPcmSetRunning(aw_pcm_u32 role, bool running) noexcept;
 // Fail-closed policy: after protected content is observed, block ALL writes
 // to this role while any stream remains open. The entire output queue is
 // reset within the same KSPIN_LOCK critical section as the write guard.

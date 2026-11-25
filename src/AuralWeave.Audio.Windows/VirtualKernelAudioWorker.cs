@@ -69,7 +69,7 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
 
     /// <summary>
     /// Explicit start only; never called by the ordinary Studio app.
-    /// Check the v1 protocol and the format of any attached role. Either
+    /// Check the v2 protocol and the format of any running role. Either
     /// role can remain idle and start streaming after the worker starts.
     /// </summary>
     public void Start()
@@ -110,7 +110,7 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
                        .ConfigureAwait(false))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                // One synchronous bounded IOCTL read/write pair per tick.
+                // Each PCM exchange is bounded and checks the observed role generation.
                 // A failed exchange stops this worker; no busy retry storm.
                 var frames = _step();
                 Interlocked.Increment(ref _cycles);

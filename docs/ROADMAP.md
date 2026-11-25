@@ -384,9 +384,10 @@ exclusive audio-session role leases or an Uninstall button in the Studio UI.
 - [x] Verify on Windows 10 that the lock blocks competing setup across folders while separate mock PCM sessions continue for both roles.
 - [x] Distinguish existing operational, legacy, incomplete, stopped, problem and duplicate PnP states. Verified against synthetic states plus read-only host enumeration.
 
-### P1 — real driver audio transport (test VM first)
+### P1 — real driver audio transport (Windows 10 test VM first)
 
 - [x] Compile independent role transfer in the WaveRT/IOCTL prototype. The mock covers idle start, running with one role, reattachment and protected speaker output.
+- [x] Version each role's RUN lifetime, clear queued PCM on stop/protection, expose WaveRT progress and reject old-generation transfers. Verified in the C++ queue and managed mock.
 - [ ] Connect WaveRT virtual recording/playback streams to a trusted bounded PCM user↔kernel transport, independent of Mock Broker's advisory PID checks
 - [ ] Implement event/clock-driven scheduling, format conversion, drift management, safe stop/restart, device removal and resumption
 - [ ] Verify both roles can be installed and opened concurrently; no hidden per-app lock
@@ -405,7 +406,8 @@ exclusive audio-session role leases or an Uninstall button in the Studio UI.
 - [ ] Confirm two ordinary playback apps send simultaneously to one virtual speaker; Windows mixes sessions correctly and Studio can route combined audio
 - [ ] Confirm two Portable Studios from different folders share both system endpoints without duplicate installation or exclusive audio ownership
 - [ ] Confirm latency, long-run independent clock drift, hotplug/reconnect, silence after source loss and resource-quota behavior
-- [ ] Repeat installed-driver runtime tests on Windows 10 x64, then separately Windows 11 x64; never label WDK signability as runtime compatibility
+- [ ] Pass installed-driver runtime tests on Windows 10 22H2 x64 for the initial release.
+- [ ] Verify Windows 11 x64 independently when available. It remains a theoretical target and is outside the Windows 10 release gate.
 - [ ] Enable Install only when the signed package, service and functional driver pass the above gates
 
 **Release gate:** the currently shipped Studio is Portable and driver-free.

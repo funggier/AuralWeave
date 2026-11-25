@@ -14,6 +14,9 @@ internal static class KernelPcmControlTests
         public bool SpeakerAttached { get; set; } = true;
         public bool SpeakerProtected { get; set; }
         public bool FailSpeakerRead { get; set; }
+        public ulong MicrophoneGeneration { get; set; } = 3;
+        public ulong SpeakerGeneration { get; set; } = 5;
+        public bool ReturnAudioForOldGeneration { get; set; }
 
         public byte[] Exchange(byte[] request, int maxResponse)
         {
@@ -22,7 +25,9 @@ internal static class KernelPcmControlTests
                 throw new InvalidDataException("Unexpected prototype PCM format.");
             static uint Bits(uint role) =>
                 role == VirtualKernelPcmProtocol.InputRole ? 32u : 16u;
-            var expectedFormat = req.Role == VirtualKernelPcmProtocol.InputRole
+            var isInput = req.Role == VirtualKernelPcmProtocol.InputRole;
+            var generation = isInput ? MicrophoneGeneration : SpeakerGeneration;
+            var expectedFormat = isInput
                 ? VirtualKernelPcmProtocol.Signed32Format
                 : VirtualKernelPcmProtocol.Signed16Format;
             if (req.Format != expectedFormat || req.Bits != Bits(req.Role))
@@ -37,7 +42,7 @@ internal static class KernelPcmControlTests
                         req.PayloadBytes != req.Frames * 8 ||
                         req.Frames > VirtualKernelPcmProtocol.MaxFrames)
                         throw new InvalidDataException("Invalid microphone WRITE.");
-                    if (!MicrophoneAttached) break;
+                    if (!MicrophoneAttached || req.Generation != generation) break;
                     CapturedMicrophoneSamples = new int[req.Frames * 2];
                     for (var i = 0; i < CapturedMicrophoneSamples.Length; i++)
                         CapturedMicrophoneSamples[i] = BinaryPrimitives.ReadInt32LittleEndian(
@@ -52,7 +57,9 @@ internal static class KernelPcmControlTests
                         req.PayloadBytes != 0 || req.Frames < 1 ||
                         req.Frames > VirtualKernelPcmProtocol.MaxFrames)
                         throw new InvalidDataException("Invalid speaker READ.");
-                    if (!SpeakerAttached || SpeakerProtected) break;
+                    if (!SpeakerAttached || SpeakerProtected ||
+                        (req.Generation != generation && !ReturnAudioForOldGeneration))
+                        break;
                     frames = Math.Min(req.Frames, 2);
                     data = new byte[frames * 4];
                     var signal = new short[] {16384, -16384, 8192, -8192};
@@ -68,7 +75,7 @@ internal static class KernelPcmControlTests
                 new VirtualKernelPcmProtocol.Header(req.Opcode, req.Role,
                     req.Format, req.SampleRate, req.Channels, req.Bits,
                     frames, (uint)data.Length,
-                    TamperRequestId ? req.RequestId + 1 : req.RequestId), data);
+                    TamperRequestId ? req.RequestId + 1 : req.RequestId, generation), data);
             if (req.Opcode == VirtualKernelPcmProtocol.Status)
             {
                 // A live kernel queue can have >2048 frames even though each
@@ -78,6 +85,7 @@ internal static class KernelPcmControlTests
                 if (attached)
                 {
                     BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(40), 8192);
+                    BinaryPrimitives.WriteUInt64LittleEndian(reply.AsSpan(72), 48_000);
                 }
                 else
                 {
@@ -106,10 +114,11 @@ internal static class KernelPcmControlTests
         var fake = new SimulatedDriver();
         var client = new VirtualKernelPcmClient(fake);
         var header = client.Query(VirtualKernelPcmProtocol.InputRole);
-        Check(header.Frames == 8192 && header.Format == VirtualKernelPcmProtocol.Signed32Format,
-            "kernel status safely accepts queued counts >2048");
+        Check(header.Frames == 8192 && header.Format == VirtualKernelPcmProtocol.Signed32Format &&
+              header.Generation == fake.MicrophoneGeneration && header.WaveRtFrames == 48_000,
+            "kernel status reports independent queue, generation and WaveRT position");
 
-        var written = client.WriteMicrophone([1f, -1f, float.NaN, 0.25f]);
+        var written = client.WriteMicrophone([1f, -1f, float.NaN, 0.25f], header.Generation);
         Check(written == 2 && fake.Writes == 1 &&
             fake.CapturedMicrophoneSamples.Length == 4 &&
             fake.CapturedMicrophoneSamples[0] == int.MaxValue &&
@@ -118,7 +127,7 @@ internal static class KernelPcmControlTests
             Math.Abs(fake.CapturedMicrophoneSamples[3] - int.MaxValue / 4) <= 1,
             "Float32->signed PCM32 saturates, handles NaN, preserves stereo order");
 
-        var output = client.ReadSpeaker(256);
+        var output = client.ReadSpeaker(256, fake.SpeakerGeneration);
         Check(output.Length == 4 &&
             Math.Abs(output[0] - 0.5f) < 0.0001f &&
             Math.Abs(output[1] + 0.5f) < 0.0001f &&
@@ -128,7 +137,7 @@ internal static class KernelPcmControlTests
 
         try
         {
-            client.ReadSpeaker(2049);
+            client.ReadSpeaker(2049, fake.SpeakerGeneration);
             throw new InvalidOperationException("Oversized speaker request was accepted");
         }
         catch (ArgumentOutOfRangeException)
@@ -138,7 +147,7 @@ internal static class KernelPcmControlTests
 
         try
         {
-            client.WriteMicrophone(new float[4098]);
+            client.WriteMicrophone(new float[4098], header.Generation);
             throw new InvalidOperationException("Oversized microphone request was accepted");
         }
         catch (ArgumentException)
@@ -149,7 +158,7 @@ internal static class KernelPcmControlTests
         fake.TamperRequestId = true;
         try
         {
-            client.ReadSpeaker(1);
+            client.ReadSpeaker(1, fake.SpeakerGeneration);
             throw new InvalidOperationException("Tampered kernel request ID was accepted");
         }
         catch (InvalidDataException)
@@ -161,7 +170,7 @@ internal static class KernelPcmControlTests
         fake.TamperSampleRate = true;
         try
         {
-            client.ReadSpeaker(1);
+            client.ReadSpeaker(1, fake.SpeakerGeneration);
             throw new InvalidOperationException("Incompatible kernel sample rate was accepted.");
         }
         catch (InvalidDataException)
@@ -173,7 +182,7 @@ internal static class KernelPcmControlTests
         fake.TamperChannels = true;
         try
         {
-            client.ReadSpeaker(1);
+            client.ReadSpeaker(1, fake.SpeakerGeneration);
             throw new InvalidOperationException("Incompatible kernel channel count was accepted.");
         }
         catch (InvalidDataException)
@@ -181,6 +190,35 @@ internal static class KernelPcmControlTests
             Console.WriteLine("PASS: mismatched kernel response channel geometry rejected");
         }
         fake.TamperChannels = false;
+
+        // A role may restart even when the format is unchanged. Its other
+        // direction remains usable while the stale-generation transfer drops.
+        var oldMicrophone = header.Generation;
+        ++fake.MicrophoneGeneration;
+        Check(client.WriteMicrophone([0.8f, 0.8f], oldMicrophone) == 0 &&
+              fake.Writes == 1 &&
+              client.ReadSpeaker(2, fake.SpeakerGeneration).Length == 4,
+            "restarted microphone refuses an in-flight old-generation block");
+        var freshMicrophone = client.Query(VirtualKernelPcmProtocol.InputRole);
+        Check(client.WriteMicrophone([0.2f, -0.2f], freshMicrophone.Generation) == 1 &&
+              fake.Writes == 2,
+            "fresh microphone transfers on the new generation");
+
+        var oldSpeaker = fake.SpeakerGeneration;
+        ++fake.SpeakerGeneration;
+        Check(client.ReadSpeaker(2, oldSpeaker).Length == 0,
+            "restarted speaker drops the read for the previous generation");
+        fake.ReturnAudioForOldGeneration = true;
+        try
+        {
+            client.ReadSpeaker(2, oldSpeaker);
+            throw new InvalidOperationException("PCM from a mismatched generation was accepted.");
+        }
+        catch (InvalidDataException)
+        {
+            Console.WriteLine("PASS: a mismatched generation carrying PCM is rejected.");
+        }
+        fake.ReturnAudioForOldGeneration = false;
 
         var normal = VirtualKernelPcmProtocol.Encode(
             new VirtualKernelPcmProtocol.Header(

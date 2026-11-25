@@ -22,6 +22,12 @@ sections must **not** override the current Install-only/shared-device plan.
 - Studio re-reads Windows inventory after a device-tree notification while the Virtual Driver page is visible. A Windows 10 UI Automation test posted the notification to an isolated Studio copy and observed both role statuses refresh. Install stayed disabled for absent/incomplete packages.
 - Runtime behavior on signed virtual endpoints, service identity and event-driven/cancelable transport are still pending.
 
+## WaveRT RUN lifecycle and Windows 10 scope (2026-11-25)
+
+- The v2 control contract correlates transfers to a per-role generation, with WaveRT frame progress reported in each response.
+- Leaving RUN and applying playback protection clear the relevant kernel PCM queue. A stale request cannot transfer samples into or out of a newer lifetime of the role.
+- Windows 10 passed the WDK compile, actual C++ queue tests in user mode and managed mock tests. The shipping acceptance target is Windows 10 22H2 x64. Windows 11 remains a theoretical target.
+
 ## Architecture
 
 - The only production-path audio backend is `AuralWeave.Native.dll` (C++20, WASAPI shared mode).

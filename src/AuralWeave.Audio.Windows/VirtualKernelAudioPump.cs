@@ -59,17 +59,24 @@ public sealed class VirtualKernelAudioPump
     /// </summary>
     public int PumpOnce()
     {
+        // Pin the transfer to the RUN lifetime observed before reading a block.
+        var input = _driver.Query(VirtualKernelPcmProtocol.InputRole);
         var micFrames = _micReader.Read(_input);
         var microphoneAccepted = 0u;
         if (micFrames > 0)
         {
-            microphoneAccepted = _driver.WriteMicrophone(
-                _input.AsSpan(0, checked((int)micFrames * 2)));
+            if (input.SampleRate != 0)
+            {
+                microphoneAccepted = _driver.WriteMicrophone(
+                    _input.AsSpan(0, checked((int)micFrames * 2)), input.Generation);
+            }
             MicrophoneFramesAccepted += microphoneAccepted;
             MicrophoneFramesDropped += micFrames - microphoneAccepted;
         }
 
-        var speaker = _driver.ReadSpeaker(_blockFrames);
+        var output = _driver.Query(VirtualKernelPcmProtocol.OutputRole);
+        float[] speaker = output.SampleRate == 0
+            ? [] : _driver.ReadSpeaker(_blockFrames, output.Generation);
         var speakerFrames = (uint)(speaker.Length / 2);
         var speakerDelivered = 0u;
         if (speakerFrames > 0)

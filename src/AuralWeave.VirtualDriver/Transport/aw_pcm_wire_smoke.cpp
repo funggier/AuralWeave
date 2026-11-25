@@ -1,6 +1,7 @@
 // Shared Windows 10 user-mode test for the *same* source compiled by WDK.
 // Does NOT load or install a kernel-mode driver.
 #include "aw_pcm_wire.h"
+#include "../Kernel/Source/Main/aw_kernel_pcm_queue.h"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -25,9 +26,11 @@ static AW_PCM_WIRE_PACKET packet(uint32_t opcode, uint32_t role,
     p.sample_format = format;
     p.sample_rate = 48000;
     p.channels = channels;
-    p.bits_per_sample = format == AW_PCM_WIRE_FORMAT_F32 ? 32 : 16;
+    p.bits_per_sample = format == AW_PCM_WIRE_FORMAT_S16 ? 16 : 32;
     p.frame_count = frames;
     p.request_id = 77;
+    if (opcode == AW_PCM_WIRE_INPUT_WRITE || opcode == AW_PCM_WIRE_OUTPUT_READ)
+        p.generation = 42;
     if (opcode == AW_PCM_WIRE_INPUT_WRITE) {
         p.payload_bytes = frames * channels * (p.bits_per_sample / 8);
         p.total_bytes += p.payload_bytes;
@@ -35,11 +38,81 @@ static AW_PCM_WIRE_PACKET packet(uint32_t opcode, uint32_t role,
     return p;
 }
 
+static void verify_wave_rt_lifetimes() {
+    constexpr auto Input = AW_PCM_WIRE_INPUT;
+    constexpr auto Output = AW_PCM_WIRE_OUTPUT;
+    AwKernelPcmInitialize();
+    check(AwKernelPcmAttach(Input, 48000, 2, 32) &&
+          AwKernelPcmAttach(Output, 48000, 2, 16),
+          "both roles attach without acquiring the other role");
+    AwKernelPcmSnapshot input{}, output{};
+    check(AwKernelPcmDescribe(Input, &input) && input.sampleRate == 0 &&
+          input.generation != 0, "attached WaveRT pin stays idle before RUN");
+
+    AwKernelPcmSetRunning(Input, true);
+    AwKernelPcmSetRunning(Output, true);
+    AwKernelPcmDescribe(Input, &input);
+    AwKernelPcmDescribe(Output, &output);
+    auto microphone = packet(AW_PCM_WIRE_INPUT_WRITE, Input, AW_PCM_WIRE_FORMAT_S32, 2, 2);
+    microphone.generation = input.generation;
+    auto speaker = packet(AW_PCM_WIRE_OUTPUT_READ, Output, AW_PCM_WIRE_FORMAT_S16, 2, 2);
+    speaker.generation = output.generation;
+    std::array<aw_pcm_u8, 16> source{}, sink{};
+    source.fill(0x5a);
+    auto put = microphone;
+    check(AwKernelPcmTransfer(put, source.data()) && put.frame_count == 2 &&
+          AwKernelPcmRead(Input, sink.data(), 2, 8, true) == 2 && source == sink,
+          "running microphone feeds exact PCM into WaveRT");
+    AwKernelPcmDescribe(Input, &input);
+    check(input.waveRtFrames == 2 && input.queuedFrames == 0,
+          "microphone progress counts WaveRT consumption instead of IOCTL submits");
+
+    put = microphone;
+    check(AwKernelPcmTransfer(put, source.data()) && put.frame_count == 2,
+          "microphone queues PCM before pause");
+    AwKernelPcmSetRunning(Input, false);
+    AwKernelPcmDescribe(Input, &input);
+    check(input.generation != microphone.generation && input.sampleRate == 0 &&
+          input.queuedFrames == 0 && input.waveRtFrames == 0,
+          "leaving RUN clears queued PCM and advances the generation");
+
+    auto read = speaker;
+    check(AwKernelPcmWrite(Output, source.data(), 2, 4) == 2 &&
+          AwKernelPcmTransfer(read, sink.data()) && read.frame_count == 2 &&
+          read.generation == speaker.generation && read.wave_rt_frames == 2,
+          "speaker keeps its own PCM and clock while microphone is paused");
+
+    AwKernelPcmSetRunning(Input, true);
+    put = microphone;
+    check(AwKernelPcmTransfer(put, source.data()) && put.frame_count == 0 &&
+          put.generation != microphone.generation,
+          "reopening microphone rejects PCM aimed at its prior RUN lifetime");
+    sink.fill(0xff);
+    check(AwKernelPcmRead(Input, sink.data(), 2, 8, true) == 0 &&
+          sink == std::array<aw_pcm_u8, 16>{},
+          "reopened microphone emits silence instead of stale samples");
+
+    check(AwKernelPcmWrite(Output, source.data(), 2, 4) == 2,
+          "speaker queues PCM before protection");
+    AwKernelPcmDisableOutput();
+    read = speaker;
+    check(AwKernelPcmTransfer(read, sink.data()) && read.frame_count == 0 &&
+          read.generation != speaker.generation &&
+          AwKernelPcmWrite(Output, source.data(), 2, 4) == 0,
+          "protected speaker clears pending PCM and blocks new mirroring");
+    AwKernelPcmSetRunning(Input, false);
+    AwKernelPcmSetRunning(Output, false);
+    AwKernelPcmDetach(Input);
+    AwKernelPcmDetach(Output);
+}
+
 int main() {
     try {
-        check(sizeof(AW_PCM_WIRE_PACKET) == 64 &&
-              offsetof(AW_PCM_WIRE_PACKET, request_id) == 56,
-              "native/kernel protocol is fixed 64-byte POD with aligned request ID");
+        check(sizeof(AW_PCM_WIRE_PACKET) == 80 &&
+              offsetof(AW_PCM_WIRE_PACKET, request_id) == 56 &&
+              offsetof(AW_PCM_WIRE_PACKET, generation) == 64 &&
+              offsetof(AW_PCM_WIRE_PACKET, wave_rt_frames) == 72,
+              "native/kernel protocol has fixed v2 header and clock offsets");
 
         auto helloIn = packet(AW_PCM_WIRE_HELLO, AW_PCM_WIRE_INPUT);
         auto helloOut = packet(AW_PCM_WIRE_HELLO, AW_PCM_WIRE_OUTPUT);
@@ -86,6 +159,18 @@ int main() {
         malformed.reserved = 1;
         check(aw_pcm_wire_validate(&malformed, sizeof(malformed)) == AW_PCM_WIRE_BAD_FLAGS,
               "nonzero reserved field rejected");
+        malformed = input;
+        malformed.generation = 0;
+        check(aw_pcm_wire_validate(&malformed, malformed.total_bytes) == AW_PCM_WIRE_BAD_GENERATION,
+              "write requires an observed stream generation");
+        malformed = status;
+        malformed.generation = 7;
+        check(aw_pcm_wire_validate(&malformed, sizeof(malformed)) == AW_PCM_WIRE_BAD_GENERATION,
+              "status cannot claim a stream generation");
+        malformed = output;
+        malformed.wave_rt_frames = 1;
+        check(aw_pcm_wire_validate(&malformed, sizeof(malformed)) == AW_PCM_WIRE_BAD_FLAGS,
+              "user request cannot set the driver clock");
         malformed = helloIn;
         malformed.sample_rate = 0;
         check(aw_pcm_wire_validate(&malformed, sizeof(malformed)) == AW_PCM_WIRE_BAD_FORMAT,
@@ -200,6 +285,7 @@ int main() {
         }
         check(ring.written == 64000 && ring.read == 64000,
               "64,000 PCM frames survived 1,000 full-capacity wrap cycles");
+        verify_wave_rt_lifetimes();
         std::cout << "ALL AURALWEAVE PCM WIRE / RING TESTS PASSED\n";
         return 0;
     } catch (const std::exception& e) {

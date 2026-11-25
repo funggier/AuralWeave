@@ -16,6 +16,9 @@ struct KernelEndpoint {
     aw_pcm_u32 channels;
     aw_pcm_u32 bits;
     aw_pcm_u32 attached;
+    aw_pcm_u32 running;
+    aw_pcm_u64 generation;
+    aw_pcm_u64 waveRtFrames;
     bool blocked; // DRM rejection and producer writes synchronized by lock
 };
 KernelEndpoint g_input{};
@@ -26,6 +29,13 @@ KernelEndpoint* get_endpoint(aw_pcm_u32 role) noexcept {
     if (role == AW_PCM_WIRE_OUTPUT) return &g_output;
     return nullptr;
 }
+void reset_generation(KernelEndpoint& endpoint) noexcept {
+    aw_pcm_ring_reset(&endpoint.ring);
+    if (++endpoint.generation == 0)
+        ++endpoint.generation;
+    endpoint.waveRtFrames = 0;
+}
+
 bool valid_format(aw_pcm_u32 rate, aw_pcm_u32 channels,
                   aw_pcm_u32 bits) noexcept {
     return rate >= 8000 && rate <= 384000 &&
@@ -40,25 +50,28 @@ bool AwKernelPcmDescribe(aw_pcm_u32 role,
     if (!endpoint || !result) return false;
     KIRQL oldIrql;
     KeAcquireSpinLock(&endpoint->lock, &oldIrql);
-    result->sampleRate = endpoint->rate;
-    result->channels = endpoint->channels;
-    result->bitsPerSample = endpoint->bits;
+    const bool running = endpoint->running != 0;
+    result->sampleRate = running ? endpoint->rate : 0u;
+    result->channels = running ? endpoint->channels : 0u;
+    result->bitsPerSample = running ? endpoint->bits : 0u;
     result->queuedFrames = aw_pcm_ring_queued(&endpoint->ring);
+    result->generation = endpoint->generation;
+    result->waveRtFrames = endpoint->waveRtFrames;
     KeReleaseSpinLock(&endpoint->lock, oldIrql);
     return true;
 }
 
-bool AwKernelPcmTransfer(const AW_PCM_WIRE_PACKET& request, aw_pcm_u8* pcm,
-                         aw_pcm_u32& transferred) noexcept {
+bool AwKernelPcmTransfer(AW_PCM_WIRE_PACKET& request, aw_pcm_u8* pcm) noexcept {
     auto* endpoint = get_endpoint(request.role);
     if (!endpoint || !pcm) return false;
 
-    // Keep format, protection and copy atomic with WaveRT attach/detach.
-    transferred = 0;
+    // Match the generation and format in the same critical section as the copy.
+    aw_pcm_u32 transferred = 0;
     KIRQL oldIrql;
     KeAcquireSpinLock(&endpoint->lock, &oldIrql);
     bool compatible = true;
-    if (endpoint->attached > 0 && !endpoint->blocked) {
+    if (endpoint->running != 0 && !endpoint->blocked &&
+        request.generation == endpoint->generation) {
         compatible = request.sample_rate == endpoint->rate &&
             request.channels == endpoint->channels &&
             request.bits_per_sample == endpoint->bits;
@@ -69,6 +82,9 @@ bool AwKernelPcmTransfer(const AW_PCM_WIRE_PACKET& request, aw_pcm_u8* pcm,
                 transferred = aw_pcm_ring_read(&endpoint->ring, pcm, request.frame_count, 0);
         }
     }
+    request.frame_count = transferred;
+    request.generation = endpoint->generation;
+    request.wave_rt_frames = endpoint->waveRtFrames;
     KeReleaseSpinLock(&endpoint->lock, oldIrql);
     return compatible;
 }
@@ -78,8 +94,10 @@ void AwKernelPcmInitialize() noexcept {
     // these endpoints exists before DriverEntry calls this function.
     KeInitializeSpinLock(&g_input.lock);
     KeInitializeSpinLock(&g_output.lock);
-    g_input.attached = 0;
-    g_output.attached = 0;
+    g_input.attached = g_output.attached = 0;
+    g_input.running = g_output.running = 0;
+    g_input.generation = g_output.generation = 1;
+    g_input.waveRtFrames = g_output.waveRtFrames = 0;
     g_input.blocked = false;
     g_output.blocked = false;
     g_input.rate = g_output.rate = 0;
@@ -129,7 +147,10 @@ void AwKernelPcmDetach(aw_pcm_u32 role) noexcept {
     KIRQL oldIrql;
     KeAcquireSpinLock(&endpoint->lock, &oldIrql);
     if (endpoint->attached > 0 && --endpoint->attached == 0) {
-        aw_pcm_ring_reset(&endpoint->ring);
+        if (endpoint->running != 0) {
+            endpoint->running = 0;
+            reset_generation(*endpoint);
+        }
         // Preserve the deny state until the next successful first attach.
         // A concurrent newly-started stream cannot clear it prematurely.
         endpoint->rate = 0;
@@ -139,13 +160,18 @@ void AwKernelPcmDetach(aw_pcm_u32 role) noexcept {
     KeReleaseSpinLock(&endpoint->lock, oldIrql);
 }
 
-void AwKernelPcmFlush(aw_pcm_u32 role) noexcept {
+void AwKernelPcmSetRunning(aw_pcm_u32 role, bool running) noexcept {
     auto* endpoint = get_endpoint(role);
     if (!endpoint) return;
     KIRQL oldIrql;
     KeAcquireSpinLock(&endpoint->lock, &oldIrql);
-    if (endpoint->attached > 0)
-        aw_pcm_ring_reset(&endpoint->ring);
+    if (running && endpoint->running < endpoint->attached) {
+        if (endpoint->running++ == 0)
+            reset_generation(*endpoint);
+    } else if (!running && endpoint->running > 0) {
+        if (--endpoint->running == 0)
+            reset_generation(*endpoint);
+    }
     KeReleaseSpinLock(&endpoint->lock, oldIrql);
 }
 
@@ -155,9 +181,10 @@ void AwKernelPcmDisableOutput() noexcept {
     KeAcquireSpinLock(&endpoint->lock, &oldIrql);
     // Acquiring the same lock as the producer ensures a write which
     // began before DRM changes is flushed, and all later writes fail.
-    endpoint->blocked = true;
-    if (endpoint->attached > 0)
-        aw_pcm_ring_reset(&endpoint->ring);
+    if (!endpoint->blocked) {
+        endpoint->blocked = true;
+        reset_generation(*endpoint);
+    }
     KeReleaseSpinLock(&endpoint->lock, oldIrql);
 }
 
@@ -167,10 +194,12 @@ aw_pcm_u32 AwKernelPcmWrite(aw_pcm_u32 role, const aw_pcm_u8* bytes,
     if (!endpoint || !bytes || !frames || !bytesPerFrame) return 0;
     KIRQL oldIrql;
     KeAcquireSpinLock(&endpoint->lock, &oldIrql);
-    const auto accepted =
-        endpoint->attached > 0 && !endpoint->blocked &&
-        endpoint->ring.bytes_per_frame == bytesPerFrame
-        ? aw_pcm_ring_write(&endpoint->ring, bytes, frames) : 0u;
+    aw_pcm_u32 accepted = 0;
+    if (endpoint->running != 0 && !endpoint->blocked &&
+        endpoint->ring.bytes_per_frame == bytesPerFrame) {
+        endpoint->waveRtFrames += frames;
+        accepted = aw_pcm_ring_write(&endpoint->ring, bytes, frames);
+    }
     KeReleaseSpinLock(&endpoint->lock, oldIrql);
     return accepted;
 }
@@ -182,12 +211,16 @@ aw_pcm_u32 AwKernelPcmRead(aw_pcm_u32 role, aw_pcm_u8* bytes,
     if (!endpoint || !bytes || !frames || !bytesPerFrame) return 0;
     KIRQL oldIrql;
     KeAcquireSpinLock(&endpoint->lock, &oldIrql);
-    const auto received =
-        endpoint->attached > 0 && endpoint->ring.bytes_per_frame == bytesPerFrame
-        ? aw_pcm_ring_read(&endpoint->ring, bytes, frames,
-                           silenceOnUnderrun ? 1 : 0) : 0u;
+    aw_pcm_u32 received = 0;
+    const bool active = endpoint->running != 0 &&
+        endpoint->ring.bytes_per_frame == bytesPerFrame;
+    if (active) {
+        endpoint->waveRtFrames += frames;
+        received = aw_pcm_ring_read(&endpoint->ring, bytes, frames,
+                                    silenceOnUnderrun ? 1 : 0);
+    }
     KeReleaseSpinLock(&endpoint->lock, oldIrql);
-    if (silenceOnUnderrun && received == 0) {
+    if (silenceOnUnderrun && !active) {
         // Also silence the format-mismatch or stopped-stream case, not only
         // the ring underrun case. This is safe with resident DMA memory.
         RtlZeroMemory(bytes, static_cast<SIZE_T>(frames) * bytesPerFrame);
