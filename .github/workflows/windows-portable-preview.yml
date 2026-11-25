@@ -43,6 +43,9 @@ jobs:
       - name: Verify abrupt PCM process-owner death and surviving audio routing
         run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-virtual-bus-recovery
 
+      - name: Verify isolated same-user Named Pipe mock broker
+        run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker
+
       - name: Verify PnP discovery and install fail-closed policy
         run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-virtual-driver-discovery
 
@@ -81,5 +84,28 @@ jobs:
         with:
           name: AuralWeave-Windows-x64-portable-preview
           path: dist/AuralWeave-v*-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build separate non-elevated Mock Broker portable archive
+        run: ./scripts/publish-mock-broker.ps1 -SkipNativeBuild
+
+      - name: Test Mock Broker after relocating its portable folder
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path (Get-Location) 'dist/AuralWeave-MockBroker-v0.1.0-Windows-x64.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'AuralWeave-Relocated-MockBroker'
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+          $env:AW_BROKER_EXE = Join-Path $destination 'AuralWeave.Broker.exe'
+          if (!(Test-Path -LiteralPath $env:AW_BROKER_EXE)) { throw 'Relocated Mock Broker missing' }
+          dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker
+          if ($LASTEXITCODE -ne 0) { throw 'Relocated Mock Broker test failed' }
+          Write-Output 'RELOCATED_MOCK_BROKER_IPC_AND_PCM=PASS'
+
+      - name: Upload separate Mock Broker test artifact (never a kernel driver)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AuralWeave-MockBroker-Windows-x64-testing-only
+          path: dist/AuralWeave-MockBroker-v0.1.0-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14

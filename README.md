@@ -274,3 +274,23 @@ new checkpoint is tracked separately. **No signed Virtual Audio Driver is
 included or installed; INSTALL remains disabled.** Windows 11 remains
 runtime-unverified. See [release notes](docs/releases/v0.3.0.md) and
 [owner crash recovery](docs/PCM_OWNER_LIFETIME_RECOVERY.md).
+
+## Separate local Mock Broker prototype (2026-11-25)
+
+An explicit, **non-elevated** `AuralWeave.Broker --mock` host now offers
+a current-Windows-user-only Named Pipe control endpoint. Independent Native
+PCM session owners register mic contributors or output listeners, with
+one bounded bus mixing microphone PCM and broadcasting it to independent
+listeners. The managed `LocalBrokerControlClient` has a 4-second heartbeat,
+registration/status methods, and awaited disconnect; the server rejects
+oversized/invalid commands, expired sessions, unsupported mappings and
+duplicate broker instances. Real process-to-process tests pass on Windows 10.
+
+The mock process **never** opens the privileged kernel device, installs a
+service, changes Windows PnP or creates a usable Windows virtual mic/speaker.
+The regular Studio ZIP does not include this testing host. A *separate*
+temporary Actions artifact publishes a standalone, relocatable **Mock Broker
+for testing only** with its own explicit startup script. It must not be
+confused with a signed production Virtual Driver. See
+[Mock Broker design and trial instructions](docs/LOCAL_BROKER_MOCK.md).
+

@@ -22,6 +22,12 @@ try
         return 0;
     }
 
+    if (args.Contains("--test-local-broker"))
+    {
+        await LocalBrokerIntegrationTests.RunAsync();
+        return 0;
+    }
+
     if (args.Contains("--test-kernel-pcm-client"))
     {
         KernelPcmControlTests.Run();

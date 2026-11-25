@@ -309,3 +309,23 @@ See [coordinator checkpoint](KERNEL_PCM_COORDINATOR_CHECKPOINT.md).
 Owner-lifetime events are recovery hints, **not** identity or ACL protection.
 Studio-only release policy remains fail-closed for unsigned drivers.
 See [owner crash recovery](PCM_OWNER_LIFETIME_RECOVERY.md).
+
+## Separate user-mode mock Broker and same-user IPC (2026-11-25)
+
+- [x] Create isolated non-elevated `AuralWeave.Broker` console host; explicit `--mock` only
+- [x] Restrict mock IPC to the current Windows user with bounded local Named Pipe protocol
+- [x] Add per-session singleton, role-specific GUID map admission and registration quotas
+- [x] Serialize PCM pump/membership changes; mix independent mic rings and broadcast to listeners
+- [x] Add managed `LocalBrokerControlClient` with serialized requests, heartbeat and fail-stop status
+- [x] Test two PCM sources, surviving peers on QUIT/broken pipe, duplicate broker and oversized input
+- [x] Integrate source build/diagnostics into Windows 10 and GitHub Actions
+- [x] Verify separate portable Mock Broker ZIP after relocation on local Windows 10
+- [ ] Verify portable Mock Broker ZIP relocation and tests in GitHub Actions
+- [ ] Design/review privileged Windows service with SID ACLs and per-user permissions
+- [ ] Replace mock loopback with validated signed kernel access and event-driven clock
+- [ ] Verify Windows 10/11 installed virtual input/output endpoints, HLK and production signing
+
+This is a development checkpoint; **not** a functional Windows virtual
+audio driver or a replacement for the future privileged broker. Do not
+enable INSTALL. Details: [Mock Broker](LOCAL_BROKER_MOCK.md).
+

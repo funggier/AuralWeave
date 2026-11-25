@@ -21,6 +21,7 @@ try {
     $projects = @(
         'src/AuralWeave.Core/AuralWeave.Core.csproj',
         'src/AuralWeave.Desktop/AuralWeave.Desktop.csproj',
+        'src/AuralWeave.Broker/AuralWeave.Broker.csproj',
         'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj',
         'tests/AuralWeave.Core.Tests/AuralWeave.Core.Tests.csproj'
     )
@@ -29,7 +30,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Build failed: $project" }
     }
 
-    foreach ($project in @('src\AuralWeave.Desktop', 'src\AuralWeave.Diagnostics')) {
+    foreach ($project in @('src\AuralWeave.Desktop', 'src\AuralWeave.Diagnostics', 'src\AuralWeave.Broker')) {
         $target = Join-Path $root ($project + '\bin\' + $Configuration + '\net8.0-windows\AuralWeave.Native.dll')
         Copy-Item -LiteralPath $dll -Destination $target -Force
     }
@@ -47,6 +48,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Virtual PCM worker/coordinator lifecycle test failed' }
         & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-virtual-bus-recovery
         if ($LASTEXITCODE -ne 0) { throw 'Multi-process PCM crash recovery test failed' }
+        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-local-broker
+        if ($LASTEXITCODE -ne 0) { throw 'Same-user Named Pipe mock broker test failed' }
         # The installer helper is checked in READ-ONLY mode. Never stage the
         # unsigned WDK SYS or developer helper into the Portable product.
         & (Join-Path $root 'scripts\build-virtual-driver-setup.ps1')

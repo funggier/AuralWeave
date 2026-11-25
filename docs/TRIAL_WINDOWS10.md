@@ -86,3 +86,19 @@ Filter ที่เปิด, ขั้นตอนทำให้เกิด�
 
 รายละเอียดของการทดสอบ Worker/Coordinator และข้อจำกัดด้านการตั้งเวลาเสียง
 ดู [Kernel PCM Coordinator Checkpoint](KERNEL_PCM_COORDINATOR_CHECKPOINT.md).
+
+## ทดลอง Broker แยก (สำหรับนักพัฒนาเท่านั้น)
+
+ใน GitHub Actions ที่ผ่านทั้งหมด อาจมี artifact อีกชุดชื่อ
+`AuralWeave-MockBroker-Windows-x64-testing-only` ซึ่งเป็นโปรแกรม
+User-mode **จำลอง** เท่านั้น ไม่ใช่ไดรเวอร์หรืออุปกรณ์เสียงใน Windows
+
+- แตก ZIP ไปยังโฟลเดอร์ที่เขียนได้ แล้วเรียก `Start-MockBroker.cmd`
+- Broker จะเปิดคอนโซลรอโปรแกรมที่เชื่อมผ่าน Named Pipe ของผู้ใช้ Windows คนเดียวกัน
+- หากไม่มีโปรแกรม PCM ทดสอบเชื่อมต่อ จะไม่มีเสียงส่งไปที่ไหน
+- ถ้าต้องการรันทดสอบอัตโนมัติจากซอร์ส ใช้
+  `dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker`
+- **อย่าเข้าใจว่าเป็น Virtual Input/Output ที่ติดตั้งได้** และไม่ต้องใช้สิทธิ์ Administrator
+
+รายละเอียด: [Local Mock Broker](LOCAL_BROKER_MOCK.md).
+
