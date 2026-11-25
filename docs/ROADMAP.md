@@ -258,3 +258,21 @@ NOT been tested. An elevated trusted broker is not yet shipped.
 See docs/KERNEL_IOCTL_TRANSPORT.md for the exact access, data layout,
 QA and remaining signed-driver prerequisites. The current driver is
 UNSIGNED and must NOT be installed on the host Windows 10 computer.
+
+
+## Windows Portable trial pipeline checkpoint (2026-11-25)
+
+- [x] Add non-invasive Windows Actions workflow for Studio-only x64 Portable ZIP
+- [x] Gate artifact upload behind native build, PCM protocol mock, discovery and cross-folder user-mode tests
+- [x] Exclude unsigned Kernel SYS/INF/CAT, developer setup and debug binaries from test distribution
+- [x] Strengthen managed kernel response validation (role, operation, rate, channel geometry, transfer bounds)
+- [x] Add deterministic negative protocol tests and Windows 10 user trial instructions
+- [ ] Confirm first GitHub Actions run completed successfully and inspect build/test logs
+- [ ] Execute low-volume hardware listening test using an extracted ZIP on Windows 10 22H2
+- [ ] Implement a tested, least-privilege broker with lifecycle, clock pacing and failure recovery
+- [ ] Run actual signed Virtual Input and Virtual Output kernel-driver tests in a controlled Windows 10 VM
+- [ ] Obtain required production driver signing and complete Windows 11 runtime verification
+
+**Release gate:** CI artifact is an ordinary Portable Studio preview, not a
+functional or installable Virtual Driver. Never publish the unsigned WDK
+prototype or turn on the INSTALL button on the basis of compile/mock tests.
