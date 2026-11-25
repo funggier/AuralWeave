@@ -228,3 +228,19 @@ NOT been tested. An elevated trusted broker is not yet shipped.
 See docs/KERNEL_IOCTL_TRANSPORT.md for the exact access, data layout,
 QA and remaining signed-driver prerequisites. The current driver is
 UNSIGNED and must NOT be installed on the host Windows 10 computer.
+
+## Automated Windows portable Studio preview (2026-11-25)
+
+The [Windows portable preview workflow](.github/workflows/windows-portable-preview.yml)
+builds the native C++/WPF Studio and runs user-mode virtual PCM, mock kernel
+protocol and cross-folder tests on a Windows runner. Only a successful run
+uploads the **Studio-only Windows x64 Portable ZIP** as a temporary Actions
+artifact. The ZIP audit rejects kernel SYS/INF/CAT, developer setup utilities
+and debug files. The workflow never installs a kernel driver or enables
+Windows test-signing.
+
+**Installation of the Virtual Driver remains disabled.** An unsigned
+kernel prototype passing a build is *not* a working Windows audio endpoint.
+Windows 11 is still a compatibility target, not runtime-verified.
+For download, safe listening checks and remaining acceptance criteria,
+see [Windows 10 Portable trial guide](docs/TRIAL_WINDOWS10.md).
