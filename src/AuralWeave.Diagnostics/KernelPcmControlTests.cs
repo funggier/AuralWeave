@@ -339,5 +339,69 @@ internal static class KernelPcmControlTests
         }
 
         Console.WriteLine("VIRTUAL_KERNEL_PCM_WORKER_LIFECYCLE=PASS (user-mode only)");
+
+        // Two independent Portable-style PCM sources produce microphone
+        // audio for a single kernel-facing channel. Speaker output is
+        // distributed to two independent listeners, with no stolen frames.
+        var sharedMock = new SimulatedDriver();
+        var sharedDriver = new VirtualKernelPcmClient(sharedMock);
+        using (var coordinator = new VirtualKernelAudioCoordinator(sharedDriver, 64, 512))
+        using (var sourceA = NativeVirtualAudioBridge.Create(1, 1, 48000, 2, 512))
+        using (var sourceB = NativeVirtualAudioBridge.Create(1, 1, 48000, 2, 512))
+        using (var earA = NativeVirtualAudioBridge.Create(2, 1, 48000, 2, 512))
+        using (var earB = NativeVirtualAudioBridge.Create(2, 1, 48000, 2, 512))
+        {
+            coordinator.AddMicrophoneSource(sourceA.Name);
+            coordinator.AddMicrophoneSource(sourceB.Name);
+            coordinator.AddSpeakerListener(earA.Name);
+            coordinator.AddSpeakerListener(earB.Name);
+
+            if (sourceA.Write([0.25f, 0.25f, 0.25f, 0.25f]) != 2 ||
+                sourceB.Write([0.40f, 0.40f, 0.40f, 0.40f]) != 2 ||
+                coordinator.PumpOnce() != 4)
+                throw new InvalidOperationException(
+                    "Multi-client Virtual Input mixer did not transfer a full block.");
+
+            var samplesA = new float[4];
+            var samplesB = new float[4];
+            if (earA.Read(samplesA) != 2 || earB.Read(samplesB) != 2 ||
+                sharedMock.CapturedMicrophoneSamples.Length != 4 ||
+                Math.Abs(sharedMock.CapturedMicrophoneSamples[0] /
+                         (float)int.MaxValue - 0.65f) > 0.0001f ||
+                samplesA.Where((value, index) =>
+                    Math.Abs(value - samplesB[index]) > 0.00001f).Any() ||
+                Math.Abs(samplesA[0] - 0.5f) > 0.0001f ||
+                Math.Abs(samplesA[1] + 0.5f) > 0.0001f ||
+                coordinator.MicrophoneSources != 2 ||
+                coordinator.SpeakerListeners != 2 ||
+                coordinator.DroppedSpeakerFrames != 0)
+                throw new InvalidOperationException(
+                    "Single kernel PCM channel failed multi-source mix or independent fanout.");
+            Console.WriteLine("PASS: two microphone sources mix to 0.65 and two speaker listeners hear identical PCM.");
+
+            if (!coordinator.RemoveMicrophoneSource(sourceA.Name) ||
+                sourceB.Write([0.20f, 0.20f, 0.20f, 0.20f]) != 2 ||
+                coordinator.PumpOnce() != 4 ||
+                Math.Abs(sharedMock.CapturedMicrophoneSamples[0] /
+                         (float)int.MaxValue - 0.20f) > 0.0001f)
+                throw new InvalidOperationException(
+                    "Single remaining Portable source did not survive peer removal.");
+            Console.WriteLine("PASS: shared virtual microphone continues when a source disconnects.");
+
+            // The same bounded worker now schedules the complete coordinator
+            // pipeline; no Windows kernel driver or new Windows service.
+            await using var scheduled = new VirtualKernelAudioWorker(
+                sharedDriver, coordinator);
+            scheduled.Start();
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            while (scheduled.Cycles < 2 && !deadline.IsCancellationRequested)
+                await Task.Delay(10);
+            if (scheduled.Cycles < 2 || scheduled.LastFailure is not null)
+                throw new InvalidOperationException(
+                    "Scheduled multi-client coordinator did not advance.");
+            await scheduled.StopAsync();
+            Console.WriteLine("PASS: scheduled coordinator remains explicitly stoppable.");
+        }
+        Console.WriteLine("VIRTUAL_KERNEL_MULTI_CLIENT_COORDINATOR=PASS (user-mode mock only)");
     }
 }
