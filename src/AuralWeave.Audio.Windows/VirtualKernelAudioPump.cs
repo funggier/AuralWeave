@@ -44,6 +44,8 @@ public sealed class VirtualKernelAudioPump
         _input = new float[blockFrames * 2];
     }
 
+    public int BlockFrames => _blockFrames;
+
     public ulong MicrophoneFramesAccepted { get; private set; }
     public ulong MicrophoneFramesDropped { get; private set; }
     public ulong SpeakerFramesDelivered { get; private set; }
