@@ -17,10 +17,11 @@ namespace AuralWeave.Audio.Windows;
 /// </summary>
 public sealed class LocalVirtualAudioBroker : IDisposable
 {
-    public const string PipeName = "AuralWeave.MockBroker.Control.v1";
+    public const string PipeName = "AuralWeave.MockBroker.Control.v2";
     public const int MaxClients = 8;
     private const int FramesPerBlock = 128;
     private const int MaxCommandLength = 200;
+    private readonly Guid _instanceId = Guid.NewGuid();
     private readonly object _gate = new();
     private readonly SharedVirtualAudioBus _input = new(1, 48000, 2, FramesPerBlock);
     private readonly SharedVirtualAudioBus _output = new(2, 48000, 2, FramesPerBlock);
@@ -33,6 +34,7 @@ public sealed class LocalVirtualAudioBroker : IDisposable
     private int _started;
     private bool _disposed;
     private long _ticks;
+    private long _pings;
     private ulong _frames;
 
     private static readonly Regex InputMap = new(
@@ -164,6 +166,7 @@ public sealed class LocalVirtualAudioBroker : IDisposable
     {
         string? mapping = null;
         bool microphone = false;
+        bool greeted = false;
         try
         {
             using (pipe)
@@ -186,8 +189,26 @@ public sealed class LocalVirtualAudioBroker : IDisposable
                     }
                     if (request is null)
                         break;
+                    // Explicit version negotiation on every new connection.
+                    // An old client cannot accidentally register PCM under a
+                    // changed wire protocol after a broker replacement.
+                    if (!greeted)
+                    {
+                        if (request != "HELLO 2")
+                        {
+                            await ReplyAsync(pipe, "ERR PROTOCOL_VERSION", shutdown)
+                                .ConfigureAwait(false);
+                            break;
+                        }
+                        greeted = true;
+                        await ReplyAsync(pipe,
+                            $"OK HELLO 2 instance={_instanceId:N}", shutdown)
+                            .ConfigureAwait(false);
+                        continue;
+                    }
                     if (request == "PING")
                     {
+                        lock (_gate) _pings++;
                         await ReplyAsync(pipe, "OK PONG", shutdown).ConfigureAwait(false);
                         continue;
                     }
@@ -195,7 +216,7 @@ public sealed class LocalVirtualAudioBroker : IDisposable
                     {
                         string status;
                         lock (_gate)
-                            status = $"OK STATUS input={_input.Contributors} output={_output.Listeners} ticks={_ticks} frames={_frames}";
+                            status = $"OK STATUS input={_input.Contributors} output={_output.Listeners} ticks={_ticks} frames={_frames} instance={_instanceId:N} pings={_pings} dropped={_output.FramesDropped}";
                         await ReplyAsync(pipe, status, shutdown).ConfigureAwait(false);
                         continue;
                     }

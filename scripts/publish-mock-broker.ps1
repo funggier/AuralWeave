@@ -61,7 +61,12 @@ pause
     })
     if ($forbidden.Count) { throw 'Forbidden unsigned driver or Studio files in Mock Broker bundle.' }
 
-    $archive = Join-Path $root 'dist\AuralWeave-MockBroker-v0.1.0-Windows-x64.zip'
+    $projectXml = [xml](Get-Content -LiteralPath (Join-Path $root 'src\AuralWeave.Broker\AuralWeave.Broker.csproj') -Raw)
+    $version = [string]$projectXml.Project.PropertyGroup.Version
+    if ($version -notmatch '^\d+\.\d+\.\d+$') {
+        throw "Invalid Mock Broker version in project: $version"
+    }
+    $archive = Join-Path $root ("dist\AuralWeave-MockBroker-v$version-Windows-x64.zip")
     Compress-Archive -Path (Join-Path $dest '*') -DestinationPath $archive -Force -CompressionLevel Optimal
     if (!(Test-Path -LiteralPath $archive)) { throw 'Mock Broker ZIP creation failed' }
     Write-Output "MOCK_BROKER_PORTABLE_NO_KERNEL=PASS: $archive"

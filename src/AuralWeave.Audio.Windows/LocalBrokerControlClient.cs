@@ -18,12 +18,17 @@ public sealed class LocalBrokerControlClient : IAsyncDisposable
     private Exception? _failure;
     private int _disposed;
 
-    private LocalBrokerControlClient(NamedPipeClientStream pipe)
+    private LocalBrokerControlClient(NamedPipeClientStream pipe, Guid brokerInstanceId)
     {
+        BrokerInstanceId = brokerInstanceId;
         _pipe = pipe;
         _heartbeat = HeartbeatLoopAsync();
     }
 
+    /// <summary>A unique lifetime ID, not an authentication token.
+    /// When the mock broker restarts it must change, even if the pipe name
+    /// and protocol remain the same.</summary>
+    public Guid BrokerInstanceId { get; }
     public Exception? LastFailure => Volatile.Read(ref _failure);
 
     /// <summary>
@@ -49,6 +54,13 @@ public sealed class LocalBrokerControlClient : IAsyncDisposable
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(8));
             await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
+            var hello = await ExchangeAsync(pipe, "HELLO 2", timeout.Token)
+                .ConfigureAwait(false);
+            const string greeting = "OK HELLO 2 instance=";
+            if (!hello.StartsWith(greeting, StringComparison.Ordinal) ||
+                !Guid.TryParseExact(hello[greeting.Length..], "N", out var instance))
+                throw new InvalidDataException(
+                    "Broker has an incompatible or malformed control protocol version.");
             var role = ownedMapping.Role == VirtualKernelPcmProtocol.InputRole
                 ? "INPUT" : "OUTPUT";
             var response = await ExchangeAsync(pipe,
@@ -57,7 +69,7 @@ public sealed class LocalBrokerControlClient : IAsyncDisposable
             if (response != "OK REGISTERED " + role)
                 throw new InvalidOperationException(
                     "Mock broker rejected client mapping: " + response);
-            result = new LocalBrokerControlClient(pipe);
+            result = new LocalBrokerControlClient(pipe, instance);
             return result;
         }
         catch
@@ -76,6 +88,19 @@ public sealed class LocalBrokerControlClient : IAsyncDisposable
     /// </summary>
     public Task<string> QueryStatusAsync(CancellationToken token = default) =>
         RequestAsync("STATUS", token);
+
+    /// <summary>Read one validated, typed status snapshot. Refuse to
+    /// mistake a replacement broker lifetime for this connection's owner.</summary>
+    public async Task<LocalBrokerRuntimeStatus> GetStatusAsync(
+        CancellationToken token = default)
+    {
+        var status = LocalBrokerRuntimeStatus.Parse(
+            await QueryStatusAsync(token).ConfigureAwait(false));
+        if (status.BrokerInstanceId != BrokerInstanceId)
+            throw new InvalidDataException(
+                "Broker instance changed without a new control handshake.");
+        return status;
+    }
 
     public Task<string> PingAsync(CancellationToken token = default) =>
         RequestAsync("PING", token);
@@ -96,6 +121,11 @@ public sealed class LocalBrokerControlClient : IAsyncDisposable
                     "Mock broker rejected " + command + ": " + response);
             return response;
         }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            Volatile.Write(ref _failure, ex);
+            throw;
+        }
         finally
         {
             _requests.Release();
@@ -115,6 +145,7 @@ public sealed class LocalBrokerControlClient : IAsyncDisposable
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (ObjectDisposedException) when (_stop.IsCancellationRequested) { }
         catch (Exception ex)
         {
             Volatile.Write(ref _failure, ex);

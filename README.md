@@ -294,3 +294,15 @@ for testing only** with its own explicit startup script. It must not be
 confused with a signed production Virtual Driver. See
 [Mock Broker design and trial instructions](docs/LOCAL_BROKER_MOCK.md).
 
+## Mock Broker v0.2.0: versioned restart recovery
+
+The non-elevated Mock Broker now negotiates **HELLO 2** on a separate
+`AuralWeave.MockBroker.Control.v2` pipe, reports a unique process instance
+identifier and strictly typed telemetry, and explicitly refuses to reuse
+old PCM FIFO state after broker crash/restart. The managed endpoint session
+helper creates fresh user-mode PCM rings and rejects a fake restart.
+Windows 10 cross-process tests cover hard process kill, old-pipe failure,
+correct new PCM and idle heartbeat. This is **not** a production service,
+a Windows audio device, or a working/signed Virtual Driver.
+See [restart design and tests](docs/BROKER_CRASH_RESTART_CHECKPOINT.md).
+

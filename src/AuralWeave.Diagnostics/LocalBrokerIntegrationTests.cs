@@ -26,6 +26,8 @@ internal static class LocalBrokerIntegrationTests
             };
         }
 
+        public Guid BrokerInstanceId { get; private set; }
+
         public static async Task<Connection> OpenAsync()
         {
             var pipe = new NamedPipeClientStream(".", LocalVirtualAudioBroker.PipeName,
@@ -33,7 +35,14 @@ internal static class LocalBrokerIntegrationTests
             try
             {
                 await pipe.ConnectAsync(8000);
-                return new Connection(pipe);
+                var client = new Connection(pipe);
+                var hello = await client.SendAsync("HELLO 2");
+                const string prefix = "OK HELLO 2 instance=";
+                if (!hello.StartsWith(prefix, StringComparison.Ordinal) ||
+                    !Guid.TryParseExact(hello[prefix.Length..], "N", out var instance))
+                    throw new InvalidOperationException("Broker sent malformed protocol greeting.");
+                client.BrokerInstanceId = instance;
+                return client;
             }
             catch
             {
@@ -138,6 +147,135 @@ internal static class LocalBrokerIntegrationTests
         throw new InvalidOperationException("Broker pipe registration produced no PCM loopback.");
     }
 
+    /// <summary>
+    /// Kill a real broker process without graceful QUIT; make sure old control
+    /// pipes fail, restart with a different process identity, and create fresh
+    /// FIFO rings rather than replaying audio written for the dead process.
+    /// No actual kernel driver or Windows virtual audio endpoint is involved.
+    /// </summary>
+    public static async Task RunRestartAsync()
+    {
+        using var first = LaunchBroker();
+        Process? second = null;
+        try
+        {
+            if (await first.StandardOutput.ReadLineAsync()
+                .WaitAsync(TimeSpan.FromSeconds(8))
+                != "AURALWEAVE_MOCK_BROKER_STARTING")
+                throw new InvalidOperationException("Initial mock broker failed to start.");
+
+            // A peer that skips HELLO must not access even the status API.
+            using (var wrongPipe = new NamedPipeClientStream(".",
+                LocalVirtualAudioBroker.PipeName, PipeDirection.InOut,
+                PipeOptions.Asynchronous))
+            {
+                await wrongPipe.ConnectAsync(8000);
+                var ping = Encoding.ASCII.GetBytes("PING\n");
+                await wrongPipe.WriteAsync(ping);
+                using var wrongReader = new StreamReader(wrongPipe, Encoding.ASCII,
+                    false, 1024, leaveOpen: true);
+                if (await wrongReader.ReadLineAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(5)) != "ERR PROTOCOL_VERSION")
+                    throw new InvalidOperationException(
+                        "Broker accepted an unversioned control connection.");
+            }
+
+            await using var firstMic = await LocalBrokerEndpointSession.OpenAsync(1);
+            await using var firstSpeaker = await LocalBrokerEndpointSession.OpenAsync(2);
+            var previousId = firstMic.BrokerInstanceId;
+            var previousMicMapping = firstMic.Pcm.Name;
+            var previousSpeakerMapping = firstSpeaker.Pcm.Name;
+            if (previousId == Guid.Empty || firstSpeaker.BrokerInstanceId != previousId)
+                throw new InvalidOperationException("Invalid first process instance ID.");
+
+            // Reopening without an actual restart must fail and release its
+            // own temporary native mapping and pipe.
+            try
+            {
+                await using var unexpected = await
+                    LocalBrokerEndpointSession.OpenAfterRestartAsync(1, previousId);
+                throw new InvalidOperationException("Same-process reconnect was accepted.");
+            }
+            catch (InvalidOperationException e) when (
+                e.Message.Contains("has not changed", StringComparison.Ordinal))
+            {
+                Console.WriteLine("PASS: reject false reconnect within the same broker lifetime.");
+            }
+
+            if (firstMic.Pcm.Write([0.15f, -0.15f, 0.15f, -0.15f]) != 2)
+                throw new InvalidOperationException("Initial mock microphone cannot write.");
+            await CheckFramesAsync(firstSpeaker.Pcm, 0.15f);
+            Console.WriteLine("PASS: first broker instance transports registered PCM.");
+
+            await StopProcessAsync(first); // force hard-kill with live clients
+            try
+            {
+                await firstMic.Control.PingAsync();
+                throw new InvalidOperationException(
+                    "Dead broker unexpectedly answered an old control pipe.");
+            }
+            catch (IOException) { }
+            if (firstMic.Control.LastFailure is null)
+                throw new InvalidOperationException(
+                    "Dead broker did not publish failed control connectivity.");
+
+            // This sample belongs to the dead broker and MUST NOT be replayed
+            // by the fresh-ring reconnect helper.
+            if (firstMic.Pcm.Write([0.95f, -0.95f, 0.95f, -0.95f]) != 2)
+                throw new InvalidOperationException("Cannot queue stale old-session PCM.");
+            await firstMic.DisposeAsync();
+            await firstSpeaker.DisposeAsync();
+
+            second = LaunchBroker();
+            if (await second.StandardOutput.ReadLineAsync()
+                .WaitAsync(TimeSpan.FromSeconds(8))
+                != "AURALWEAVE_MOCK_BROKER_STARTING")
+                throw new InvalidOperationException("Replacement mock broker failed to start.");
+            await using var inspector = await Connection.OpenAsync();
+            if (inspector.BrokerInstanceId == previousId ||
+                !(await inspector.SendAsync("STATUS")).Contains(
+                    "input=0 output=0", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Replacement broker reused an old instance ID or retained clients.");
+
+            await using var nextMic =
+                await LocalBrokerEndpointSession.OpenAfterRestartAsync(1, previousId);
+            await using var nextSpeaker =
+                await LocalBrokerEndpointSession.OpenAfterRestartAsync(2, previousId);
+            if (nextMic.Pcm.Name == previousMicMapping ||
+                nextSpeaker.Pcm.Name == previousSpeakerMapping ||
+                nextMic.BrokerInstanceId != nextSpeaker.BrokerInstanceId ||
+                nextMic.BrokerInstanceId != inspector.BrokerInstanceId)
+                throw new InvalidOperationException(
+                    "New broker did not receive brand-new PCM ownership sessions.");
+
+            await WaitForStatusAsync(inspector, "input=1 output=1");
+            var empty = new float[4];
+            if (nextSpeaker.Pcm.Read(empty) != 0)
+                throw new InvalidOperationException(
+                    "New output FIFO leaked old broker PCM before new audio.");
+
+            if (nextMic.Pcm.Write([0.32f, -0.32f, 0.32f, -0.32f]) != 2)
+                throw new InvalidOperationException("New mock microphone cannot write.");
+            await CheckFramesAsync(nextSpeaker.Pcm, 0.32f);
+            Console.WriteLine(
+                "PASS: hard-killed broker can restart with new epoch, new rings, no stale audio replay.");
+
+            await StopProcessAsync(second);
+            Console.WriteLine(
+                "LOCAL_MOCK_BROKER_CRASH_RESTART_RECOVERY=PASS (explicit, bounded, no kernel)");
+        }
+        finally
+        {
+            if (second is not null)
+            {
+                await StopProcessAsync(second);
+                second.Dispose();
+            }
+            await StopProcessAsync(first);
+        }
+    }
+
     public static async Task RunAsync()
     {
         using var broker = LaunchBroker();
@@ -150,6 +288,8 @@ internal static class LocalBrokerIntegrationTests
                     "Mock broker failed to initialize: " +
                     await broker.StandardError.ReadToEndAsync());
             await using var inspector = await Connection.OpenAsync();
+            if (inspector.BrokerInstanceId == Guid.Empty)
+                throw new InvalidOperationException("Broker greeting has no instance ID.");
             if (await inspector.SendAsync("PING") != "OK PONG" ||
                 !((await inspector.SendAsync("STATUS")).Contains(
                     "input=0 output=0", StringComparison.Ordinal)))
@@ -184,11 +324,31 @@ internal static class LocalBrokerIntegrationTests
             // other two sessions, including its automatic heartbeat and QUIT.
             await using var clientB = await LocalBrokerControlClient.ConnectAsync(micB);
             await using var listener = await LocalBrokerControlClient.ConnectAsync(ears);
-            if (await clientB.PingAsync() != "OK PONG" ||
+            if (clientB.BrokerInstanceId != inspector.BrokerInstanceId ||
+                listener.BrokerInstanceId != inspector.BrokerInstanceId ||
+                await clientB.PingAsync() != "OK PONG" ||
                 !(await listener.QueryStatusAsync()).Contains(
                     "input=2 output=1", StringComparison.Ordinal))
                 throw new InvalidOperationException("Managed broker client cannot query health/status.");
             await WaitForStatusAsync(inspector, "input=2 output=1");
+
+            var beforeHeartbeat = await clientB.GetStatusAsync();
+            if (beforeHeartbeat.BrokerInstanceId != inspector.BrokerInstanceId ||
+                beforeHeartbeat.MicrophoneSources != 2 ||
+                beforeHeartbeat.SpeakerListeners != 1)
+                throw new InvalidOperationException(
+                    "Typed mock broker status has an incorrect lifetime or membership.");
+            // No explicit PING from the managed clients during this interval.
+            // The automatically scheduled 4-second heartbeat must prevent
+            // their 15-second idle control-session timeout.
+            await Task.Delay(TimeSpan.FromMilliseconds(5500));
+            var afterHeartbeat = await clientB.GetStatusAsync();
+            if (afterHeartbeat.ReceivedPings <= beforeHeartbeat.ReceivedPings ||
+                afterHeartbeat.MicrophoneSources != 2 ||
+                afterHeartbeat.SpeakerListeners != 1)
+                throw new InvalidOperationException(
+                    "Managed client heartbeat did not keep its registration active.");
+            Console.WriteLine("PASS: typed status and automatic heartbeat preserve idle PCM registrations.");
 
             // A different IPC client cannot claim a registered mapping.
             await using (var duplicate = await Connection.OpenAsync())

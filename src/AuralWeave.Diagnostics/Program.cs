@@ -22,6 +22,12 @@ try
         return 0;
     }
 
+    if (args.Contains("--test-local-broker-restart"))
+    {
+        await LocalBrokerIntegrationTests.RunRestartAsync();
+        return 0;
+    }
+
     if (args.Contains("--test-local-broker"))
     {
         await LocalBrokerIntegrationTests.RunAsync();

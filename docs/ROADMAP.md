@@ -329,3 +329,18 @@ This is a development checkpoint; **not** a functional Windows virtual
 audio driver or a replacement for the future privileged broker. Do not
 enable INSTALL. Details: [Mock Broker](LOCAL_BROKER_MOCK.md).
 
+## Mock Broker protocol v2 / explicit restart recovery (2026-11-25)
+
+- [x] Add per-process broker lifetime GUID and mandatory versioned HELLO 2 handshake
+- [x] Move breaking control wire protocol to separate Named Pipe v2
+- [x] Add validated typed status, heartbeat counter, and dropped-listener telemetry
+- [x] Add fresh mapping owner session helper for explicit fail-closed reconnect
+- [x] Test actual hard kill and new process, with no replay of stale PCM
+- [x] Test no unversioned access and reject fake same-instance reconnect
+- [x] Test idle heartbeat with real Windows process and registered mappings
+- [ ] Confirm GitHub Windows runner and relocated Mock Broker v0.2.0 ZIP checks
+- [ ] Add real Studio-facing session UI and verified audio consent controls
+- [ ] Implement privileged service security model and signed kernel transport
+
+See [Mock Broker crash/restart checkpoint](BROKER_CRASH_RESTART_CHECKPOINT.md).
+

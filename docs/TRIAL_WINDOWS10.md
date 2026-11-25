@@ -102,3 +102,8 @@ User-mode **จำลอง** เท่านั้น ไม่ใช่ได�
 
 รายละเอียด: [Local Mock Broker](LOCAL_BROKER_MOCK.md).
 
+ทดสอบการปิด Broker แบบบังคับและเชื่อมใหม่โดยใช้ PCM Buffer ใหม่ได้ด้วย
+`dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker-restart`
+แพ็กเกจ Mock Broker สำหรับทดสอบเปลี่ยนเป็น `v0.2.0` โดยแยกช่อง Named Pipe `v2`
+เพื่อป้องกันการเชื่อมโปรแกรมรุ่นเก่าที่ใช้ Protocol ไม่ตรงกัน
+
