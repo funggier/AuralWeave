@@ -8,6 +8,8 @@ internal static class KernelPcmControlTests
         public int[] CapturedMicrophoneSamples { get; private set; } = [];
         public int Writes { get; private set; }
         public bool TamperRequestId { get; set; }
+        public bool TamperSampleRate { get; set; }
+        public bool TamperChannels { get; set; }
 
         public byte[] Exchange(byte[] request, int maxResponse)
         {
@@ -65,6 +67,10 @@ internal static class KernelPcmControlTests
                 // read/write IOCTL transfers a maximum of 2048 at once.
                 BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(40), 8192);
             }
+            if (TamperSampleRate)
+                BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(28), 44100);
+            if (TamperChannels)
+                BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(32), 1);
             if (reply.Length > maxResponse)
                 throw new InvalidDataException("Mock exceeded METHOD_BUFFERED response size.");
             return reply;
@@ -134,6 +140,30 @@ internal static class KernelPcmControlTests
         }
         fake.TamperRequestId = false;
 
+        fake.TamperSampleRate = true;
+        try
+        {
+            client.ReadSpeaker(1);
+            throw new InvalidOperationException("Incompatible kernel sample rate was accepted.");
+        }
+        catch (InvalidDataException)
+        {
+            Console.WriteLine("PASS: mismatched kernel response sample rate rejected");
+        }
+        fake.TamperSampleRate = false;
+
+        fake.TamperChannels = true;
+        try
+        {
+            client.ReadSpeaker(1);
+            throw new InvalidOperationException("Incompatible kernel channel count was accepted.");
+        }
+        catch (InvalidDataException)
+        {
+            Console.WriteLine("PASS: mismatched kernel response channel geometry rejected");
+        }
+        fake.TamperChannels = false;
+
         var normal = VirtualKernelPcmProtocol.Encode(
             new VirtualKernelPcmProtocol.Header(
                 VirtualKernelPcmProtocol.Status,
@@ -156,6 +186,29 @@ internal static class KernelPcmControlTests
             throw new InvalidOperationException("Response flags were not validated.");
         }
         catch (InvalidDataException) { Console.WriteLine("PASS: unknown kernel reply flags rejected"); }
+        corrupt = (byte[])normal.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(corrupt.AsSpan(16), 99);
+        try
+        {
+            VirtualKernelPcmProtocol.Decode(corrupt);
+            throw new InvalidOperationException("Unknown kernel role was accepted.");
+        }
+        catch (InvalidDataException) { Console.WriteLine("PASS: unknown kernel PCM role rejected"); }
+        corrupt = (byte[])normal.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(corrupt.AsSpan(40), 4096);
+        BinaryPrimitives.WriteUInt32LittleEndian(corrupt.AsSpan(12),
+            VirtualKernelPcmProtocol.OutputRead);
+        BinaryPrimitives.WriteUInt32LittleEndian(corrupt.AsSpan(16),
+            VirtualKernelPcmProtocol.OutputRole);
+        BinaryPrimitives.WriteUInt32LittleEndian(corrupt.AsSpan(24),
+            VirtualKernelPcmProtocol.Signed16Format);
+        BinaryPrimitives.WriteUInt32LittleEndian(corrupt.AsSpan(36), 16);
+        try
+        {
+            VirtualKernelPcmProtocol.Decode(corrupt);
+            throw new InvalidOperationException("Oversized audio transfer frame count was accepted.");
+        }
+        catch (InvalidDataException) { Console.WriteLine("PASS: oversized non-status PCM frame count rejected"); }
 
         // Full data-path stage: a Float32 post-mix virtual-microphone
         // mapping is consumed, converted to PCM32, and the mocked kernel
