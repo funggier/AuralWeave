@@ -10,6 +10,8 @@ internal static class KernelPcmControlTests
         public bool TamperRequestId { get; set; }
         public bool TamperSampleRate { get; set; }
         public bool TamperChannels { get; set; }
+        public bool NoActiveStream { get; set; }
+        public bool FailSpeakerRead { get; set; }
 
         public byte[] Exchange(byte[] request, int maxResponse)
         {
@@ -41,6 +43,8 @@ internal static class KernelPcmControlTests
                     frames = req.Frames;
                     break;
                 case VirtualKernelPcmProtocol.OutputRead:
+                    if (FailSpeakerRead)
+                        throw new IOException("Simulated kernel device disconnected.");
                     if (req.Role != VirtualKernelPcmProtocol.OutputRole ||
                         req.PayloadBytes != 0 || req.Frames < 1 ||
                         req.Frames > VirtualKernelPcmProtocol.MaxFrames)
@@ -66,6 +70,11 @@ internal static class KernelPcmControlTests
                 // A live kernel queue can have >2048 frames even though each
                 // read/write IOCTL transfers a maximum of 2048 at once.
                 BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(40), 8192);
+            }
+            if (req.Opcode == VirtualKernelPcmProtocol.Status && NoActiveStream)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(28), 0);
+                BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(32), 0);
             }
             if (TamperSampleRate)
                 BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(28), 44100);
@@ -237,5 +246,98 @@ internal static class KernelPcmControlTests
                 "user-mode PCM bus -> kernel protocol mock -> second PCM bus data path");
         }
         Console.WriteLine("KERNEL_PCM_USER_MODE_MOCK_BRIDGE=PASS (no driver installed)");
+    }
+
+    /// <summary>
+    /// A Windows 10 user-mode/Native DLL regression only. Exercises the
+    /// future broker's explicit start/stop/format gate and failure path.
+    /// Never opens or installs a kernel audio driver.
+    /// </summary>
+    public static async Task RunWorkerAsync()
+    {
+        using var inputOwner = NativeVirtualAudioBridge.Create(1, 1, 48000, 2, 512);
+        using var outputOwner = NativeVirtualAudioBridge.Create(2, 1, 48000, 2, 512);
+        using var inputReader = NativeVirtualAudioBridge.Attach(inputOwner.Name, 1, 1);
+        using var outputWriter = NativeVirtualAudioBridge.Attach(outputOwner.Name, 2, 1);
+        var fake = new SimulatedDriver();
+        var driver = new VirtualKernelPcmClient(fake);
+        var pump = new VirtualKernelAudioPump(driver, inputReader, outputWriter, 64);
+        await using (var worker = new VirtualKernelAudioWorker(driver, pump))
+        {
+            worker.Start();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            while (worker.Cycles < 3 && !timeout.IsCancellationRequested)
+                await Task.Delay(10);
+            if (worker.Cycles < 3 || worker.ActiveCycles == 0 ||
+                worker.LastFailure is not null)
+                throw new InvalidOperationException(
+                    "Explicit kernel PCM worker did not advance mock data without error.");
+
+            await worker.StopAsync();
+            var stoppedCycles = worker.Cycles;
+            await Task.Delay(60);
+            if (worker.IsRunning || worker.Cycles != stoppedCycles)
+                throw new InvalidOperationException(
+                    "Virtual PCM worker continued pumping after StopAsync.");
+            await worker.StopAsync(); // Idempotent.
+            try
+            {
+                worker.Start();
+                throw new InvalidOperationException(
+                    "Single-use PCM worker restarted without new validation.");
+            }
+            catch (InvalidOperationException ex) when (
+                ex.Message.Contains("single-use", StringComparison.Ordinal))
+            {
+                Console.WriteLine("PASS: worker stop is idempotent and restart is explicit.");
+            }
+        }
+        Console.WriteLine("PASS: paced virtual PCM mock worker starts and stops without a busy retry loop.");
+
+        // Both WaveRT endpoints must be active BEFORE the first audio tick.
+        var detached = new SimulatedDriver { NoActiveStream = true };
+        var detachedDriver = new VirtualKernelPcmClient(detached);
+        var detachedPump = new VirtualKernelAudioPump(
+            detachedDriver, inputReader, outputWriter, 64);
+        await using (var worker = new VirtualKernelAudioWorker(detachedDriver, detachedPump))
+        {
+            try
+            {
+                worker.Start();
+                throw new InvalidOperationException(
+                    "Worker started when no kernel WaveRT stream was attached.");
+            }
+            catch (InvalidOperationException ex) when (
+                ex.Message.Contains("absent", StringComparison.Ordinal))
+            {
+                Console.WriteLine("PASS: detached kernel stream prevents worker startup.");
+            }
+        }
+
+        // A lost driver must stop the loop, preserving the original cause.
+        var failed = new SimulatedDriver { FailSpeakerRead = true };
+        var failedDriver = new VirtualKernelPcmClient(failed);
+        var failedPump = new VirtualKernelAudioPump(
+            failedDriver, inputReader, outputWriter, 64);
+        await using (var worker = new VirtualKernelAudioWorker(failedDriver, failedPump))
+        {
+            worker.Start();
+            try
+            {
+                await worker.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+                throw new InvalidOperationException(
+                    "Disconnected simulated driver kept the worker running.");
+            }
+            catch (IOException ex) when (
+                ex.Message.Contains("disconnected", StringComparison.Ordinal))
+            {
+                if (worker.IsRunning || worker.LastFailure is not IOException)
+                    throw new InvalidOperationException(
+                        "Worker failed to publish terminal device loss.");
+                Console.WriteLine("PASS: disconnected kernel mock fails closed with visible error.");
+            }
+        }
+
+        Console.WriteLine("VIRTUAL_KERNEL_PCM_WORKER_LIFECYCLE=PASS (user-mode only)");
     }
 }
