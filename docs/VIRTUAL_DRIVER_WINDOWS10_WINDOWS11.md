@@ -42,8 +42,9 @@ AuralWeave code remain MIT; the source under
    low latency and concurrency in throwaway Windows 10/11 VMs.
 6. Run suitable Windows HLK tests and submit through the Microsoft
    Hardware Dev Center for the applicable signing requirements.
-7. Only after all checks pass, enable Install/Uninstall from the
-   app and prepare a separately installed driver package.
+7. Only after all checks pass, enable **Install-only** in Studio. Driver
+   removal is handled through Windows Device Manager; an Installed Apps
+   entry requires a separately registered installer/uninstaller.
 
 No forced test-signing, Secure Boot disabling or changes to boot
 security settings are part of the normal product workflow.
@@ -66,11 +67,14 @@ Windows 11 remains a theoretical target. Build-time WDK compatibility
 and INF signability do not prove functional or quality compatibility.
 Do not claim Windows 11 is tested or certified.
 
-All portable copies share the one virtual microphone and one virtual
-speaker PnP identity. The managed control plane now coordinates
-competing AuralWeave processes through per-role Global named mutexes.
-Cross-folder Windows 10 tests are described in
-[Portable multi-instance ownership](PORTABLE_MULTI_INSTANCE_CONTROL.md).
+All portable copies share one virtual microphone and one virtual speaker
+PnP identity, but **not an exclusive audio-session role lock**. The earlier
+full-session Global role mutex was superseded: only brief administrative
+installation/PnP operations are serialized; simultaneous sources and listeners
+are allowed. See the approved [Product Contract](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md)
+and [Portable multi-instance sharing](PORTABLE_MULTI_INSTANCE_CONTROL.md).
+Standard Windows Shared Mode clients must not need a special AuralWeave
+session registration; this has not been proven on a real signed driver.
 
 The kernel-side fixed-width PCM protocol validator and bounded ring
 also compile into the unsigned WDK prototype, documented in

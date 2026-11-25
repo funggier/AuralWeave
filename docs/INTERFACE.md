@@ -34,6 +34,21 @@ Name: **AuralWeave**. Desktop-first Windows app. Style: clean, compact routing s
 
 Input and output meters, real measured latency if available, dropped/underrun frames, processor status, device disconnected, route errors. Throttle UI updates; do not use UI-driven high-frequency polling as the audio scheduler.
 
+## Virtual Driver page — approved Install-only behavior (2026-11-25)
+
+On the current Studio/Virtual Driver mode page, keep two compact status cards:
+
+- **Virtual Input:** recording/microphone, installed PnP identity/status or absent/readiness
+- **Virtual Output:** playback/speaker, installed PnP identity/status or absent/readiness
+
+For each missing role, offer **Install** only if a trusted signed package is available. If both roles are missing, one combined install action is acceptable provided the UI reports per-role result and creates at most one instance of each. If one is present, install only the other. Installed, legacy, partially bound or unknown state must never enable duplicate creation. Explain missing package / authorization / pending reboot and refresh status from Windows PnP after operations.
+
+**No Uninstall, Remove, Repair, Add driver instance or privileged device-delete button anywhere in Studio.** Windows Device Manager handles device removal; Installed Apps uninstall is possible only after a future driver setup registers a real uninstall entry. Do not silently install on startup. Multiple Portable Studio windows must display the same machine-wide PnP state and can share the same input/output devices via Windows shared-mode audio without a global audio lock.
+
+The fact that test-only Mock Broker checks the PID that created a shared-memory mapping must not restrict ordinary Windows apps such as OBS or Discord from using the Windows endpoint.
+
+Canonical UX/device specification: [VIRTUAL_DRIVER_PRODUCT_CONTRACT.md](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md).
+
 ## Localization
 
 Thai-first labels; engineering names can remain in English where standard. Store user choices in portable configuration files.

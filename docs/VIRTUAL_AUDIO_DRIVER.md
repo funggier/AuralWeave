@@ -1,127 +1,77 @@
-# Virtual Audio Driver — Manager UI and Future Kernel Package
+# Virtual Audio Driver — 1 Input + 1 Output shared by Windows
 
-## Current status: v0.3.0-preview.1
+**Current source of truth:** [Virtual Driver Product Contract](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md) (confirmed 2026-11-25). Historical prototypes below do not override the product contract.
 
-The Native C++ studio and virtual-driver **management UI** are separate concerns. The management page is now implemented, but the **actual virtual audio kernel driver is not**.
+## Device model: one installed set, unlimited eligible audio clients
 
-The UI contains **two cards on one page**:
+**AuralWeave Virtual Driver is one Windows-wide driver family**, exposing at most:
 
-| UI card | Windows endpoint type | Direction from a Windows application |
-| --- | --- | --- |
-| Virtual Input | Recording endpoint (virtual microphone) | AuralWeave provides audio that the app receives |
-| Virtual Output | Render endpoint (virtual speaker) | The app plays audio into AuralWeave |
+| Endpoint | Windows direction | Purpose | Maximum installed |
+| --- | --- | --- | --- |
+| AuralWeave Virtual Input | Recording / microphone | Feed the same virtual microphone to Discord, OBS and any supported Windows recording application | **1** |
+| AuralWeave Virtual Output | Playback / speaker | Accept multiple playback sessions from browsers, games and other Windows applications | **1** |
 
-This distinction is based on Windows' endpoint types, not internal WASAPI source/target terminology.
+The implementation may use **two Windows PnP devnodes and a shared kernel driver service/package**. This is still one installed AuralWeave driver set, not a new copy per client. The identity currently reserved for each role is respectively `ROOT\AURALWEAVE_VINPUT_0001` and `ROOT\AURALWEAVE_VOUTPUT_0001`.
 
-## Discovery independent of executable path
+An arbitrary Windows application must access these as ordinary Windows audio endpoints using Windows Audio Engine Shared Mode, **without a dependency on AuralWeave Studio, Mock Broker registration, custom shared-memory names, or client-side plugins**. Two or more eligible applications must be able to record or play simultaneously. Windows controls audio permissions, capabilities and the behavior of exclusive-mode requests; AuralWeave cannot promise that all unsupported or deliberately exclusive applications will cooperate.
 
-The manager uses Windows SetupAPI PnP enumeration and reads hardware IDs, device instance IDs and friendly names. It **does not** look only in the app's folder and **does not** treat ordinary devices containing the string "AuralWeave" as owned.
+Multiple Portable AuralWeave Studio instances from different folders may run simultaneously. Each retains independent routing, filter chains and settings; their eligible audio streams may be joined via a common audio bridge/mixer without adding PnP devices. The administrative install mutex must not be held during audio playback or recording.
 
-Reserved future root-enumerated hardware ID families:
+## UI contract
 
-- `ROOT\AURALWEAVE_VINPUT_####`
-- `ROOT\AURALWEAVE_VOUTPUT_####`
+A single **Virtual Driver** management page displays both Virtual Input and Virtual Output **status**. The only driver-related action inside Studio is **Install**, offered solely when one or both roles are missing and a signed production package is ready. The UI must not offer Uninstall, Remove, Repair, duplicate/extra endpoint slots, or silent auto-install on application startup.
 
-The exact INF packages must match these IDs before any signed distribution or installation; no driver is presently installed or bundled.
+Detect installed devices through Windows SetupAPI and exact PnP hardware ID + device class + service, including current, legacy and partially installed nodes. State comes from the computer, not the Portable folder. Missing driver package or invalid signatures must disable Install with an accurate explanation. If two Studio windows start installation concurrently, recheck Windows inventory under an installation-only mutex and again after elevation; create no duplicate device.
 
-The manager lists every installed matching instance and offers a per-device removal action. Removal first rechecks ownership, requests explicit confirmation, and invokes Windows' PnPUtil on that **one instance** with UAC. This removes that device node; it does not automatically delete a potentially shared OEM driver-store package.
+Removal is **outside Studio**: Windows Device Manager supports uninstalling the PnP devices. A Windows Settings **Installed apps / Apps & Features** uninstall entry is a desired packaging capability **only if** the future signed installer registers a real uninstaller; plain INF/SYS/CAT does not provide an entry automatically. See [Install-only management](VIRTUAL_DRIVER_INSTALLATION.md).
 
-## Why Install is disabled
+## Production signal-flow objective
 
-A functional virtual audio device requires more than an INF file: a compiled signed driver package with correct endpoint descriptors, Windows 10 compatibility, and a verified audio transport/IPC path to the AuralWeave core. Microsoft SysVAD is a *reference implementation*, not a bundled AuralWeave driver. The Windows SDK alone is not proof that the WDK build tools and signing pipeline are available.
+```text
+Windows app A + Windows app B + ... --> Windows shared-mode playback
+                                           |
+                                AuralWeave Virtual Output
+                                           |
+                       signed driver <--> authorized service/PCM bridge
+                                           |
+                               Native C++ routing / Filters
+                                           |
+                                  physical output(s)
 
-The current UI deliberately does not provide a fake install action. Never use `pnputil /add-driver` alone as evidence that an independent ROOT-enumerated virtual endpoint was created; that command primarily registers a driver package and installs it on matching existing devices.
+Studio A + Studio B + ... --> mixed virtual microphone feed
+                                           |
+                             AuralWeave Virtual Input
+                                           |
+                       Windows shared-mode recording engine
+                                       /       \
+                                    Discord     OBS
+```
 
-## Engineering work remaining
+The shared virtual endpoints must remain discoverable after closing all Studio windows, because installed PnP endpoints belong to Windows. A service or trusted background bridge may still be required to supply live audio; it must not pretend to be functional when stopped. The Windows engine's playback mixing is distinct from combining independent Studio microphone contributions. Design the output of the latter as one producer to the kernel microphone stream, with independent Windows capture clients rather than competing readers of one SPSC mapping.
 
-1. Build AuralWeave-owned kernel audio miniport(s) for virtual recording and playback endpoints, based on appropriately licensed Windows driver reference code.
-2. Design authenticated per-instance IPC shared memory / ring buffers between user-mode audio core and driver, with bounded latency, clock handling and security boundaries.
-3. Support creating additional independent instances with fixed signed hardware IDs. Ensure no cross-instance audio leakage and stable device naming.
-4. Build and sign driver INF/SYS/CAT packages with appropriate Windows 10 kernel signing rules. Never disable secure boot, disable driver-signature enforcement or turn on test signing as part of normal application operation.
-5. Add verified install flow (UAC, valid INF and signature, installed endpoint check, reboot handling), plus per-device uninstall and optional separate package cleanup only when no instances rely on it.
-6. Test clean install/uninstall/reboot, single-device-per-role behavior, endpoint visibility, migration after moving the portable folder, and security.
+The required production design includes secure driver↔service authentication independent of editable PCM mapping metadata, bounded buffer/cancelable IOCTLs, clock-driven timing, format normalization, interruption/restart recovery, hotplug and fail-safe silence.
 
-The existing physical input/output Native C++ route must continue working when this optional module is absent.
+## Implementation truth as of 2026-11-25
 
-## Toolchain preparation completed
+**Implemented and tested on Windows 10 (development/user-mode):**
 
-VS 2026 WDK integration, WDK/SDK build 28000, Inf2Cat, PortCls
-and WIL are installed/available. Reference-only SysVAD compilation
-passes through `scripts/build-sysvad-reference.ps1`.
+- Native C++ WASAPI Studio routing and filter pipeline, WPF Portable host.
+- SetupAPI read-only detection, exact current/legacy PnP ID guard and install readiness checks.
+- Independent user-mode PCM rings; SharedVirtualAudioBus multi-contributor mixing and per-client listener fanout, including two Portable folders and owner-death cleanup.
+- An unsigned, **compile-only** WDK WaveRT/PCM/IOCTL kernel prototype, not installed or connected to Windows audio as a functioning device.
+- A non-elevated, same-user Mock Broker v0.3.0. Its owner-PID admission check protects only **test-only internal PCM mapping registration**, not Windows apps using an audio endpoint.
 
-**Still not implemented:** AuralWeave-branded, signed and installable
-virtual audio kernel endpoints; production Windows 10 INF;
-one-input/one-output audio transport and independent
-device management. The Manager INSTALL controls remain disabled
-until those pieces are actually built and tested.
+**Not implemented or proven:**
 
-## Windows 10 + 11 x64 kernel prototype (2026-11-25)
+- Installed, signed and functional virtual microphone/speaker endpoints; production user↔kernel PCM bridge; privileged broker/service.
+- Install-capable signed driver setup; Windows Apps registered uninstaller; tested uninstall/reboot.
+- Real external Shared Mode concurrent Discord/OBS/browser/game acceptance; multi-Studio-to-real-driver audio.
+- Windows 11 installed-driver runtime validation, HLK certification, measured production latency/drift.
 
-A separate **compile-only** prototype now lives under
-`src/AuralWeave.VirtualDriver/Kernel`, adapted from Microsoft's
-MS-PL Simple Audio Sample. The binary is called
-`AuralWeaveVirtualAudio.sys` and the INF separates 1 possible
-Virtual Input hardware IDs from 1 possible Virtual Output IDs.
-The kernel compares the physical PnP hardware ID before registering
-only the requested WaveRT endpoint direction.
+**Install stays disabled until all production release gates pass.** Never install the unsigned WDK prototype on the host or enable driver test signing/Secure Boot bypass to simulate completion.
 
-**Validation passed:** WDK driver compilation; InfVerif Windows
-and Universal INF checks; Inf2Cat signability for representative
-Windows 10 and Windows 11 x64 targets. No Windows 11 VM runtime,
-HLK or Microsoft driver-signing results yet.
+## Next steps
 
-This is a substantial engineering prototype, NOT a working virtual
-microphone/speaker product. There is no user-to-kernel PCM transport,
-stream lifecycle and driver isolation has not been tested, and INSTALL
-remains intentionally disabled. The earlier "not implemented"
-statements above describe the previous milestone.
+Follow the numbered implementation gates in the [Virtual Driver Roadmap](ROADMAP.md) and [Test Plan](TEST_PLAN.md). The [Handoff](VIRTUAL_DRIVER_HANDOFF_2026-11-25.md) names the exact unfinished tasks and current repository checkpoints.
 
-See [Windows 10/11 target matrix](VIRTUAL_DRIVER_WINDOWS10_WINDOWS11.md)
-and [Kernel prototype README](../src/AuralWeave.VirtualDriver/Kernel/README.md).
-
-## User-mode PCM transport checkpoint (2026-11-25)
-
-A second implementation stage now runs inside the Native C++ audio
-engine: Studio can optionally publish its *post-filter* PCM to a
-separate virtual-input Shared Memory ring, while its physical
-outputs keep working. Float32 mono/stereo rings are per-instance,
-bounded, interprocess, and expose overflow/underrun counters.
-Managed developer APIs and a stable C ABI are available.
-
-The opposite shared Virtual Output channel passes interprocess
-tests. It is **not** wired into a real WaveRT render device or
-Studio source selection. The Windows 10 muted route diagnostic
-demonstrated 192-kHz capture -> filters -> 48-kHz bridge with
-zero dropped frames in the tested continuous-consumer interval.
-
-Kernel-side audio transfer, Windows 11 runtime verification,
-signed driver installation and fully isolated Windows endpoints
-are still pending. GUI Install remains disabled.
-
-See [Virtual PCM Bridge](VIRTUAL_PCM_BRIDGE.md).
-
-
-## WaveRT internal PCM and installer-helper checkpoint (2026-11-25)
-
-**Build-stage only. No Windows driver was installed or signed.**
-
-The unsigned Windows 10 WDK prototype now compiles kernel-internal,
-independently locked 64-KiB PCM rings for Virtual Input and Virtual
-Output. The WaveRT microphone DMA path consumes queued PCM or emits
-silence; WaveRT speaker DMA copies rendered frames into its bounded
-PCM queue. The Microsoft Sample sine generator, file recording worker
-and runtime registry toggles were unlinked. A global single-adapter
-restriction was found and changed to allow **Input + Output together**
-in the driver architecture. Digital rights that forbid copying disable
-render PCM mirroring and flush queued frames.
-
-No secure kernel device IOCTL or user broker is connected yet, so the
-driver is NOT a usable installed Windows audio endpoint.
-
-The separate Windows 10 DriverSetup project now builds as a self-contained
-read-only preflight utility and contains future signed-only PnP SetupAPI
-logic. The production certificate SHA-256 pin is intentionally blank,
-so all actual installation requests remain disabled. Uninstallation
-remains a Windows Device Manager operation.
-
-See docs/WDK_WAVERT_PCM_CHECKPOINT.md for source, design and QA.
+Historical research remains in [Windows 10 and 11 driver prototype](VIRTUAL_DRIVER_WINDOWS10_WINDOWS11.md), [WaveRT checkpoint](WDK_WAVERT_PCM_CHECKPOINT.md), and [virtual PCM transport](VIRTUAL_PCM_BRIDGE.md). Earlier experiments with multiple device slots or a role-wide full-session lease are **superseded** by the approved product contract.

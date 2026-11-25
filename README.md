@@ -43,6 +43,8 @@ Output Distributor
 | [Audio routing](docs/AUDIO_ROUTING.md) | Signal flow, timing, device identity |
 | [Effects & plugins](docs/EFFECTS_AND_PLUGINS.md) | DSP pipeline และ repeated effect instances |
 | [Interface](docs/INTERFACE.md) | หน้าจอ Routes, Devices, Presets, Settings |
+| [Virtual Driver product contract](docs/VIRTUAL_DRIVER_PRODUCT_CONTRACT.md) | ข้อกำหนดยืนยัน: ทั้งเครื่องมี Virtual Input/Output อย่างละหนึ่งตัว ทุกแอปใช้ร่วมกันได้ ติดตั้งอย่างเดียว |
+| [Virtual Driver handoff](docs/VIRTUAL_DRIVER_HANDOFF_2026-11-25.md) | สถานะจริง, แผน, ข้อจำกัด และจุดเริ่มงานต่อ |
 | [Virtual driver](docs/VIRTUAL_AUDIO_DRIVER.md) | แนวทาง Virtual Input/Output และข้อจำกัด |
 | [Roadmap](docs/ROADMAP.md) | ระยะพัฒนา |
 | [Test plan](docs/TEST_PLAN.md) | Acceptance criteria และ edge cases |
@@ -305,6 +307,24 @@ Windows 10 cross-process tests cover hard process kill, old-pipe failure,
 correct new PCM and idle heartbeat. This is **not** a production service,
 a Windows audio device, or a working/signed Virtual Driver.
 See [restart design and tests](docs/BROKER_CRASH_RESTART_CHECKPOINT.md).
+
+## Confirmed Virtual Driver product behavior — shared by all Windows apps
+
+The intended **one machine-wide AuralWeave Virtual Driver set** has one
+Windows recording endpoint (Virtual Input) and one Windows playback
+endpoint (Virtual Output). Discord/OBS and browsers/games must be able
+to open the corresponding endpoints **concurrently through standard
+Windows shared-mode audio**, without an AuralWeave-specific plugin or
+IPC registration. Multiple Portable Studio copies share these two
+system-wide endpoints; opening another Studio never creates another
+PnP driver instance. Studio's Virtual Driver manager is **Install-only**:
+show actual PnP state and offer installation only for a missing role;
+no Uninstall/Remove/Repair control. Driver removal is via Windows
+Device Manager; an optional Windows Installed Apps uninstall entry
+requires a future separately registered uninstaller (INF alone does not
+supply one). The real signed driver and production bridge still do not
+exist. See the [approved product contract](docs/VIRTUAL_DRIVER_PRODUCT_CONTRACT.md)
+and [implementation handoff](docs/VIRTUAL_DRIVER_HANDOFF_2026-11-25.md).
 
 ## Mock Broker v0.3.0 — Native PCM origin validation
 

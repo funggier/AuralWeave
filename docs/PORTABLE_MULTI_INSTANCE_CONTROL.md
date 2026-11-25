@@ -1,114 +1,56 @@
-# Multiple Portable Copies and Shared Virtual Audio
+# Multiple Portable AuralWeave Copies and Shared Windows Virtual Audio
 
-Status: Windows 10 user-mode implementation and tests. The Windows kernel
-virtual audio driver is still an unsigned, noninstallable prototype.
+**Current target contract:** [VIRTUAL_DRIVER_PRODUCT_CONTRACT.md](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md). The Windows kernel virtual audio driver remains an unsigned, non-installable prototype; the following user-mode mixing tests **do not** prove real Windows audio endpoint multi-client behavior.
 
-## One installed device per role, shared by all programs
+## One driver set for the whole computer
 
-AuralWeave targets **at most one Virtual Input** (recording device) and
-**at most one Virtual Output** (playback device) in the entire Windows
-installation, regardless of how many folders contain AuralWeave.
+Windows will expose at most **one Virtual Input** (microphone / recording) and **one Virtual Output** (speaker / playback). Two device roles may be registered through separate PnP devnodes but share the same AuralWeave driver family.
 
-- Input: ROOT\AURALWEAVE_VINPUT_0001
-- Output: ROOT\AURALWEAVE_VOUTPUT_0001
+**All eligible Windows apps may use the endpoints simultaneously via standard Windows Audio APIs.** For example, Discord and OBS both record one virtual mic; Chrome and a game concurrently render to the same virtual speaker through Windows shared-mode mixing. Neither needs the Native PCM test harness or a special AuralWeave IPC handshake. Opening Studio in two or more folders must not create extra devices, require per-app driver installation, or grant one Studio exclusive control of a virtual endpoint.
 
-This is a limit on **Windows PnP devices**, NOT the number of programs,
-capture streams, playback streams or Portable copies that may use them.
+Studio instance A and Studio instance B keep separate native routing, filters and portable presets, but can contribute to / listen to one machine-wide virtual audio system. This distinction matters:
 
-Each Portable Studio uses its own Filters, hardware outputs, local
-presets and settings. Participating programs can contribute audio
-to a shared mix and obtain independent copies of that audio.
+- **PnP device count:** one Input and one Output per machine.
+- **Windows client sessions:** many recording/playback streams per endpoint.
+- **Studio audio contributors:** multiple distinct sources into the shared virtual mic mix.
+- **Internal IPC mappings:** one SPSC producer + one reader per mapping, with multiple mappings mixed/fanned out by a router; these mappings are **not Windows PnP devices**.
 
-## User-mode audio distribution implemented
+## Implemented developer-only user-mode reference bus
 
-SharedVirtualAudioBus is a managed reference mixer/distributor built
-on the native Shared PCM bridge. Audio contributors and listeners each
-have a separate Float32 SPSC ring. Pump() sums the available source
-frames, clamps them to [-1,+1] and sends the resulting frames to each
-listener's independent ring. One subscriber reading slowly cannot
-consume another subscriber's frames or block their progress.
+`SharedVirtualAudioBus` is a managed reference mixer/distributor over Native Float32 PCM SPSC mappings. Each source has its own ring; `Pump()` sums contributors and clamps the output. Each listener receives its own FIFO, so a slow reader can lose its own samples without stealing from other listeners.
 
-The current developer-only bus is explicit/caller-driven. It is not
-yet a persistent automatic service for general Windows applications
-and is **not connected to the unsigned WaveRT kernel driver**.
-Clients must agree on format/cadence. The current reference bus has
-16 source and 16 listener slots, independent of the one-Windows-device
-limit. Production must add clock reconciliation, hot-plug, reconnect,
-low-latency native mixing and secure per-client authorization.
+Windows 10 cross-folder tests passed two independent source processes and two listeners; a source dropping out did not interrupt surviving audio, and owner-lifetime handles enabled cleanup after an abrupt process exit. The current reference hub has internal bounded limits (currently 16 source and 16 listener slots); **these are implementation resource bounds, not device-count limits or restrictions on Windows applications.**
 
-## Administrative coordination versus audio sharing
+The reference bus is not a Windows Audio Driver, an always-on production service, or a way for Discord/OBS to see virtual endpoints. It has not yet been integrated with a signed WaveRT device.
 
-Earlier prototypes acquired a machine-wide mutex for the **entire**
-audio session, preventing two AuralWeave copies from controlling the
-same role. That behavior has been superseded.
+## Locks are for administration, never for owning the audio endpoint
 
-VirtualDeviceControlLease now only briefly coordinates device
-management and new audio-session creation, with a bounded wait at
-startup. It is NOT held while streams play or record. Audio sessions
-can be created concurrently in independent Portable folders.
+An earlier prototype held a Global role lock for an entire audio session and prevented simultaneous Studio use. This was **superseded** by short-lived administration coordination.
 
-Each owner session holds a Windows-named
-SharedVirtualAudioActivityLease handle while active. The named object
-remains present until the last cooperating owner closes it, even
-across different app folders. This is an advisory safeguard for future
-driver management, **not an OS-level kernel authorization boundary**.
-The Windows user and driver security model must be authoritative.
+- An installation mutex serializes competing install operations from different Studio folders; it is released after the PnP transaction.
+- Cross-process audio activity leases can be used as advisory lifecycle signals but do not authorize or monopolize audio endpoints.
+- A test-only Mock Broker (v0.3.0) compares the OS pipe client PID and advisory native PCM mapping creator PID to reject accidentally registered **foreign internal mappings**. This is not a Windows audio client restriction, nor a privileged security boundary.
+- For a real kernel broker, independently authenticated permissions must be designed. Do **not** reuse user-writable PCM metadata as privileged authorization.
 
-## Install-only UI; Windows-managed uninstall
+## Driver management from all Portable folders
 
-The Virtual Driver screen contains two cards and **no Uninstall button**.
-It enumerates reserved AuralWeave PnP identities using Windows SetupAPI:
+Every Studio window uses Windows SetupAPI to detect the same system-wide PnP installation (hardware ID, class, service, legacy and partial nodes). If Input/Output already exists, **no duplicate Install action is available**. Where a role is missing, the user may explicitly install from any Studio if and only if a signed production package is available, with rechecks under a mutex and after UAC.
 
-- If the correct or legacy identity exists, its device is listed and
-  installing another of that role is blocked.
-- A partially installed device ID also blocks duplicate installation,
-  with status explaining that Windows Device Manager needs attention.
-- If no device exists, the Install button is displayed.
-- The Install button becomes enabled only when a complete, trusted,
-  production driver package is available in the Portable folder.
-  The unsigned WDK prototype does not qualify.
+Studio contains **no driver Uninstall/Remove/Repair**. Users can remove devices with Windows Device Manager. A Windows **Installed apps / Apps & Features** entry will exist only if a future installer registers a tested uninstaller; INF-only deployment does not create one automatically. See [Install-only design](VIRTUAL_DRIVER_INSTALLATION.md).
 
-The installer control is prepared to request Windows administrator
-approval and invoke a separate **signed production setup program**;
-such a setup binary and signed kernel driver have **not** yet been
-produced, and the button therefore remains disabled in the current
-build. No test-signing, Secure Boot changes or unsigned kernel
-installation are performed.
+## Verified Windows 10 user-mode cases
 
-The user can uninstall the device later through **Windows Device
-Manager**. Removing the PnP device and deleting its driver package
-from the Windows Driver Store are separate operations; Windows
-handles them, not AuralWeave. If a future installed product also
-registers an entry in Windows Installed Apps, its own installer would
-need to provide that entry and uninstaller.
+`scripts/test-multiple-portable-instances.ps1` runs Diagnostics from two real folders and tests: brief per-role control locks; concurrent audio owners; two independent PCM sources mixed into one signal received by two independent listeners; contributor removal; short blocks; clipping and slow-reader isolation; proper release of advisory activity markers.
 
-See docs/VIRTUAL_DRIVER_INSTALLATION.md for preflight and distribution.
+Separate native/WASAPI and Mock Broker diagnostics cover real Windows child processes, restart, broken protocol handling and owner-PID *mapping registration*. None of these tests imply a signed driver, external app device-sharing acceptance or installed Windows 11 functionality.
 
-## Tested on Windows 10
+## Remaining production verification
 
-Run the script:
+- Real virtual mic and speaker visible in Windows Sound Settings after a signed installation.
+- Two independent **non-AuralWeave** apps capturing from the same virtual mic.
+- Two independent apps playing concurrently to the same virtual speaker and listening through AuralWeave Native route.
+- Two simultaneous Studio folders contributing to and consuming the real shared device.
+- Correct clock drift, stream cancellation, hotplug, restart, audio permission behavior and silence on missing sources.
+- A second Studio racing an Install must not create another PnP node.
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-multiple-portable-instances.ps1
-
-The test runs two different copies of Diagnostics from two actual
-directories and verifies that:
-
-1. Administration locks are mutually exclusive per role, independent
-   between Input and Output, and cleanly released.
-2. Audio owners may coexist in both roles without that exclusivity.
-3. Two different source processes contribute PCM (0.25 and 0.40),
-   and two distinct subscribers each read the same mixed 0.65 signal.
-4. A contributor leaving does not interrupt other participants.
-5. Short 37-frame blocks and clipping (0.8 + 0.8 -> 1.0) behave as intended.
-6. A slow listener drops only its own buffered data.
-7. Session activity remains visible across app folders until the last
-   owner closes, at which point the shared activity marker disappears.
-
-The separately run Windows 10 native WASAPI post-filter diagnostics
-were retained. The signed Windows Driver installation and WaveRT
-transport are **not** runtime-tested. Windows 11 remains a theoretical
-API/INF compatibility target, not a tested platform.
-
-Reference: Microsoft Learn, Using Device Manager to Uninstall Devices
-and Driver Packages.
-https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-device-manager-to-uninstall-devices-and-driver-packages
+See [Product Contract](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md), [Test Plan](TEST_PLAN.md) and [Roadmap](ROADMAP.md).

@@ -117,7 +117,7 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 
 - [x] Mode selector (Studio / Virtual Driver) and two Virtual Input/Output cards in a single driver-manager page
 - [x] Windows PnP discovery of AuralWeave-owned device IDs after relocation
-- [x] Guarded per-device removal UI (confirmation + UAC); no arbitrary PnP modifications
+- [x] Historical prototype only: guarded per-device removal UI existed; **superseded / removed** by the approved Install-only UI
 - [x] Portable Filter Preset Save/Load/Import/Export, without source/output persistence
 - [x] Increased spacing in mode buttons, preset controls, and two Virtual Driver cards
 - [ ] Build and sign actual virtual audio kernel drivers, create independent virtual endpoint instances, implement install flow
@@ -133,7 +133,7 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [ ] Develop Windows 10 compatible AuralWeave-owned virtual input/output drivers
 - [ ] Validate complete INF/API/catalog and production signing
 - [ ] Implement low-latency single-input/output audio transport to Native C++ core
-- [ ] Test secure install, per-device removal, restart, and portable relocation
+- [ ] Test secure Install-only UI, Windows-managed removal, restart, and portable relocation
 
 ## Windows 10 / Windows 11 virtual driver prototype checkpoint
 
@@ -149,7 +149,7 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [ ] Verify per-instance stream isolation, PnP lifecycle and timing
 - [ ] Test on Windows 10 22H2 and Windows 11 VMs
 - [ ] Pass HLK and obtain production Microsoft driver signature
-- [ ] Implement verified, optional administrator install/uninstall
+- [ ] Implement verified, optional administrator Install only; Windows Device Manager or separately registered Windows uninstaller handles removal
 
 ## Virtual PCM user-mode transport checkpoint (2026-11-25)
 
@@ -186,7 +186,7 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 
 - [x] Use one PnP identity per Virtual Input and Virtual Output machine-wide
 - [x] Create role-specific cross-process Windows Global control leases
-- [x] Guard managed virtual bridge creation and per-device removal
+- [x] Historical prototype: guard managed virtual bridge creation / per-device removal; removal action later deleted and audio role lock shortened
 - [x] Test a second process from a different Portable folder
 - [x] Verify independent Input/Output ownership and asynchronous release
 - [x] Add 64-byte versioned PCM wire header and validated S16/F32 transfer
@@ -320,7 +320,7 @@ See [owner crash recovery](PCM_OWNER_LIFETIME_RECOVERY.md).
 - [x] Test two PCM sources, surviving peers on QUIT/broken pipe, duplicate broker and oversized input
 - [x] Integrate source build/diagnostics into Windows 10 and GitHub Actions
 - [x] Verify separate portable Mock Broker ZIP after relocation on local Windows 10
-- [ ] Verify portable Mock Broker ZIP relocation and tests in GitHub Actions
+- [x] Verify portable Mock Broker ZIP relocation and tests in GitHub Actions (run 45631421586, success)
 - [ ] Design/review privileged Windows service with SID ACLs and per-user permissions
 - [ ] Replace mock loopback with validated signed kernel access and event-driven clock
 - [ ] Verify Windows 10/11 installed virtual input/output endpoints, HLK and production signing
@@ -338,7 +338,7 @@ enable INSTALL. Details: [Mock Broker](LOCAL_BROKER_MOCK.md).
 - [x] Test actual hard kill and new process, with no replay of stale PCM
 - [x] Test no unversioned access and reject fake same-instance reconnect
 - [x] Test idle heartbeat with real Windows process and registered mappings
-- [ ] Confirm GitHub Windows runner and relocated Mock Broker v0.2.0 ZIP checks
+- [x] Confirm GitHub Windows runner and relocated Mock Broker v0.2.0 ZIP checks (historical; subsequent v0.3.0 run 45631421586 succeeded)
 - [ ] Add real Studio-facing session UI and verified audio consent controls
 - [ ] Implement privileged service security model and signed kernel transport
 
@@ -353,10 +353,60 @@ See [Mock Broker crash/restart checkpoint](BROKER_CRASH_RESTART_CHECKPOINT.md).
 - [x] Test independent creator/claimant processes and correct cross-process PCM
 - [x] Test failed admission leaves existing audio peers untouched
 - [x] Test crashed owner is pruned without interrupting the other listeners
-- [ ] Verify full v0.3.0 Mock Broker portable ZIP on GitHub Actions
+- [x] Verify full v0.3.0 Mock Broker portable ZIP on GitHub Actions (run 45631421586, success)
 - [ ] Design privileged broker authorization independent of mutable shared-memory data
 - [ ] Implement signed kernel driver access and Windows 10/11 device tests
 
 This is **advisory same-user mock admission only**, not authenticated or
 privileged access control. Details: [PCM process-origin checkpoint](BROKER_PROCESS_ORIGIN_CHECKPOINT.md).
 
+## Approved product milestone — machine-wide shared Windows Virtual Driver (2026-11-25)
+
+**Source of truth:** [Virtual Driver Product Contract](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md).
+**Handoff:** [VIRTUAL_DRIVER_HANDOFF_2026-11-25.md](VIRTUAL_DRIVER_HANDOFF_2026-11-25.md).
+This section supersedes older historical plans mentioning additional PnP slots,
+exclusive audio-session role leases or an Uninstall button in the Studio UI.
+
+### Contract confirmed (documentation-only, not a live driver claim)
+
+- [x] Agree: **one driver family per computer**, exposing at most one Virtual Input (recording mic) and one Virtual Output (playback speaker)
+- [x] Agree: ordinary Windows apps (Discord, OBS, browsers, games) must use the same endpoints concurrently through standard Windows Shared Mode, without AuralWeave-specific IPC registration
+- [x] Agree: multiple Portable Studio copies operate with the same installed endpoints, with independent filters/settings and shared-source mixing as needed
+- [x] Agree: Studio only detects existing devices and offers **Install when a role is absent**; no Uninstall / Remove / Repair, no duplicate devices, no silent setup
+- [x] Agree: Windows Device Manager is the immediate uninstallation path; **Windows Installed Apps removal requires a separately registered installer/uninstaller**, not INF-only setup
+- [x] Agree: current unsigned mock/WDK tests do **not** prove a functional installed virtual audio driver and must not enable Install
+
+### P0 — inspect current source and lock architecture
+
+- [ ] Audit actual installed-family PnP/Setup helper/UI/code before modifying any audio or kernel path
+- [ ] Write production ADR for one-machine/two-role PnP topology and standard Windows shared-mode audio streams (distinguish kernel endpoints from internal SPSC IPC)
+- [ ] Define independent client sessions, per-user permissions, mic data-consent model, multi-Studio mix and independent capture fanout
+- [ ] Define trusted service lifetime and failure/silence behavior without requiring a Studio window
+- [ ] Verify no full-session exclusivity remains for a virtual role; reserve short mutex only for install/PnP administration
+
+### P1 — real driver audio transport (test VM first)
+
+- [ ] Connect WaveRT virtual recording/playback streams to a trusted bounded PCM user↔kernel transport, independent of Mock Broker's advisory PID checks
+- [ ] Implement event/clock-driven scheduling, format conversion, drift management, safe stop/restart, device removal and resumption
+- [ ] Verify both roles can be installed and opened concurrently; no hidden per-app lock
+- [ ] Expose real Windows endpoints and capture/render streams to non-AuralWeave Windows apps; validate using throwaway Windows 10 VM
+
+### P2 — trusted signed installation and Windows removal
+
+- [ ] Complete signed INF/SYS/CAT/Setup validation, accepted Windows kernel signing and applicable HLK gates
+- [ ] Install exactly missing role(s) with SetupAPI, after UAC recheck and cross-process installation mutex; never duplicate PnP nodes even when two Studio windows race
+- [ ] Ensure Windows Device Manager uninstall works; optionally implement **Windows Installed Apps / Apps & Features entry** with a real independent uninstaller for the whole driver set
+- [ ] Verify Windows inventory and Studio UI after install, uninstall, reboot and Portable folder relocation; fail-closed for partial/legacy states
+
+### P3 — end-to-end Windows shared-client QA / release
+
+- [ ] Confirm Discord + OBS simultaneous capture from one virtual mic; close one and other continues
+- [ ] Confirm two ordinary playback apps send simultaneously to one virtual speaker; Windows mixes sessions correctly and Studio can route combined audio
+- [ ] Confirm two Portable Studios from different folders share both system endpoints without duplicate installation or exclusive audio ownership
+- [ ] Confirm latency, long-run independent clock drift, hotplug/reconnect, silence after source loss and resource-quota behavior
+- [ ] Repeat installed-driver runtime tests on Windows 10 x64, then separately Windows 11 x64; never label WDK signability as runtime compatibility
+- [ ] Enable Install only when the signed package, service and functional driver pass the above gates
+
+**Release gate:** the currently shipped Studio is Portable and driver-free.
+The test-only Mock Broker and unsigned WDK prototype must remain separate;
+there is no functioning, installed, signed Virtual Input/Output pair yet.

@@ -54,6 +54,16 @@ A failing sink can be marked disconnected without stopping healthy siblings; rep
 ## Portability
 
 Prefer paths relative to the executable root. User-specific settings/cache/models/presets stored locally by default. Driver installation is OS-level and separately managed; portable does not mean driverless virtual audio.
+## Approved Windows-wide Virtual Driver architecture (2026-11-25)
+
+AuralWeave targets **one driver family / set per Windows installation**, exposing a single Windows Shared Mode **recording** endpoint and a single **playback** endpoint. The physical PnP device count is separate from the number of audio clients: multiple Windows applications and multiple Portable Studio instances must concurrently share these endpoints without custom app plugins or a per-application driver install.
+
+The production kernel model may use two root-enumerated PnP nodes (one per role) and one kernel service/package; all Studio copies discover them through SetupAPI. Windows playback mix is handled through the Windows Audio Engine, while authorized Studio contributors to the virtual microphone are mixed before feeding the common microphone endpoint; each Windows recorder obtains an independent capture session. **Do not route several programs as competing consumers of a single SPSC ring**.
+
+Installation must be serialized and idempotent across Studio copies, using a mutex **only around PnP mutation**, not while audio runs. Device removal is exclusively Windows managed; Studio is Install-only. A Windows Apps uninstall entry requires a separately registered installer/uninstaller. An installed driver and its trusted background bridge must not depend on a particular Studio window lifetime. Production IPC must enforce genuine Windows security, not trust editable mapping PID/guessed name or test broker handshake. Driver signing, actual WaveRT IOCTL/audio clock coupling and Windows 10/11 tests remain outstanding.
+
+For authoritative implementation and acceptance requirements see [Virtual Driver product contract](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md) and [handoff](VIRTUAL_DRIVER_HANDOFF_2026-11-25.md).
+
 ## Existing implementation versus target design
 
 - `AuralWeave.Core` (C#): route configuration rules and Gain DSP instances; tested.

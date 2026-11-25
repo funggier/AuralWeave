@@ -17,6 +17,12 @@ Managed wrappers: NativeVirtualAudioBridge.cs and NativeWasapiAudioRoute.BindVir
 
 A bridge is a random-name, session-local Windows file mapping with versioned, cache-line-aligned metadata, interleaved Float32 PCM, channels 1 or 2, sample rates 8-384 kHz, and a bounded capacity of 64-32768 frames. Default is 48 kHz, stereo, 4096 frames. Roles are Virtual Input (recording, 1) and Virtual Output (render, 2), only slot 1 per role. The mapping has exactly ONE producer and ONE consumer; other topologies need individual mappings. Windows Interlocked operations publish cursors and counters without locking or allocation in the audio hot path. When producer throughput exceeds consumer throughput, new samples that cannot fit are dropped and counted, never blocking real-time audio. Reader underruns can be filled with silence.
 
+Native PCM mappings now use a v2 header (with advisory creator PID) and are
+used internally in the **test-only** Mock Broker. This process-origin PID check
+is not the admission policy for Windows audio clients and cannot authorize
+a production elevated service. All normal Windows apps must still be able to
+use the future shared-mode endpoint without AuralWeave-specific IPC.
+
 Name randomness is not complete authentication. Current mapping permissions derive from the launching process's default security descriptor; future privileged driver access requires explicit ACL checks and secure handshake. This stage does not claim low measured end-to-end latency, hot-plug recovery, clock-drift correction or device signing.
 
 Native exports include aw_bridge_create, aw_bridge_attach, aw_bridge_write, aw_bridge_read, aw_bridge_close, aw_bridge_get_stats and aw_bridge_last_error. Running Studio routes can use aw_route_bind_virtual_input and aw_route_unbind_virtual_input. Native Studio can also accept virtual-output: followed by an exact active Shared Memory mapping name. The .NET wrapper exposes these in development diagnostics, not yet via the public Virtual Driver installation controls.
@@ -85,13 +91,13 @@ change or install Windows virtual driver devices.
 
 ## Multi-Portable ownership and kernel contract checkpoint (2026-11-25)
 
-The managed NativeVirtualAudioBridge.Create factory now holds a
-machine-wide role lease for the entire user-mode session. Independent
-Portable copies may create sessions for different roles concurrently,
-but cannot create two owners for the same role at the same time.
-A second Diagnostics copy in a different folder passed this test on
-Windows 10. Regular Studio audio routes remain independent. See
-PORTABLE_MULTI_INSTANCE_CONTROL.md.
+**Historical (superseded):** an earlier NativeVirtualAudioBridge.Create
+prototype held a machine-wide role lease for the entire audio session.
+This was later changed; present multi-Portable user-mode tests allow
+simultaneous audio owners/listeners for the same role, while brief global
+mutexes protect only administrative operations. See the approved
+[VIRTUAL_DRIVER_PRODUCT_CONTRACT.md](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md)
+and [PORTABLE_MULTI_INSTANCE_CONTROL.md](PORTABLE_MULTI_INSTANCE_CONTROL.md).
 
 A separate, strictly sized protocol and caller-synchronized ring for
 future Kernel WaveRT interaction are implemented and compiled in the

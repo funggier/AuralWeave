@@ -178,8 +178,11 @@ Windows custom title-bar maximize/restore checks also passed on 3 monitors.
 - Duplicate Virtual Input is denied. Independent Virtual Output is
   allowed. Duplicate Virtual Output is denied. Both leases can be
   released and reclaimed; async disposal is safe.
-- Managed bridge owners now hold an exclusive role lease. User-mode
-  lease security is advisory until an authoritative driver broker exists.
+- **Historical, superseded:** this checkpoint used an exclusive role lease
+  for user-mode bridge owners. Subsequent multi-Portable tests removed the
+  full-session lock and allow simultaneous owners; only administrative
+  installation/PnP coordination remains exclusive. See
+  [shared-driver contract](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md).
 - scripts/test-kernel-transport.ps1 compiles the exact WDK wire/ring
   C++ source on Windows 10 with warnings-as-errors. Invalid role,
   slot, opcode, sample format, flags and length are rejected. The
@@ -250,3 +253,43 @@ NOT been tested. An elevated trusted broker is not yet shipped.
 See docs/KERNEL_IOCTL_TRANSPORT.md for the exact access, data layout,
 QA and remaining signed-driver prerequisites. The current driver is
 UNSIGNED and must NOT be installed on the host Windows 10 computer.
+
+
+## Approved Windows Virtual Driver acceptance matrix — docs-only plan (2026-11-25)
+
+This checklist is a **future production release gate**, not a claim these Windows
+audio endpoint scenarios have passed. Canonical specification:
+[VIRTUAL_DRIVER_PRODUCT_CONTRACT.md](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md).
+Previous user-mode Mock Broker and Shared PCM tests must not be counted as
+successfully installed Windows virtual audio device acceptance.
+
+| ID | Scenario | Required observable behavior | Current |
+| --- | --- | --- | --- |
+| VDRV-01 | Clean Windows 10 x64 install | One AuralWeave Virtual Input recording PnP device and one AuralWeave Virtual Output playback PnP device; both appear in Windows audio endpoint enumeration | Not tested (signed driver missing) |
+| VDRV-02 | Open second Portable Studio from another folder | Same system-wide two endpoints; no new PnP nodes; both Studios retain separate filters and routing | User-mode simulation only |
+| VDRV-03 | Two concurrent apps recording from Virtual Input (Discord + OBS or two independent WASAPI clients) | Both capture independent streams of the same mic signal, simultaneously; stopping one does not disrupt the other | Not tested on driver |
+| VDRV-04 | Browser and game/media player playing to Virtual Output at the same time | Windows Shared Mode mix is accepted from both apps; neither silently excludes the other; Studio can route received audio | Not tested on driver |
+| VDRV-05 | Two Studio microphone contributors | Both independently add post-filter audio to shared virtual mic according to defined mixing policy; no competing read of one SPSC ring | Developer-only PCM mock passed; production untested |
+| VDRV-06 | Studio closed while virtual endpoints are installed | Windows device enumeration retains endpoints; trusted background bridge lifecycle gives silence/valid state rather than disappearing or hanging | Not tested on driver |
+| VDRV-07 | Two Studio windows press Install concurrently | Serialized setup/UAC/recheck creates at most one device per role; no false duplicate success | Only PnP guard mocked |
+| VDRV-08 | Input installed but Output absent | Input reports installed without Install; missing Output alone may offer Install when signed package available | Product design only |
+| VDRV-09 | Output installed but Input absent | Symmetric behavior to VDRV-08 | Product design only |
+| VDRV-10 | Both roles already present | Read-only installed states; no Install or create/add-driver action | PnP UI mock/guard only |
+| VDRV-11 | Legacy / partially installed / mismatched PnP node | Block duplicate installation, show explicit reason; do not silently repair or delete any existing node | Partial detection/guard tested |
+| VDRV-12 | Production package unavailable or unsigned | Install disabled and reason visible; NEVER install unsigned WDK kernel prototype | Guard tested |
+| VDRV-13 | Check all Studio UI screens | **No Uninstall / Remove / Repair** driver actions anywhere, and no forced auto-install | UI intent and historical mock checked; full GUI regression needed |
+| VDRV-14 | Remove from Windows Device Manager | AuralWeave node can be uninstalled, remaining resources cleanly handled, Studio displays absent state afterward | Not tested on signed driver |
+| VDRV-15 | Windows Installed apps / Apps & Features (if implemented) | One registered `AuralWeave Virtual Driver` entry offers a tested independent driver-set uninstaller; **INF-only package must not be claimed to do this** | Not implemented |
+| VDRV-16 | Reboot / restart driver / disable / unplug physical dependency | Stable PnP identity, bounded reconnect, no retained stale audio and other clients recover | Not tested on installed driver |
+| VDRV-17 | Multiple Windows users/logon sessions, including permission-restricted clients | Correct per-user/capture permissions and endpoint sharing, no unintended audio disclosure | Security design pending |
+| VDRV-18 | Endpoint Exclusive Mode request and conflict | Document Windows policy behavior; normal Shared Mode clients stay supported without deliberately imposing global Studio-exclusive control | Not tested |
+| VDRV-19 | Move/delete Portable Studio after driver installation | System PnP device does not disappear; trusted background lifecycle and uninstaller are not broken by relocated/deleted Portable folder | Design pending |
+| VDRV-20 | Driver signed with applicable HLK/testing gates on Windows 10 and separately Windows 11 | Actual OS runtime and shared-mode tests pass independently; INF signability alone is insufficient | Win11 and signed driver untested |
+
+**Test discipline:** Windows 10 22H2 is the real local environment; Windows 11
+remains theoretical until a real test. Run device/driver scenarios in an
+appropriate controlled VM or test device, not by enabling Windows Test Signing
+or installing the unsigned kernel prototype on the active user machine. Any
+reported PASS must identify whether it was a **user-mode mock**, **VM-installed
+signed driver**, or **real audio application** test. User-mode broker
+process-origin PID binding is not a restriction on normal Windows audio clients.

@@ -1,4 +1,12 @@
-# AuralWeave — current native-only implementation (2026-11-24)
+# AuralWeave — native-only implementation and historical checkpoints
+
+**Current approved shared-driver contract (2026-11-25):**
+[VIRTUAL_DRIVER_PRODUCT_CONTRACT.md](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md).
+**Handoff:** [VIRTUAL_DRIVER_HANDOFF_2026-11-25.md](VIRTUAL_DRIVER_HANDOFF_2026-11-25.md).
+Several older checkpoints below describe superseded experiments, notably
+per-device removal and full-session exclusive role mutexes. Those historical
+sections must **not** override the current Install-only/shared-device plan.
+**No real signed and installed virtual audio driver has been verified.**
 
 ## Architecture
 
@@ -39,7 +47,7 @@ Native C++ ordered filter chain is now integrated and tested: initial empty bypa
 
 - UI: Studio / Virtual Driver selector; a single Virtual Driver page with separate Virtual Input (recording) and Virtual Output (playback) cards; increased margins for mode selector, preset controls and driver action areas.
 - Presets: Save/Load/Import/Export current ordered Filters as portable .awfilter JSON files, without Sound Input or Output device selection.
-- Driver manager: Win32 SetupAPI enumerates reserved AuralWeave-family PnP hardware IDs independent of the executable folder; guarded per-instance removal with explicit confirmation and UAC is available for future matching devices.
+- Driver manager: Win32 SetupAPI enumerates reserved AuralWeave-family PnP hardware IDs independent of the executable folder; a guarded per-instance removal UI was present in this historical prototype, **but was subsequently removed**; current Studio is Install-only.
 - Not yet implemented: first-party signed virtual audio kernel driver, installation or creation of virtual endpoints, IPC audio bridge. Install controls remain intentionally disabled.
 - Validation: 32 Core tests, real Windows two-mode UI test, native PnP scan (zero matching installed), Portable ZIP and custom WindowChrome maximize/restore across three displays passed.
 
@@ -48,8 +56,9 @@ Native C++ ordered filter chain is now integrated and tested: initial empty bypa
 WDK 28000, SDK 28000, VS 2026 WDK integration and pinned SysVAD
 reference/WIL are installed. Driver toolchain checker passes.
 Full upstream reference source compiles in compile-only mode.
-No actual AuralWeave virtual audio driver binary has been created,
-signed, validated, installed or released yet.
+At this point of the historical timeline no AuralWeave kernel prototype
+had yet compiled. Later checkpoints below document an **unsigned compile-only
+prototype**, not a signed or installed functional audio driver.
 
 ## Kernel prototype compiled — Windows 10 + Windows 11 target (2026-11-25)
 
@@ -94,12 +103,12 @@ selection, Windows 11 VM tests and Microsoft signing remain pending.
 ## Cross-folder virtual control and wire protocol (2026-11-25)
 
 Two simultaneous AuralWeave Portable copies can run Studio separately.
-Windows global named mutexes ensure cooperating managed instances cannot
-control the same Virtual Input or Output at once; different roles can
-be controlled separately. Cross-process Windows 10 tests from distinct
-folders passed. The C# Bridge factory acquires a role lease before
-creating any owner session, and the PnP removal path holds the same
-role lease while it verifies and removes a device.
+**Historical, superseded:** this checkpoint used full-session Global
+role mutexes and had PnP removal code. The current architecture uses brief
+administrative install coordination only; multiple audio sources and listeners
+can run concurrently from independent Portable copies and Studio has **no
+Uninstall/Remove** action. Cross-process Windows 10 user-mode sharing tests
+passed in the later checkpoint. See [approved shared-driver contract](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md).
 
 A fixed 64-byte transport header and caller-synchronized S16/F32 PCM
 ring have been added under the original MIT license. The same source
