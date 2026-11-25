@@ -59,6 +59,8 @@ Artifact ของ workflow มีอายุเก็บ 14 วัน (เม�
 .\scripts\test-kernel-transport.ps1
 .\scripts\build-windows.ps1 -PublishPortable
 dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-kernel-pcm-client
+# เวิร์กเกอร์และตัวผสมเสียงหลายโปรแกรม (ใช้ Mock ไม่ติดตั้ง Driver)
+dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-kernel-pcm-worker
 .\scripts\test-multiple-portable-instances.ps1 -SkipBuild
 ```
 
@@ -79,3 +81,6 @@ dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave
 
 เมื่อรายงานปัญหา กรุณาระบุ Windows build, Input/Output ที่ใช้,
 Filter ที่เปิด, ขั้นตอนทำให้เกิดปัญหา และข้อความผิดพลาด (ไม่ต้องส่งข้อมูลส่วนตัว)
+
+รายละเอียดของการทดสอบ Worker/Coordinator และข้อจำกัดด้านการตั้งเวลาเสียง
+ดู [Kernel PCM Coordinator Checkpoint](KERNEL_PCM_COORDINATOR_CHECKPOINT.md).
