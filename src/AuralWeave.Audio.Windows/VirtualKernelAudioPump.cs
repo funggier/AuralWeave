@@ -44,6 +44,7 @@ public sealed class VirtualKernelAudioPump
         _input = new float[blockFrames * 2];
     }
 
+    internal VirtualKernelPcmClient Driver => _driver;
     public int BlockFrames => _blockFrames;
 
     public ulong MicrophoneFramesAccepted { get; private set; }
