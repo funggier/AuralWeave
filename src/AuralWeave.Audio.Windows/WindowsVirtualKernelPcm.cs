@@ -78,14 +78,31 @@ public static class VirtualKernelPcmProtocol
             U32(buffer, 48) != 0 || U32(buffer, 52) != 0 ||
             U32(buffer, 44) != buffer.Length - HeaderSize)
             throw new InvalidDataException("Kernel PCM reply violated version/size/flags.");
+        // Treat even a privileged kernel response as untrusted wire data.
+        // Status is the only opcode whose frame count represents the full
+        // queue rather than a <=2048-frame transfer.
+        var opcode = U32(buffer, 12);
+        var role = U32(buffer, 16);
         var format = U32(buffer, 24);
+        var rate = U32(buffer, 28);
+        var channels = U32(buffer, 32);
         var bits = U32(buffer, 36);
-        if (format is not (Signed16Format or Signed32Format) ||
-            bits != (format == Signed16Format ? 16u : 32u))
-            throw new InvalidDataException("Unrecognized kernel PCM sample representation.");
-        return new Header(U32(buffer, 12), U32(buffer, 16), format,
-            U32(buffer, 28), U32(buffer, 32), bits, U32(buffer, 40),
-            U32(buffer, 44), BinaryPrimitives.ReadUInt64LittleEndian(buffer[56..]));
+        var frames = U32(buffer, 40);
+        var payloadBytes = U32(buffer, 44);
+        var isMetadata = opcode is Hello or Status;
+        if (role is not (InputRole or OutputRole) ||
+            opcode is not (Hello or InputWrite or OutputRead or Status) ||
+            format != (role == InputRole ? Signed32Format : Signed16Format) ||
+            bits != (format == Signed16Format ? 16u : 32u) ||
+            (rate != 0 && (rate < 8000 || rate > 384000)) ||
+            channels > 2 || (rate == 0) != (channels == 0) ||
+            (!isMetadata && (rate == 0 || frames > MaxFrames)) ||
+            (opcode == Hello && frames != 0) ||
+            (isMetadata && payloadBytes != 0) ||
+            payloadBytes > MaxPayload)
+            throw new InvalidDataException("Kernel PCM reply contains invalid format, role, operation or bounds.");
+        return new Header(opcode, role, format, rate, channels, bits,
+            frames, payloadBytes, BinaryPrimitives.ReadUInt64LittleEndian(buffer[56..]));
     }
 }
 
@@ -175,9 +192,12 @@ public sealed class VirtualKernelPcmClient(IVirtualKernelPcmExchange exchange)
         var result = VirtualKernelPcmProtocol.Decode(reply);
         if (result.RequestId != requestId || result.Role != role ||
             result.Opcode != opcode || result.Format != format ||
+            result.Bits != bits ||
+            (opcode is VirtualKernelPcmProtocol.InputWrite or VirtualKernelPcmProtocol.OutputRead &&
+             (result.SampleRate != 48000 || result.Channels != 2)) ||
             (opcode != VirtualKernelPcmProtocol.Status &&
              result.Frames > VirtualKernelPcmProtocol.MaxFrames))
-            throw new InvalidDataException("Kernel reply does not match request.");
+            throw new InvalidDataException("Kernel reply does not match request format or correlation ID.");
         return reply;
     }
 
