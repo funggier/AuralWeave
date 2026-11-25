@@ -276,3 +276,19 @@ UNSIGNED and must NOT be installed on the host Windows 10 computer.
 **Release gate:** CI artifact is an ordinary Portable Studio preview, not a
 functional or installable Virtual Driver. Never publish the unsigned WDK
 prototype or turn on the INSTALL button on the basis of compile/mock tests.
+
+## Multi-client PCM kernel worker checkpoint (2026-11-25)
+
+- [x] Add explicit source-level PCM worker with status preflight and single-use stop semantics
+- [x] Add fail-stop exception publication and coalescing timer scheduling reference
+- [x] Combine microphone sources and fan out one simulated kernel PCM channel to independent listeners
+- [x] Add mock tests for stop, disconnected streams, device loss and multiple clients
+- [x] Wire tests into Windows diagnostics and Portable preview workflow
+- [ ] Confirm a successful Windows runner build and inspect diagnostics
+- [ ] Implement least-privilege broker IPC, per-client permissions and crash recovery
+- [ ] Replace timer-based reference with event-driven audio clock and measured drift management
+- [ ] Validate signed kernel transport in controlled Windows 10 environment
+
+This is **not** a production broker, installed audio endpoint or CI pass.
+The INSTALL action remains disabled and Windows 11 runtime is unverified.
+See [coordinator checkpoint](KERNEL_PCM_COORDINATOR_CHECKPOINT.md).
