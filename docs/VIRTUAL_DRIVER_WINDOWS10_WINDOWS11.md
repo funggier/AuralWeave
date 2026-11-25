@@ -2,6 +2,8 @@
 
 ## Compatibility target
 
+The initial driver acceptance target is Windows 10 Pro 22H2 x64. Windows 11 runtime QA can be carried out independently when a Windows 11 system is available.
+
 | Target | Build family | Current engineering status |
 | --- | --- | --- |
 | Windows 10 x64 22H2 | 19045 (19041 API baseline) | Windows 10 native app / PCM contract tested; kernel driver not installed |
@@ -39,7 +41,7 @@ AuralWeave code remain MIT; the source under
    This is a signability test, **not Microsoft signing**.
 4. Implement actual PCM transport with per-instance buffer isolation.
 5. Test the INF, audio endpoints, stream quality, device removal,
-   low latency and concurrency in throwaway Windows 10/11 VMs.
+   low latency and concurrency in a controlled Windows 10 22H2 environment.
 6. Run suitable Windows HLK tests and submit through the Microsoft
    Hardware Dev Center for the applicable signing requirements.
 7. Only after all checks pass, enable **Install-only** in Studio. Driver
@@ -76,9 +78,4 @@ and [Portable multi-instance sharing](PORTABLE_MULTI_INSTANCE_CONTROL.md).
 Standard Windows Shared Mode clients must not need a special AuralWeave
 session registration; this has not been proven on a real signed driver.
 
-The kernel-side fixed-width PCM protocol validator and bounded ring
-also compile into the unsigned WDK prototype, documented in
-[Kernel PCM protocol](KERNEL_PCM_PROTOCOL.md). Actual WaveRT-to-user
-IOCTL dispatch is not yet implemented. When a signed driver becomes
-available, the privileged device management layer must enforce
-permissions and ownership rather than relying only on managed mutexes.
+The WaveRT queue and bounded v2 IOCTL transport compile into the unsigned WDK prototype. [Kernel transport](KERNEL_IOCTL_TRANSPORT.md) describes the independent role generations and user-mode checks. Runtime proof requires the Microsoft-signed driver and the private bridge's authenticated permissions.

@@ -1,4 +1,6 @@
-# Kernel / Native PCM Protocol v1 (Compile-Only Checkpoint)
+# Kernel / Native PCM Protocol v1 (Historical Compile-Only Checkpoint)
+
+The current driver source uses [protocol v2](KERNEL_IOCTL_TRANSPORT.md). The v1 layout and remaining-work notes below record the original checkpoint.
 
 This checkpoint supplies the data contract and bounded audio FIFO needed
 before safely implementing a Windows kernel-to-user audio device. It does **not** install an audio device or expose any IOCTL handler.

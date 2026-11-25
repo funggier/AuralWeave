@@ -71,6 +71,16 @@ In addition to the signed setup, a Windows Installed Apps uninstall entry needs 
 
 The unsigned WDK binary currently available in the ignored build area is *not* a release-ready device driver. The official Studio ZIP must remain driver-free until signed setup QA is complete.
 
+## Windows 10 lab signing and verification
+
+Run `scripts/prepare-virtual-driver-attestation.ps1` on the Windows 10 development checkout. It builds the x64 driver, generates the Windows 10 catalog, and creates a CAB with INF, SYS, PDB and CAT in one driver directory. The script extracts it to verify the entry count, directory structure and SHA-256 of all four files. The CAB stays under `build/virtual-driver-attestation`.
+
+The CAB is an attestation input. A Hardware Dev Center account with a registered EV certificate is required for Microsoft signing. Sign the CAB using the registered signing mechanism, then submit it to the Hardware dashboard. When Microsoft returns the signed driver, run `scripts/verify-virtual-driver-signature.ps1 -PackageDirectory <signed-folder>` from the Windows 10 test environment. It checks kernel-mode policy and catalog membership for both INF and SYS. It rejected the generated unsigned catalog in testing.
+
+Use a controlled Windows 10 22H2 x64 environment for installation and streaming QA. The attestation workflow covers lab testing. Product distribution still needs the applicable signing and acceptance gates, including the tested signed Setup helper. Windows 11 runtime verification can follow separately.
+
+[Microsoft attestation workflow](https://learn.microsoft.com/windows-hardware/drivers/dashboard/code-signing-attestation) · [Signing requirements](https://learn.microsoft.com/windows-hardware/drivers/dashboard/code-signing-reqs) · [SignTool verification](https://learn.microsoft.com/windows-hardware/drivers/devtest/signtool)
+
 ## Current implementation evidence (2026-11-25)
 
 - Windows 10 SetupAPI lookup checks exact/legacy/partially installed IDs. Configuration Manager contributes devnode status and problem code. Any existing match or duplicate blocks creation of another node for that role.

@@ -395,6 +395,7 @@ exclusive audio-session role leases or an Uninstall button in the Studio UI.
 
 ### P2 — trusted signed installation and Windows removal
 
+- [x] Build and audit the Windows 10 attestation CAB. Verify the unsigned catalog is rejected by kernel signing policy.
 - [ ] Complete signed INF/SYS/CAT/Setup validation, accepted Windows kernel signing and applicable HLK gates
 - [ ] Install exactly missing role(s) with SetupAPI, after UAC recheck and cross-process installation mutex; never duplicate PnP nodes even when two Studio windows race
 - [ ] Ensure Windows Device Manager uninstall works; optionally implement **Windows Installed Apps / Apps & Features entry** with a real independent uninstaller for the whole driver set
