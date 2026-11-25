@@ -6,6 +6,12 @@ Windows 10 22H2 x64 is the primary test platform. The app routes through the Win
 
 The Windows 10 build passed all 32 Core tests. UI Automation verified the single Studio screen. The installed VB-CABLE playback and recording endpoints both streamed in muted WASAPI routes. Mixed-rate physical outputs and live filter reordering passed separately.
 
+## Lower-latency WASAPI checkpoint
+
+Native WASAPI requests a shared-mode engine period of about 5 ms on endpoints that support it, rounded to a period allowed by the driver. If the endpoint cannot use the shorter period, the shared-mode route uses the device's default period and Windows-selected buffer capacity. WASAPI loopback uses the default shared-mode path. Each render endpoint writes at most one period per event.
+
+On Windows 10 22H2 x64 the VB-CABLE playback endpoint negotiated 5 ms (11 ms buffer capacity), down from a 10 ms period (40 ms capacity) on v0.3.1. VB-CABLE capture and Realtek Line In stayed at 10 ms. Cable endpoints used 192 kHz Windows mix formats with VB-CABLE's internal setting at 48 kHz. The published and updated libraries both ran concurrent muted VB-CABLE send and receive routes. The updated library showed zero additional underruns or overruns in 30 seconds after a 2-second warmup across mixed 192 kHz and 48 kHz outputs. A separate 20-second muted run used two simultaneous senders on the same `CABLE Input` and a receiver on `CABLE Output`. The playback engine held at 5 ms with zero additional underruns or overruns after warmup. The end-to-end latency through VB-CABLE and Discord still needs a signal measurement.
+
 ## Architecture
 
 - The only production-path audio backend is `AuralWeave.Native.dll` (C++20, WASAPI shared mode).

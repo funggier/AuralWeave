@@ -90,11 +90,38 @@ FormatInfo format_info(const WAVEFORMATEX* f) {
     return FormatInfo{f->nSamplesPerSec, f->nChannels, is_float};
 }
 
-void init_client(IAudioClient* client, WAVEFORMATEX* format, DWORD flags) {
-    // Windows Audio Engine MixFormat is a supported shared-mode format.
-    checked(client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags,
-                               400000, 0, format, nullptr),
+UINT32 init_client(IMMDevice* device, ComPtr<IAudioClient>& client,
+                   const WAVEFORMATEX* format, DWORD flags) {
+    if (flags == AUDCLNT_STREAMFLAGS_EVENTCALLBACK) {
+        ComPtr<IAudioClient3> shared;
+        UINT32 normal{}, quantum{}, minimum{}, maximum{};
+        if (SUCCEEDED(client.As(&shared)) &&
+            SUCCEEDED(shared->GetSharedModeEnginePeriod(
+                format, &normal, &quantum, &minimum, &maximum)) && quantum) {
+            // Aim for 5 ms and respect the driver's allowed period range.
+            const UINT32 target = ((format->nSamplesPerSec / 200 + quantum - 1) / quantum)
+                * quantum;
+            const UINT32 period = std::max(minimum, target);
+            if (period < normal && period <= maximum) {
+                if (SUCCEEDED(shared->InitializeSharedAudioStream(flags, period, format, nullptr)))
+                    return period;
+
+                // Another shared client can lock the engine's format or period.
+                // Reopen the client before using the default shared-mode path.
+                shared.Reset();
+                client.Reset();
+                checked(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, &client),
+                        "Reopen shared IAudioClient");
+            }
+        }
+    }
+
+    REFERENCE_TIME device_period{};
+    checked(client->GetDevicePeriod(&device_period, nullptr), "Get default audio period");
+    checked(client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 0, 0, format, nullptr),
             "IAudioClient::Initialize");
+    return std::max<UINT32>(1, static_cast<UINT32>(
+        (device_period * format->nSamplesPerSec + 5000000) / 10000000));
 }
 
 struct RenderSink final {
@@ -104,6 +131,7 @@ struct RenderSink final {
     ComPtr<IAudioClient> client;
     ComPtr<IAudioRenderClient> writer;
     UINT32 buffer_frames{};
+    UINT32 period_frames{};
     FormatInfo format{};
     std::unique_ptr<auralweave::StreamResampler> resampler;
     std::unique_ptr<Event> render_event;
@@ -380,7 +408,7 @@ private:
         auralweave::RnnoiseProcessor noise(in_format.rate, in_format.channels);
         bool noise_was_enabled = false;
         Event capture_event;
-        init_client(capture.Get(), capture_mix.data,
+        init_client(input_device.Get(), capture, capture_mix.data,
                     AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
                         (loopback ? AUDCLNT_STREAMFLAGS_LOOPBACK : 0));
         checked(capture->SetEventHandle(capture_event.get()), "Set capture event");
@@ -399,7 +427,8 @@ private:
             sink.resampler = std::make_unique<auralweave::StreamResampler>(
                 in_format.rate, in_format.channels,
                 sink.format.rate, sink.format.channels, 80);
-            init_client(sink.client.Get(), mix.data, AUDCLNT_STREAMFLAGS_EVENTCALLBACK);
+            sink.period_frames = init_client(out_device.Get(), sink.client, mix.data,
+                                             AUDCLNT_STREAMFLAGS_EVENTCALLBACK);
             sink.render_event = std::make_unique<Event>();
             checked(sink.client->SetEventHandle(sink.render_event->get()), "Set render event");
             checked(sink.client->GetBufferSize(&sink.buffer_frames), "Get render buffer size");
@@ -410,7 +439,7 @@ private:
         }
 
         for (auto& sink : sinks_) {
-            const UINT32 preroll = sink.buffer_frames / 4;
+            const UINT32 preroll = std::min(sink.buffer_frames, sink.period_frames);
             if (preroll) {
                 BYTE* data = nullptr;
                 checked(sink.writer->GetBuffer(preroll, &data), "Render silent preroll");
@@ -504,8 +533,7 @@ private:
                 ? sink.buffer_frames - padding : 0;
             // Keep only one render period in flight per callback, rather than
             // filling a large render buffer with stale frames or silence.
-            const UINT32 period = std::max<UINT32>(1, sink.format.rate / 100);
-            const UINT32 block = std::min(free_frames, period);
+            const UINT32 block = std::min(free_frames, sink.period_frames);
             if (!block) return;
 
             const auto previous = sink.resampler->underrun_frames();
