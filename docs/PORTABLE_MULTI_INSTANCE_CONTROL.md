@@ -27,8 +27,8 @@ The reference bus is not a Windows Audio Driver, an always-on production service
 
 An earlier prototype held a Global role lock for an entire audio session and prevented simultaneous Studio use. This was **superseded** by short-lived administration coordination.
 
-- An installation mutex serializes competing install operations from different Studio folders; it is released after the PnP transaction.
-- Cross-process audio activity leases can be used as advisory lifecycle signals but do not authorize or monopolize audio endpoints.
+- Only elevated Driver Setup takes the machine-wide installation mutex. It acquires the lock before re-reading PnP and releases it after the setup transaction.
+- Native mock PCM mappings have independent lifetime and play no part in setup eligibility.
 - A test-only Mock Broker (v0.3.0) compares the OS pipe client PID and advisory native PCM mapping creator PID to reject accidentally registered **foreign internal mappings**. This is not a Windows audio client restriction, nor a privileged security boundary.
 - For a real kernel broker, independently authenticated permissions must be designed. Do **not** reuse user-writable PCM metadata as privileged authorization.
 
@@ -40,7 +40,7 @@ Studio contains **no driver Uninstall/Remove/Repair**. Users can remove devices 
 
 ## Verified Windows 10 user-mode cases
 
-`scripts/test-multiple-portable-instances.ps1` runs Diagnostics from two real folders and tests: brief per-role control locks; concurrent audio owners; two independent PCM sources mixed into one signal received by two independent listeners; contributor removal; short blocks; clipping and slow-reader isolation; proper release of advisory activity markers.
+`scripts/test-multiple-portable-instances.ps1` runs Diagnostics from two real folders and tests: cross-folder serialization of the setup lock, PCM creation and transfer for both roles while that lock is held, two PCM sources mixed into one signal shared by separate listeners, contributor removal, short blocks, clipping and slow-reader isolation.
 
 Separate native/WASAPI and Mock Broker diagnostics cover real Windows child processes, restart, broken protocol handling and owner-PID *mapping registration*. None of these tests imply a signed driver, external app device-sharing acceptance or installed Windows 11 functionality.
 

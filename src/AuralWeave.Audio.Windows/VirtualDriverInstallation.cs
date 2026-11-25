@@ -50,14 +50,13 @@ public static class VirtualDriverInstallation
         if (role is not (VirtualAudioEndpointRole.Input or VirtualAudioEndpointRole.Output))
             throw new ArgumentOutOfRangeException(nameof(role));
 
-        if (!AuralWeaveVirtualDrivers.MayInstall(installed, role))
+        var existing = installed.Where(device => device.Role == role).ToArray();
+        if (existing.Length > 1)
+            return new(false, $"Virtual {role}: {existing.Length} matching PnP devices found. Inspect them in Windows Device Manager.");
+        if (existing.Length == 1)
         {
-            var existing = installed.Where(d => d.Role == role).ToArray();
-            if (existing.Any(d => !d.IsDriverBound))
-                return new(false, $"Virtual {role}: device ID already exists but driver is not fully registered. Inspect it in Windows Device Manager.");
-            if (existing.Any(d => d.IsLegacy))
-                return new(false, $"Virtual {role}: obsolete AuralWeave device ID exists. Manage it in Windows Device Manager before installing the current version.");
-            return new(false, $"Virtual {role}: installed (1/1).");
+            var device = existing[0];
+            return new(false, $"Virtual {role}: {device.InstallationStatus}.");
         }
 
         // The desktop supplies a strictly relative bundle path; the
@@ -101,22 +100,6 @@ public static class VirtualDriverInstallation
         var eligibility = Check(installed, role);
         if (!eligibility.CanInstall)
             throw new InvalidOperationException(eligibility.Description);
-        if (SharedVirtualAudioActivityLease.IsActive(role))
-            throw new InvalidOperationException(
-                $"Virtual {role} is currently in use by another portable copy.");
-
-        using var managementLease = VirtualDeviceControlLease.TryAcquire(
-            role, waitMilliseconds: 500)
-            ?? throw new InvalidOperationException(
-                $"Another AuralWeave instance is managing Virtual {role}.");
-
-        // Recheck after acquiring the global lock to block concurrent
-        // management attempts from cooperating application instances.
-        var fresh = Check(AuralWeaveVirtualDrivers.EnumerateInstalled(), role);
-        if (!fresh.CanInstall || SharedVirtualAudioActivityLease.IsActive(role))
-            throw new InvalidOperationException(
-                $"Virtual {role} state changed. Refresh the Windows device list.");
-
         var setup = Path.Combine(AppContext.BaseDirectory, "drivers",
             BundleFolder, InstallerFilename);
         var start = new ProcessStartInfo
@@ -135,8 +118,8 @@ public static class VirtualDriverInstallation
         if (process.ExitCode != 0)
             throw new Win32Exception(
                 process.ExitCode, $"Windows driver installer failed (exit {process.ExitCode}).");
-        return AuralWeaveVirtualDrivers.EnumerateInstalled().Any(x =>
-            x.Role == role && !x.IsLegacy);
+        return AuralWeaveVirtualDrivers.IsRoleOperational(
+            AuralWeaveVirtualDrivers.EnumerateInstalled(), role);
     }
 
     private static bool IsTrustedAuralWeaveCode(string path)

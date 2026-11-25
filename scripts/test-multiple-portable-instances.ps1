@@ -1,6 +1,5 @@
-# Validates one Virtual Input and one Virtual Output controller across
-# distinct Portable app folders using Windows Global named mutex leases.
-# Runs managed Diagnostics only; NEVER installs/removes a Windows driver.
+# Checks install serialization and independent PCM in two Portable folders.
+# Runs managed Diagnostics only; no PnP mutation.
 param([switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -34,14 +33,12 @@ try {
     Write-Output "PARENT_FOLDER=$source"
     Write-Output "SECOND_FOLDER=$alternative"
     if ($source -eq $alternative) { throw 'Portable copies must be in different folders.' }
-    $oldLease = [Environment]::GetEnvironmentVariable('AW_LEASE_PROBE_DLL','Process')
     $oldShared = [Environment]::GetEnvironmentVariable('AW_SHARED_BUS_PROBE_DLL','Process')
     try {
-        [Environment]::SetEnvironmentVariable('AW_LEASE_PROBE_DLL', $alternateDll, 'Process')
         [Environment]::SetEnvironmentVariable('AW_SHARED_BUS_PROBE_DLL', $alternateDll, 'Process')
-        & dotnet $origin --test-virtual-device-ownership
+        & dotnet $origin --test-virtual-driver-install-lock
         if ($LASTEXITCODE -ne 0) {
-            throw "Cross-folder driver lease coordination failed: $LASTEXITCODE"
+            throw "Cross-folder driver install serialization failed: $LASTEXITCODE"
         }
         & dotnet $origin --test-shared-virtual-audio
         if ($LASTEXITCODE -ne 0) {
@@ -49,10 +46,8 @@ try {
         }
     }
     finally {
-        [Environment]::SetEnvironmentVariable('AW_LEASE_PROBE_DLL', $oldLease, 'Process')
         [Environment]::SetEnvironmentVariable('AW_SHARED_BUS_PROBE_DLL', $oldShared, 'Process')
     }
-    Write-Output 'TWO_DIFFERENT_PORTABLE_FOLDERS_INPUT_OUTPUT_OWNERSHIP=PASS'
     Write-Output 'TWO_DIFFERENT_PORTABLE_FOLDERS_SHARED_PCM_FANOUT_AND_MIX=PASS'
 }
 finally { Pop-Location }

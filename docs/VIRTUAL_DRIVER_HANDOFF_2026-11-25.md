@@ -1,5 +1,16 @@
 # AuralWeave — Handoff: Shared System Virtual Driver (2026-11-25)
 
+## ความคืบหน้าหลังยืนยันข้อกำหนด (2026-11-25)
+
+- ตรวจ live `main` บน Windows 10 22H2 แล้วพบว่าเริ่มจาก `2b920b4` ตรงกับ GitHub และ worktree ว่าง ดู commit ล่าสุดจาก Git ก่อนทำงานต่อ
+- เสร็จ P0 ใน Roadmap. [ADR 0004](adr/0004-shared-windows-virtual-audio.md) กำหนด Windows Audio Engine, WaveRT, Native Studio และ trusted bridge รวมถึง clock, consent และ service identity
+- Mutex การติดตั้งมีผู้ใช้เฉพาะ Driver Setup ที่ผ่าน elevation แล้ว Setup จะตรวจ PnP ภายใต้ mutex ก่อนตัดสินใจสร้างอุปกรณ์ Studio แยกสถานะ duplicate, unbound, stopped และ Windows problem code ออกจากสถานะติดตั้งพร้อมใช้งาน
+- บน Windows 10 ผ่าน build/diagnostics รวม Core 32 tests, read-only SetupAPI (พบ 0 AuralWeave nodes), mutex และ PCM ข้ามโฟลเดอร์, Mock Broker และ Native WASAPI แบบ mute ไปยังสอง output. WDK build, InfVerif และ Inf2Cat signability ผ่านแบบ compile-only
+- ขั้นถัดไปตาม Roadmap คือ P1 ทดสอบการเปิด/ปิดแต่ละบทบาทแยกกันและเตรียม timing/cancellation สำหรับ signed VM. ยังไม่มีแพ็กเกจที่ลงลายเซ็นและการตรวจ Hyper-V จาก session นี้ถูกปฏิเสธสิทธิ์. ปุ่ม Install คง disabled และระบบทดสอบหลักยังไม่มี AuralWeave PnP nodes
+
+รายละเอียดด้านล่างเก็บเป็นบันทึกจากรอบเอกสารก่อนหน้า
+
+
 ## เป้าหมายที่ยืนยันแล้ว
 
 **หนึ่งชุดของ AuralWeave Virtual Driver ต่อเครื่อง** มี **Virtual Input (recording / virtual mic) ไม่เกินหนึ่ง endpoint และ Virtual Output (render / virtual speaker) ไม่เกินหนึ่ง endpoint**. โปรแกรมทั่วไปของ Windows ทุกตัวที่ใช้ Shared Mode ต้องสามารถเลือก endpoint เหล่านี้จากระบบเสียง Windows ได้พร้อมกัน ไม่ต้องเป็น AuralWeave. เปิด AuralWeave Portable จากหลายโฟลเดอร์พร้อมกันได้ โดยไม่มีการเพิ่มไดรเวอร์หรือแย่งสิทธิ์กัน

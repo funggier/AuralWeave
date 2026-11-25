@@ -73,7 +73,8 @@ The unsigned WDK binary currently available in the ignored build area is *not* a
 
 ## Current implementation evidence (2026-11-25)
 
-- Windows 10 SetupAPI lookup checks exact/legacy/partially installed IDs.
+- Windows 10 SetupAPI lookup checks exact/legacy/partially installed IDs. Configuration Manager contributes devnode status and problem code. Any existing match or duplicate blocks creation of another node for that role.
+- Elevated Driver Setup owns the installation lock and rechecks PnP. Cross-folder diagnostics verify serialization without blocking independent PCM for either role. Actual PnP setup remains untested.
 - Concurrent user-mode PCM sources/listeners and two Portable folders pass mock tests.
 - `src/AuralWeave.DriverSetup` contains a future SetupAPI helper. Read-only preflight is tested. Its production publisher certificate pin is blank, so **actual installation is disabled**.
 - WaveRT kernel/PCM/IOCTL stages are compiled/mock-tested but **not installed**, not signed, and not proven with real Windows audio clients.

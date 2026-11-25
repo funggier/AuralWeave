@@ -378,11 +378,11 @@ exclusive audio-session role leases or an Uninstall button in the Studio UI.
 
 ### P0 — inspect current source and lock architecture
 
-- [ ] Audit actual installed-family PnP/Setup helper/UI/code before modifying any audio or kernel path
-- [ ] Write production ADR for one-machine/two-role PnP topology and standard Windows shared-mode audio streams (distinguish kernel endpoints from internal SPSC IPC)
-- [ ] Define independent client sessions, per-user permissions, mic data-consent model, multi-Studio mix and independent capture fanout
-- [ ] Define trusted service lifetime and failure/silence behavior without requiring a Studio window
-- [ ] Verify no full-session exclusivity remains for a virtual role; reserve short mutex only for install/PnP administration
+- [x] Compare Windows 10 local source, GitHub main, SetupAPI, Driver Setup, Studio UI, mock bridge and WaveRT dispatch.
+- [x] Record route topology, independent clients, consent, clock and service lifecycle in [ADR 0004](adr/0004-shared-windows-virtual-audio.md).
+- [x] Move serialization solely to the elevated setup transaction and recheck PnP under the lock.
+- [x] Verify on Windows 10 that the lock blocks competing setup across folders while separate mock PCM sessions continue for both roles.
+- [x] Distinguish existing operational, legacy, incomplete, stopped, problem and duplicate PnP states. Verified against synthetic states plus read-only host enumeration.
 
 ### P1 — real driver audio transport (test VM first)
 

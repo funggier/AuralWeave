@@ -214,8 +214,8 @@ public partial class MainWindow
             FillVirtualDeviceCard(VirtualOutputDevices, outputDevices,
                 "No AuralWeave Virtual Output installed (0/1).");
 
-            var activeInput = inputDevices.Count(x => !x.IsLegacy);
-            var activeOutput = outputDevices.Count(x => !x.IsLegacy);
+            var activeInput = inputDevices.Count(x => x.IsOperational);
+            var activeOutput = outputDevices.Count(x => x.IsOperational);
             var legacy = installed.Count(x => x.IsLegacy);
             var inputReadiness = scan.Input;
             var outputReadiness = scan.Output;
@@ -277,11 +277,7 @@ public partial class MainWindow
             var details = new StackPanel();
             details.Children.Add(new TextBlock
             {
-                Text = !device.IsDriverBound
-                    ? device.Name + " (PnP ID present; driver not fully registered)"
-                    : device.IsLegacy
-                        ? device.Name + " (legacy Windows driver)"
-                        : device.Name + " (installed)",
+                Text = $"{device.Name} ({device.InstallationStatus})",
                 FontWeight = FontWeights.SemiBold,
                 TextWrapping = TextWrapping.Wrap
             });

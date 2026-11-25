@@ -8,6 +8,13 @@ per-device removal and full-session exclusive role mutexes. Those historical
 sections must **not** override the current Install-only/shared-device plan.
 **No real signed and installed virtual audio driver has been verified.**
 
+## Setup and audio separation (2026-11-25)
+
+- Elevated setup is the only owner of the machine-wide installation mutex. It re-reads PnP under the lock, and a second setup skips creation if the role is already operational.
+- Studio reports duplicates and distinguishes bound/running nodes from unbound, stopped or problem nodes through SetupAPI and Configuration Manager. All matching nodes keep that role ineligible for another install.
+- On Windows 10 22H2, native and managed release builds, 32 managed tests, SetupAPI (zero AuralWeave nodes), read-only setup and the cross-folder lock/PCM regression passed. The unsigned setup helper and driver remain outside Studio distribution.
+- [ADR 0004](adr/0004-shared-windows-virtual-audio.md) records the topology, service permissions and VM tests required for production.
+
 ## Architecture
 
 - The only production-path audio backend is `AuralWeave.Native.dll` (C++20, WASAPI shared mode).

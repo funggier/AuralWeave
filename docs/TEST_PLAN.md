@@ -1,6 +1,6 @@
 # Verification & Acceptance Plan
 
-**Status:** Design-stage test specification; not executed.
+**Status:** Historical test evidence is recorded below. Signed-driver acceptance is still pending.
 
 ## Functional scenarios
 
@@ -271,11 +271,11 @@ successfully installed Windows virtual audio device acceptance.
 | VDRV-04 | Browser and game/media player playing to Virtual Output at the same time | Windows Shared Mode mix is accepted from both apps; neither silently excludes the other; Studio can route received audio | Not tested on driver |
 | VDRV-05 | Two Studio microphone contributors | Both independently add post-filter audio to shared virtual mic according to defined mixing policy; no competing read of one SPSC ring | Developer-only PCM mock passed; production untested |
 | VDRV-06 | Studio closed while virtual endpoints are installed | Windows device enumeration retains endpoints; trusted background bridge lifecycle gives silence/valid state rather than disappearing or hanging | Not tested on driver |
-| VDRV-07 | Two Studio windows press Install concurrently | Serialized setup/UAC/recheck creates at most one device per role; no false duplicate success | Only PnP guard mocked |
+| VDRV-07 | Two Studio windows press Install concurrently | Serialized setup/UAC/recheck creates at most one device per role; no false duplicate success | Setup mutex and guard mocked across folders. Signed install pending |
 | VDRV-08 | Input installed but Output absent | Input reports installed without Install; missing Output alone may offer Install when signed package available | Product design only |
 | VDRV-09 | Output installed but Input absent | Symmetric behavior to VDRV-08 | Product design only |
 | VDRV-10 | Both roles already present | Read-only installed states; no Install or create/add-driver action | PnP UI mock/guard only |
-| VDRV-11 | Legacy / partially installed / mismatched PnP node | Block duplicate installation, show explicit reason; do not silently repair or delete any existing node | Partial detection/guard tested |
+| VDRV-11 | Legacy / partially installed / mismatched PnP node | Block duplicate installation, show explicit reason; do not silently repair or delete any existing node | Synthetic legacy/unbound/stopped/problem/duplicate guard checks and read-only SetupAPI passed |
 | VDRV-12 | Production package unavailable or unsigned | Install disabled and reason visible; NEVER install unsigned WDK kernel prototype | Guard tested |
 | VDRV-13 | Check all Studio UI screens | **No Uninstall / Remove / Repair** driver actions anywhere, and no forced auto-install | UI intent and historical mock checked; full GUI regression needed |
 | VDRV-14 | Remove from Windows Device Manager | AuralWeave node can be uninstalled, remaining resources cleanly handled, Studio displays absent state afterward | Not tested on signed driver |

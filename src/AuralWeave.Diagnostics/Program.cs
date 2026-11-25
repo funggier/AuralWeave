@@ -90,22 +90,23 @@ try
         return 0;
     }
 
-    if (args.Contains("--probe-virtual-input-lease") ||
-        args.Contains("--probe-virtual-output-lease"))
+    if (args.Contains("--probe-virtual-driver-install-lock"))
     {
-        // Called by a second dotnet process, independent of folder location.
-        var role = args.Contains("--probe-virtual-input-lease")
-            ? VirtualAudioEndpointRole.Input : VirtualAudioEndpointRole.Output;
-        using var lease = VirtualDeviceControlLease.TryAcquire(role);
-        Console.WriteLine(lease is null ? $"BUSY: Virtual {role}" : $"AVAILABLE: Virtual {role}");
-        return lease is null ? 17 : 0;
+        try
+        {
+            return VirtualDriverInstallLock.Run(TimeSpan.Zero, () => 0);
+        }
+        catch (TimeoutException)
+        {
+            return 17;
+        }
     }
 
-    if (args.Contains("--test-virtual-device-ownership"))
+    if (args.Contains("--test-virtual-driver-install-lock"))
     {
-        int Probe(VirtualAudioEndpointRole role)
+        int Probe(params string[] arguments)
         {
-            var dll = Environment.GetEnvironmentVariable("AW_LEASE_PROBE_DLL")
+            var dll = Environment.GetEnvironmentVariable("AW_SHARED_BUS_PROBE_DLL")
                 ?? Path.Combine(AppContext.BaseDirectory, "AuralWeave.Diagnostics.dll");
             var command = new System.Diagnostics.ProcessStartInfo("dotnet")
             {
@@ -115,68 +116,47 @@ try
                 CreateNoWindow = true
             };
             command.ArgumentList.Add(dll);
-            command.ArgumentList.Add(role == VirtualAudioEndpointRole.Input
-                ? "--probe-virtual-input-lease" : "--probe-virtual-output-lease");
+            foreach (var argument in arguments) command.ArgumentList.Add(argument);
             using var child = System.Diagnostics.Process.Start(command)
                 ?? throw new InvalidOperationException("Could not start second process.");
             if (!child.WaitForExit(12000))
             {
                 child.Kill(entireProcessTree: true);
-                throw new InvalidOperationException("Child process did not exit.");
+                throw new TimeoutException("Child process did not exit.");
             }
             var result = child.ExitCode;
-            var output = child.StandardOutput.ReadToEnd();
-            var errors = child.StandardError.ReadToEnd();
-            Console.WriteLine($"Child {role}: {result}, {output.Trim()} {errors.Trim()}");
+            Console.WriteLine($"{arguments[0]}: exit {result}. " +
+                child.StandardOutput.ReadToEnd().Trim() + child.StandardError.ReadToEnd().Trim());
             return result;
         }
 
-        using var inputControl = VirtualDeviceControlLease.TryAcquire(
-            VirtualAudioEndpointRole.Input)
-            ?? throw new InvalidOperationException("Cannot acquire first Virtual Input.");
-        if (VirtualDeviceControlLease.TryAcquire(VirtualAudioEndpointRole.Input) is not null ||
-            Probe(VirtualAudioEndpointRole.Input) != 17)
-            throw new InvalidOperationException("Virtual Input was concurrently acquired.");
-        Console.WriteLine("PASS: no duplicate Virtual Input controller, even in another process.");
-
-        if (Probe(VirtualAudioEndpointRole.Output) != 0)
-            throw new InvalidOperationException("Input lock blocked independent Virtual Output.");
-        Console.WriteLine("PASS: second process can independently control Virtual Output.");
-
-        using (var outputControl = VirtualDeviceControlLease.TryAcquire(
-            VirtualAudioEndpointRole.Output)
-            ?? throw new InvalidOperationException("Cannot acquire Virtual Output."))
+        VirtualDriverInstallLock.Run(TimeSpan.Zero, () =>
         {
-            if (Probe(VirtualAudioEndpointRole.Output) != 17)
-                throw new InvalidOperationException("Virtual Output cross-process lock failed.");
-            Console.WriteLine("PASS: no duplicate Virtual Output controller.");
-        }
-        if (Probe(VirtualAudioEndpointRole.Output) != 0)
-            throw new InvalidOperationException("Virtual Output lease was not released.");
-        Console.WriteLine("PASS: released Virtual Output can be acquired by other process.");
+            if (Probe("--probe-virtual-driver-install-lock") != 17)
+                throw new InvalidOperationException("Another process acquired the setup lock.");
+            if (Probe("--test-pcm-during-driver-install") != 0)
+                throw new InvalidOperationException("Holding the setup lock interrupted PCM.");
+            return 0;
+        });
 
-        // Owning thread is dedicated, so async continuations can dispose
-        // from a different thread without mutex ownership exceptions.
-        await Task.Yield();
-        inputControl.Dispose();
-        if (Probe(VirtualAudioEndpointRole.Input) != 0)
-            throw new InvalidOperationException("Virtual Input lease was not released.");
-        Console.WriteLine("PASS: async owner release enables another process to take over.");
-
-        Console.WriteLine("VIRTUAL_DRIVER_CROSS_PROCESS_OWNERSHIP=PASS");
+        if (Probe("--probe-virtual-driver-install-lock") != 0)
+            throw new InvalidOperationException("The setup lock was not released.");
+        Console.WriteLine("CROSS_FOLDER_INSTALL_SERIALIZATION_AND_PCM_INDEPENDENCE=PASS");
         return 0;
     }
 
-    if (args.Length == 3 && args[0] == "--probe-shared-audio-active")
+    if (args.Contains("--test-pcm-during-driver-install"))
     {
-        var role = uint.Parse(args[1]) == 1
-            ? VirtualAudioEndpointRole.Input : VirtualAudioEndpointRole.Output;
-        var expected = bool.Parse(args[2]);
-        var actual = SharedVirtualAudioActivityLease.IsActive(role);
-        if (actual != expected)
-            throw new InvalidOperationException(
-                $"Audio lifetime guard mismatch for {role}: expected {expected} got {actual}.");
-        Console.WriteLine($"PASS: cross-process shared audio role {role}, active={actual}");
+        foreach (var role in new[] { 1u, 2u })
+        {
+            using var owner = NativeVirtualAudioBridge.Create(role, 1);
+            using var peer = NativeVirtualAudioBridge.Attach(owner.Name, role, 1);
+            float[] samples = [0.25f, -0.5f];
+            var received = new float[samples.Length];
+            if (owner.Write(samples) != 1 || peer.Read(received) != 1 ||
+                !samples.SequenceEqual(received))
+                throw new InvalidOperationException($"Role {role} PCM was interrupted.");
+        }
         return 0;
     }
 
@@ -249,11 +229,6 @@ try
             using var receiveA = NativeVirtualAudioBridge.Create(role, 1, 48000, 2, 512);
             using var receiveB = NativeVirtualAudioBridge.Create(role, 1, 48000, 2, 512);
             using var hub = new SharedVirtualAudioBus(role, 48000, 2, 256);
-            var endpointRole = role == 1u
-                ? VirtualAudioEndpointRole.Input : VirtualAudioEndpointRole.Output;
-            if (!SharedVirtualAudioActivityLease.IsActive(endpointRole))
-                throw new InvalidOperationException("Audio owner activity guard missing.");
-            Probe(alternative, "--probe-shared-audio-active", $"{role}", "true");
             hub.AddContributor(sourceA.Name);
             hub.AddContributor(sourceB.Name);
             hub.AddListener(receiveA.Name);
@@ -316,13 +291,6 @@ try
             Console.WriteLine($"PASS: role {role}: slow listener dropped {hub.FramesDropped} frames " +
                 "but independent listener received all three blocks.");
         }
-        if (SharedVirtualAudioActivityLease.IsActive(VirtualAudioEndpointRole.Input) ||
-            SharedVirtualAudioActivityLease.IsActive(VirtualAudioEndpointRole.Output))
-            throw new InvalidOperationException(
-                "An audio role is still marked active after all owners closed.");
-        Probe(alternative, "--probe-shared-audio-active", "1", "false");
-        Probe(alternative, "--probe-shared-audio-active", "2", "false");
-        Console.WriteLine("PASS: all user-mode audio owner handles released across copies.");
         Console.WriteLine("MULTI_PORTABLE_SHARED_VIRTUAL_MIX_AND_FANOUT=PASS");
         return 0;
     }
@@ -417,6 +385,25 @@ try
             !obsolete.Description.Contains("obsolete", StringComparison.OrdinalIgnoreCase) ||
             !incomplete.Description.Contains("not fully", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Signed installer readiness must reject existing root devices.");
+
+        var input = simulatedInstalled[0];
+        var duplicate = new[] { input, input with { InstanceId = @"ROOT\MEDIA\0002" } };
+        var stopped = new[] { input with { IsStarted = false } };
+        var problem = new[] { input with { ProblemCode = 22 } };
+        var duplicateReadiness = VirtualDriverInstallation.Check(duplicate, input.Role);
+        var stoppedReadiness = VirtualDriverInstallation.Check(stopped, input.Role);
+        var problemReadiness = VirtualDriverInstallation.Check(problem, input.Role);
+        if (!AuralWeaveVirtualDrivers.IsRoleOperational(simulatedInstalled, input.Role) ||
+            !AuralWeaveVirtualDrivers.MayInstall([input], VirtualAudioEndpointRole.Output) ||
+            !AuralWeaveVirtualDrivers.MayInstall([simulatedInstalled[1]], input.Role) ||
+            AuralWeaveVirtualDrivers.IsRoleOperational(duplicate, input.Role) ||
+            AuralWeaveVirtualDrivers.IsRoleOperational(stopped, input.Role) ||
+            AuralWeaveVirtualDrivers.IsRoleOperational(problem, input.Role) ||
+            duplicateReadiness.CanInstall || !duplicateReadiness.Description.Contains("2 matching") ||
+            stoppedReadiness.CanInstall || !stoppedReadiness.Description.Contains("not started") ||
+            problemReadiness.CanInstall || !problemReadiness.Description.Contains("code 22"))
+            throw new InvalidOperationException("Existing non-operational or duplicate PnP devices must block setup.");
+        Console.WriteLine("PASS: missing roles are independent; duplicate, stopped and problem states reject setup.");
 
         var noBundleFolder = Path.Combine(AppContext.BaseDirectory, "drivers", "AuralWeaveVirtualAudio");
         if (!Directory.Exists(noBundleFolder))

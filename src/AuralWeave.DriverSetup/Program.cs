@@ -60,28 +60,21 @@ internal static class Program
                 throw new UnauthorizedAccessException(
                     "Windows Administrator approval is required before installing a driver.");
 
-            // The user may launch this executable directly, independent of
-            // the Desktop's management mutex. All setup programs (regardless
-            // of folder) must serialize PnP changes through this common lock.
-            using var global = new Mutex(false,
-                @"Global\AuralWeave.VirtualAudio.DriverInstall.v1");
-            var acquired = false;
-            try
+            // All elevated installers serialize here, regardless of role or
+            // portable folder. Read current PnP state under the lock.
+            return VirtualDriverInstallLock.Run(TimeSpan.FromSeconds(30), () =>
             {
-                try { acquired = global.WaitOne(0); }
-                catch (AbandonedMutexException) { acquired = true; }
-                if (!acquired)
-                    throw new InvalidOperationException(
-                        "Another AuralWeave Driver Setup is running.");
-
                 var inventory = AuralWeaveVirtualDrivers.EnumerateInstalled();
+                if (AuralWeaveVirtualDrivers.IsRoleOperational(inventory, role))
+                {
+                    Console.WriteLine($"Virtual {role} is already installed.");
+                    return 0;
+                }
+
                 var readiness = VirtualDriverInstallation.CheckBundle(
                     inventory, role, AppContext.BaseDirectory);
                 if (!readiness.CanInstall)
                     throw new InvalidOperationException(readiness.Description);
-                if (SharedVirtualAudioActivityLease.IsActive(role))
-                    throw new InvalidOperationException(
-                        $"Virtual {role} is currently in use by an AuralWeave process.");
 
                 // Only the two compiled-in hardware IDs may be created.
                 var hardwareId = role == VirtualAudioEndpointRole.Input
@@ -95,18 +88,16 @@ internal static class Program
                 Console.WriteLine($"Installing one Windows root-enumerated {name}...");
                 var restartRequired = InstallRootEnumeratedDevice(hardwareId, name, inf);
                 var actual = AuralWeaveVirtualDrivers.EnumerateInstalled();
-                if (!actual.Any(x => x.Role == role && !x.IsLegacy))
+                var roleDevices = actual.Where(device => device.Role == role).ToArray();
+                if (roleDevices.Length != 1 || roleDevices[0].IsLegacy ||
+                    (!restartRequired && !roleDevices[0].IsOperational))
                     throw new InvalidOperationException(
-                        "Windows did not enumerate the expected AuralWeave device.");
+                        "Windows did not report exactly one working AuralWeave device. Inspect Windows Device Manager.");
                 Console.WriteLine(restartRequired
                     ? "Driver installed; Windows reports that a reboot is required."
                     : "Driver installation returned successfully.");
                 return 0;
-            }
-            finally
-            {
-                if (acquired) global.ReleaseMutex();
-            }
+            });
         }
         catch (Win32Exception ex)
         {

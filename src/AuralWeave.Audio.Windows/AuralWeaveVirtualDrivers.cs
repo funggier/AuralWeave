@@ -13,13 +13,24 @@ public enum VirtualAudioEndpointRole { Input, Output }
 
 public sealed record AuralWeaveVirtualDevice(
     string InstanceId, string Name, VirtualAudioEndpointRole Role,
-    string HardwareId, bool IsDriverBound = true)
+    string HardwareId, bool IsDriverBound = true,
+    bool IsStarted = true, uint? ProblemCode = null)
 {
     public string RoleLabel => Role == VirtualAudioEndpointRole.Input
         ? "Virtual Input (recording / microphone)" : "Virtual Output (playback)";
     // Only for migration/cleanup. Legacy slots 0002..0016 are no longer
     // eligible for installation but must remain discoverable for removal.
     public bool IsLegacy => !AuralWeaveVirtualDrivers.TryIdentifyRole(HardwareId, out _);
+    public bool IsOperational => !IsLegacy && IsDriverBound && IsStarted && !ProblemCode.HasValue;
+
+    public string InstallationStatus => this switch
+    {
+        { IsLegacy: true } => "obsolete AuralWeave device ID present",
+        { IsDriverBound: false } => "PnP device ID present but driver is not fully registered",
+        { ProblemCode: uint code } => $"Windows reports device problem code {code}",
+        { IsStarted: false } => "PnP device present but driver is not started",
+        _ => "installed (1/1)"
+    };
 }
 
 public static class AuralWeaveVirtualDrivers
@@ -40,6 +51,12 @@ public static class AuralWeaveVirtualDrivers
     private static readonly Guid MediaClassGuid = new("4d36e96c-e325-11ce-bfc1-08002be10318");
     private const uint SpdrpFriendlyName = 0x0000000C;
     private const int ErrorNoMoreItems = 259;
+    private const int ErrorInvalidData = 13;
+    private const int ErrorInsufficientBuffer = 122;
+    private const uint RegSz = 1;
+    private const uint RegMultiSz = 7;
+    private const uint DnStarted = 0x00000008;
+    private const uint DnHasProblem = 0x00000400;
 
     public static IReadOnlyList<AuralWeaveVirtualDevice> EnumerateInstalled()
     {
@@ -69,7 +86,7 @@ public static class AuralWeaveVirtualDrivers
                 // is missing or the devnode was only partly registered. Such
                 // a node STILL blocks creation of a duplicate root device.
                 // Do not mistake a missing service for an absent device.
-                var ids = ReadProperty(infoSet, ref data, SpdrpHardwareId)
+                var ids = ReadProperty(infoSet, ref data, SpdrpHardwareId, RegMultiSz)
                     .Split('\0', StringSplitOptions.RemoveEmptyEntries);
                 var ownId = ids.FirstOrDefault(id =>
                     TryIdentifyRole(id, out _) || TryIdentifyLegacyRole(id, out _));
@@ -82,7 +99,8 @@ public static class AuralWeaveVirtualDrivers
                 var instance = new StringBuilder(1024);
                 if (!SetupDiGetDeviceInstanceId(infoSet, ref data,
                     instance, instance.Capacity, out _))
-                    continue;
+                    throw new Win32Exception(Marshal.GetLastWin32Error(),
+                        "Unable to read an AuralWeave PnP device instance ID.");
 
                 var name = ReadProperty(infoSet, ref data, SpdrpFriendlyName);
                 if (string.IsNullOrWhiteSpace(name))
@@ -93,8 +111,13 @@ public static class AuralWeaveVirtualDrivers
                 var bound = data.ClassGuid == MediaClassGuid &&
                     ReadProperty(infoSet, ref data, SpdrpService).Equals(
                         ExpectedServiceName, StringComparison.OrdinalIgnoreCase);
+                var statusAvailable = CM_Get_DevNode_Status(
+                    out var status, out var problem, data.DevInst, 0) == 0;
+                var started = statusAvailable && (status & DnStarted) != 0;
+                uint? problemCode = statusAvailable && (status & DnHasProblem) != 0
+                    ? problem : null;
                 result.Add(new AuralWeaveVirtualDevice(
-                    instance.ToString(), name.TrimEnd('\0'), role, ownId, bound));
+                    instance.ToString(), name, role, ownId, bound, started, problemCode));
             }
             return result.OrderBy(d => d.Role).ThenBy(d => d.Name,
                 StringComparer.CurrentCultureIgnoreCase).ToArray();
@@ -169,15 +192,41 @@ public static class AuralWeaveVirtualDrivers
         return !installed.Any(device => device.Role == role);
     }
 
-    private static string ReadProperty(
-        IntPtr infoSet, ref SpDevinfoData data, uint property)
+    public static bool IsRoleOperational(
+        IReadOnlyList<AuralWeaveVirtualDevice> installed,
+        VirtualAudioEndpointRole role)
     {
-        var buffer = new byte[8192];
-        if (!SetupDiGetDeviceRegistryProperty(infoSet, ref data, property,
-            out _, buffer, (uint)buffer.Length, out _))
-            return string.Empty;
-        return Encoding.Unicode.GetString(buffer).TrimEnd('\0');
+        var devices = installed.Where(device => device.Role == role).ToArray();
+        return devices.Length == 1 && devices[0].IsOperational;
     }
+
+    private static string ReadProperty(
+        IntPtr infoSet, ref SpDevinfoData data, uint property, uint expectedType = RegSz)
+    {
+        var buffer = new byte[1024];
+        if (!SetupDiGetDeviceRegistryProperty(infoSet, ref data, property,
+            out var type, buffer, (uint)buffer.Length, out var size))
+        {
+            var error = Marshal.GetLastWin32Error();
+            if (error == ErrorInvalidData) return string.Empty;
+            if (error != ErrorInsufficientBuffer || size <= buffer.Length)
+                throw new Win32Exception(error, "Unable to read Windows PnP inventory.");
+
+            buffer = new byte[checked((int)size)];
+            if (!SetupDiGetDeviceRegistryProperty(infoSet, ref data, property,
+                out type, buffer, (uint)buffer.Length, out size))
+                throw new Win32Exception(Marshal.GetLastWin32Error(),
+                    "Unable to read Windows PnP inventory.");
+        }
+
+        if (type != expectedType || size > buffer.Length || size % 2 != 0)
+            throw new InvalidDataException("Windows returned an unexpected PnP property format.");
+        return Encoding.Unicode.GetString(buffer, 0, (int)size).TrimEnd('\0');
+    }
+
+    [DllImport("cfgmgr32.dll", ExactSpelling = true)]
+    private static extern uint CM_Get_DevNode_Status(
+        out uint status, out uint problemNumber, uint devInst, uint flags);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SpDevinfoData
