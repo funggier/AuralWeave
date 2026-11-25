@@ -17,6 +17,7 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
     private const uint ExpectedChannels = 2;
     private readonly VirtualKernelPcmClient _driver;
     private readonly VirtualKernelAudioPump _pump;
+    private readonly Func<int> _step;
     private readonly CancellationTokenSource _stop = new();
     private readonly object _gate = new();
     private readonly TimeSpan _interval;
@@ -31,9 +32,20 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
     {
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         _pump = pump ?? throw new ArgumentNullException(nameof(pump));
+        _step = pump.PumpOnce;
         if (pump.BlockFrames is < 1 or > VirtualKernelPcmProtocol.MaxFrames)
             throw new ArgumentOutOfRangeException(nameof(pump));
         _interval = TimeSpan.FromSeconds(pump.BlockFrames / (double)ExpectedRate);
+    }
+
+    /// <summary>Use the same stop/failure scheduler with a multi-client
+    /// input mixer and independent speaker listeners.</summary>
+    public VirtualKernelAudioWorker(VirtualKernelPcmClient driver,
+        VirtualKernelAudioCoordinator coordinator)
+        : this(driver, (coordinator ?? throw new ArgumentNullException(
+            nameof(coordinator))).KernelPump)
+    {
+        _step = coordinator.PumpOnce;
     }
 
     public long Cycles => Interlocked.Read(ref _cycles);
@@ -95,7 +107,7 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
                 cancellationToken.ThrowIfCancellationRequested();
                 // One synchronous bounded IOCTL read/write pair per tick.
                 // A failed exchange stops this worker; no busy retry storm.
-                var frames = _pump.PumpOnce();
+                var frames = _step();
                 Interlocked.Increment(ref _cycles);
                 if (frames > 0) Interlocked.Increment(ref _activeCycles);
             }
