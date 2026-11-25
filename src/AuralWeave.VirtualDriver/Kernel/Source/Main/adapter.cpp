@@ -20,6 +20,7 @@ Abstract:
 #define PUT_GUIDS_HERE
 
 #include "definitions.h"
+#include "../../../Transport/aw_pcm_wire.h"
 #include "endpoints.h"
 #include "minipairs.h"
 
@@ -172,80 +173,17 @@ __drv_requiresIRQL(PASSIVE_LEVEL)
 NTSTATUS
 GetRegistrySettings(
     _In_ PUNICODE_STRING RegistryPath
-   )
-/*++
-
-Routine Description:
-
-    Initialize Driver Framework settings from the driver
-    specific registry settings under
-
-    \REGISTRY\MACHINE\SYSTEM\ControlSetxxx\Services\<driver>\Parameters
-
-Arguments:
-
-    RegistryPath - Registry path passed to DriverEntry
-
-Returns:
-
-    NTSTATUS - SUCCESS if able to configure the framework
-
---*/
-
+)
 {
-    NTSTATUS                    ntStatus;
-    PDRIVER_OBJECT              DriverObject;
-    HANDLE                      DriverKey;
-    RTL_QUERY_REGISTRY_TABLE    paramTable[] = {
-    // QueryRoutine     Flags                                               Name                     EntryContext             DefaultType                                                    DefaultData              DefaultLength
-        { NULL,   RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK, L"DoNotCreateDataFiles", &g_DoNotCreateDataFiles, (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD, &g_DoNotCreateDataFiles, sizeof(ULONG)},
-        { NULL,   RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_TYPECHECK, L"DisableToneGenerator", &g_DisableToneGenerator, (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) | REG_DWORD, &g_DisableToneGenerator, sizeof(ULONG)},
-        { NULL,   0,                                                        NULL,                    NULL,                    0,                                                             NULL,                    0}
-    };
-
-    DPF(D_TERSE, ("[GetRegistrySettings]"));
-
     PAGED_CODE();
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    DriverObject = WdfDriverWdmGetDriverObject(WdfGetDriver());
-    DriverKey = NULL;
-    ntStatus = IoOpenDriverRegistryKey(DriverObject, 
-                                 DriverRegKeyParameters,
-                                 KEY_READ,
-                                 0,
-                                 &DriverKey);
-
-    if (!NT_SUCCESS(ntStatus))
-    {
-        return ntStatus;
-    }
-
-    ntStatus = RtlQueryRegistryValues(RTL_REGISTRY_HANDLE,
-                                  (PCWSTR) DriverKey,
-                                  &paramTable[0],
-                                  NULL,
-                                  NULL);
-
-    if (!NT_SUCCESS(ntStatus)) 
-    {
-        DPF(D_VERBOSE, ("RtlQueryRegistryValues failed, using default values, 0x%x", ntStatus));
-        //
-        // Don't return error because we will operate with default values.
-        //
-    }
-
-    //
-    // Dump settings.
-    //
-    DPF(D_VERBOSE, ("DoNotCreateDataFiles: %u", g_DoNotCreateDataFiles));
-    DPF(D_VERBOSE, ("DisableToneGenerator: %u", g_DisableToneGenerator));
-
-    if (DriverKey)
-    {
-        ZwClose(DriverKey);
-    }
-
+    // Product safety/privacy invariant: unlike Microsoft Simple Audio Sample,
+    // NEVER permit a service registry setting to enable disk recordings or
+    // synthetic microphone tones. Driver settings are not user-controllable
+    // until the real AuralWeave audio transport is implemented and verified.
+    g_DoNotCreateDataFiles = 1;
+    g_DisableToneGenerator = 1;
     return STATUS_SUCCESS;
 }
 

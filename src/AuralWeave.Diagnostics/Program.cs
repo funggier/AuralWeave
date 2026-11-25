@@ -6,6 +6,83 @@ try
     Console.OutputEncoding = System.Text.Encoding.UTF8;
     Console.WriteLine("AuralWeave diagnostics — Native C++ WASAPI only");
 
+    if (args.Contains("--probe-virtual-input-lease") ||
+        args.Contains("--probe-virtual-output-lease"))
+    {
+        // Called by a second dotnet process, independent of folder location.
+        var role = args.Contains("--probe-virtual-input-lease")
+            ? VirtualAudioEndpointRole.Input : VirtualAudioEndpointRole.Output;
+        using var lease = VirtualDeviceControlLease.TryAcquire(role);
+        Console.WriteLine(lease is null ? $"BUSY: Virtual {role}" : $"AVAILABLE: Virtual {role}");
+        return lease is null ? 17 : 0;
+    }
+
+    if (args.Contains("--test-virtual-device-ownership"))
+    {
+        int Probe(VirtualAudioEndpointRole role)
+        {
+            var dll = Environment.GetEnvironmentVariable("AW_LEASE_PROBE_DLL")
+                ?? Path.Combine(AppContext.BaseDirectory, "AuralWeave.Diagnostics.dll");
+            var command = new System.Diagnostics.ProcessStartInfo("dotnet")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            command.ArgumentList.Add(dll);
+            command.ArgumentList.Add(role == VirtualAudioEndpointRole.Input
+                ? "--probe-virtual-input-lease" : "--probe-virtual-output-lease");
+            using var child = System.Diagnostics.Process.Start(command)
+                ?? throw new InvalidOperationException("Could not start second process.");
+            if (!child.WaitForExit(12000))
+            {
+                child.Kill(entireProcessTree: true);
+                throw new InvalidOperationException("Child process did not exit.");
+            }
+            var result = child.ExitCode;
+            var output = child.StandardOutput.ReadToEnd();
+            var errors = child.StandardError.ReadToEnd();
+            Console.WriteLine($"Child {role}: {result}, {output.Trim()} {errors.Trim()}");
+            return result;
+        }
+
+        using var inputControl = VirtualDeviceControlLease.TryAcquire(
+            VirtualAudioEndpointRole.Input)
+            ?? throw new InvalidOperationException("Cannot acquire first Virtual Input.");
+        if (VirtualDeviceControlLease.TryAcquire(VirtualAudioEndpointRole.Input) is not null ||
+            Probe(VirtualAudioEndpointRole.Input) != 17)
+            throw new InvalidOperationException("Virtual Input was concurrently acquired.");
+        Console.WriteLine("PASS: no duplicate Virtual Input controller, even in another process.");
+
+        if (Probe(VirtualAudioEndpointRole.Output) != 0)
+            throw new InvalidOperationException("Input lock blocked independent Virtual Output.");
+        Console.WriteLine("PASS: second process can independently control Virtual Output.");
+
+        using (var outputControl = VirtualDeviceControlLease.TryAcquire(
+            VirtualAudioEndpointRole.Output)
+            ?? throw new InvalidOperationException("Cannot acquire Virtual Output."))
+        {
+            if (Probe(VirtualAudioEndpointRole.Output) != 17)
+                throw new InvalidOperationException("Virtual Output cross-process lock failed.");
+            Console.WriteLine("PASS: no duplicate Virtual Output controller.");
+        }
+        if (Probe(VirtualAudioEndpointRole.Output) != 0)
+            throw new InvalidOperationException("Virtual Output lease was not released.");
+        Console.WriteLine("PASS: released Virtual Output can be acquired by other process.");
+
+        // Owning thread is dedicated, so async continuations can dispose
+        // from a different thread without mutex ownership exceptions.
+        await Task.Yield();
+        inputControl.Dispose();
+        if (Probe(VirtualAudioEndpointRole.Input) != 0)
+            throw new InvalidOperationException("Virtual Input lease was not released.");
+        Console.WriteLine("PASS: async owner release enables another process to take over.");
+
+        Console.WriteLine("VIRTUAL_DRIVER_CROSS_PROCESS_OWNERSHIP=PASS");
+        return 0;
+    }
+
     var sources = NativeAudioDeviceCatalog.CaptureDevices();
     var outputs = NativeAudioDeviceCatalog.RenderDevices();
     Console.WriteLine($"CAPTURE / LOOPBACK SOURCES: {sources.Count}");

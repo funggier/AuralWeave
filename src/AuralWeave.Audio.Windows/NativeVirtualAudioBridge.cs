@@ -13,6 +13,7 @@ public sealed class NativeVirtualAudioBridge : IDisposable
     private const string Library = "AuralWeave.Native";
     private IntPtr _handle;
     private readonly uint _channels;
+    private VirtualDeviceControlLease? _controlLease;
     private bool _disposed;
 
     private NativeVirtualAudioBridge(IntPtr handle, string name, uint role, uint slot, uint channels)
@@ -32,12 +33,36 @@ public sealed class NativeVirtualAudioBridge : IDisposable
     public static NativeVirtualAudioBridge Create(uint role, uint slot,
         uint sampleRate = 48000, uint channels = 2, uint capacityFrames = 4096)
     {
-        var name = new StringBuilder(160);
-        var handle = NativeCreate(role, slot, sampleRate, channels, capacityFrames,
-            name, (uint)name.Capacity);
-        if (handle == IntPtr.Zero)
-            throw new InvalidOperationException("Native PCM bridge create failed: " + GetLastError());
-        return new NativeVirtualAudioBridge(handle, name.ToString(), role, slot, channels);
+        // Windows drivers are installed at most once per computer, not once
+        // per Portable app folder. Only one controlling producer per role.
+        // A receiver may Attach() to the existing mapping without acquiring
+        // its writer's role lease (the SPSC reader is coordinated separately).
+        if (slot != 1 || role is not (1 or 2))
+            throw new ArgumentOutOfRangeException(nameof(slot),
+                "Only Virtual Input 1 and Virtual Output 1 are supported.");
+        var endpointRole = role == 1
+            ? VirtualAudioEndpointRole.Input : VirtualAudioEndpointRole.Output;
+        var lease = VirtualDeviceControlLease.TryAcquire(endpointRole)
+            ?? throw new InvalidOperationException(
+                $"Virtual {endpointRole} is controlled by another AuralWeave instance. " +
+                "Close or release that instance's virtual session before taking control.");
+        try
+        {
+            var name = new StringBuilder(160);
+            var handle = NativeCreate(role, slot, sampleRate, channels, capacityFrames,
+                name, (uint)name.Capacity);
+            if (handle == IntPtr.Zero)
+                throw new InvalidOperationException("Native PCM bridge create failed: " + GetLastError());
+            return new NativeVirtualAudioBridge(handle, name.ToString(), role, slot, channels)
+            {
+                _controlLease = lease
+            };
+        }
+        catch
+        {
+            lease.Dispose();
+            throw;
+        }
     }
 
     public static NativeVirtualAudioBridge Attach(string name, uint role, uint slot)
@@ -85,10 +110,18 @@ public sealed class NativeVirtualAudioBridge : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        if (_handle != IntPtr.Zero)
+        try
         {
-            NativeClose(_handle);
-            _handle = IntPtr.Zero;
+            if (_handle != IntPtr.Zero)
+            {
+                NativeClose(_handle);
+                _handle = IntPtr.Zero;
+            }
+        }
+        finally
+        {
+            _controlLease?.Dispose();
+            _controlLease = null;
         }
         GC.SuppressFinalize(this);
     }

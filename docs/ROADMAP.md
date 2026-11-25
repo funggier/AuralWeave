@@ -180,3 +180,18 @@ The repository now includes working prototypes; boxes below distinguish fully pr
   Gain applied, zero source overflow, physical output muted.
 - Windows Kernel driver transport, signing and Windows 11 runtime validation
   have NOT yet been implemented or performed.
+
+
+## Multi-Portable and kernel protocol checkpoint (2026-11-25)
+
+- [x] Use one PnP identity per Virtual Input and Virtual Output machine-wide
+- [x] Create role-specific cross-process Windows Global control leases
+- [x] Guard managed virtual bridge creation and per-device removal
+- [x] Test a second process from a different Portable folder
+- [x] Verify independent Input/Output ownership and asynchronous release
+- [x] Add 64-byte versioned PCM wire header and validated S16/F32 transfer
+- [x] Compile protocol/ring source as BOTH user-mode test and WDK prototype
+- [x] Test 64,000 PCM frames with 1,000 ring wrap cycles
+- [ ] Implement secure IOCTL dispatch, owner authorization and WaveRT audio queues
+- [ ] Test actual installed/approved kernel driver on Windows 10, then sign
+- [ ] Keep Windows 11 as theoretical unless a real compatibility test is performed

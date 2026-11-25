@@ -17,7 +17,7 @@ try {
     if (!$vs) { throw 'WDK integration is not installed in Visual Studio.' }
     $msbuild = Join-Path $vs 'MSBuild\Current\Bin\MSBuild.exe'
     $project = Join-Path $root 'src\AuralWeave.VirtualDriver\Kernel\AuralWeaveVirtualAudio.sln'
-    # Verify that the kernel INF and the UI's exact 16-ID PnP bank
+    # Verify that the INF enumerates exactly one PnP ID per role.
     # cannot silently diverge. IDs are stable across portable moves.
     $inx = Join-Path $root 'src\AuralWeave.VirtualDriver\Kernel\Source\Main\AuralWeaveVirtualAudio.inx'
     $lines = @(Get-Content -LiteralPath $inx)
@@ -29,6 +29,11 @@ try {
         throw "Expected exactly one Virtual Input and one Virtual Output PnP model; found Input=$($inModels.Count), Output=$($outModels.Count)."
     }
     Write-Output 'SINGLE_VIRTUAL_INPUT_AND_SINGLE_VIRTUAL_OUTPUT_INF_IDS=PASS'
+
+    # Validate the SAME fixed-width protocol source in user mode before
+    # linking the WDK driver. Neither test installs or starts the kernel.
+    & (Join-Path $PSScriptRoot 'test-kernel-transport.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Kernel PCM wire/byte-ring user-mode tests failed' }
     $args = @(
         $project,
         "/p:Configuration=$Configuration",

@@ -89,3 +89,21 @@ selection, Windows 11 VM tests and Microsoft signing remain pending.
   Gain applied, zero source overflow, physical output muted.
 - Windows Kernel driver transport, signing and Windows 11 runtime validation
   have NOT yet been implemented or performed.
+
+
+## Cross-folder virtual control and wire protocol (2026-11-25)
+
+Two simultaneous AuralWeave Portable copies can run Studio separately.
+Windows global named mutexes ensure cooperating managed instances cannot
+control the same Virtual Input or Output at once; different roles can
+be controlled separately. Cross-process Windows 10 tests from distinct
+folders passed. The C# Bridge factory acquires a role lease before
+creating any owner session, and the PnP removal path holds the same
+role lease while it verifies and removes a device.
+
+A fixed 64-byte transport header and caller-synchronized S16/F32 PCM
+ring have been added under the original MIT license. The same source
+compiles inside the WDK kernel prototype and runs as a Windows 10
+user-mode test. It validates direction, version, length and PCM format.
+**Kernel IOCTL dispatch and WaveRT PCM transport are not implemented.**
+No driver is signed or installed. Windows 11 compatibility is theoretical.

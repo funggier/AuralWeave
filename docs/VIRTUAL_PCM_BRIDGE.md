@@ -81,3 +81,19 @@ HLK checks and driver signing are outstanding.
 The simulated Virtual Output diagnostic also validates that closing the
 source producer causes the Native Studio route to stop cleanly. It does not
 change or install Windows virtual driver devices.
+
+
+## Multi-Portable ownership and kernel contract checkpoint (2026-11-25)
+
+The managed NativeVirtualAudioBridge.Create factory now holds a
+machine-wide role lease for the entire user-mode session. Independent
+Portable copies may create sessions for different roles concurrently,
+but cannot create two owners for the same role at the same time.
+A second Diagnostics copy in a different folder passed this test on
+Windows 10. Regular Studio audio routes remain independent. See
+PORTABLE_MULTI_INSTANCE_CONTROL.md.
+
+A separate, strictly sized protocol and caller-synchronized ring for
+future Kernel WaveRT interaction are implemented and compiled in the
+unsigned WDK prototype. The protocol does **not** expose a functioning
+Windows audio endpoint or IOCTL dispatcher. See KERNEL_PCM_PROTOCOL.md.

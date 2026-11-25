@@ -152,3 +152,23 @@ limitations see [Virtual PCM Bridge](docs/VIRTUAL_PCM_BRIDGE.md).
   Gain applied, zero source overflow, physical output muted.
 - Windows Kernel driver transport, signing and Windows 11 runtime validation
   have NOT yet been implemented or performed.
+
+
+## Multiple Portable instances and virtual driver ownership
+
+AuralWeave may run from several directories on the same Windows machine.
+Studio instances keep their own portable presets and can use regular audio
+devices independently. Windows owns a **single Virtual Input** and a
+**single Virtual Output**, regardless of the folder used to launch the app.
+Cooperating app copies now take separate machine-wide named-mutex leases
+before controlling each virtual role; competing controllers are rejected,
+while the other role remains available. A lease is returned on clean
+shutdown and abandoned automatically after a process crash.
+
+This is currently a **user-mode advisory guard**, not a signed kernel
+driver authorization mechanism. The driver Install controls remain
+disabled. On Windows 10, different-folder and different-process tests
+passed. See [Portable multi-instance ownership](docs/PORTABLE_MULTI_INSTANCE_CONTROL.md)
+and [Kernel PCM wire protocol](docs/KERNEL_PCM_PROTOCOL.md). Windows 11
+remains a theoretical compatibility target; no Windows 11 runtime test
+is claimed.

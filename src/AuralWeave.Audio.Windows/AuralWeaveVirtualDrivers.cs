@@ -186,6 +186,14 @@ public static class AuralWeaveVirtualDrivers
         AuralWeaveVirtualDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
+        // A separate Portable copy must not uninstall a virtual audio
+        // devnode while another copy is actively controlling that role.
+        // This is an advisory user-mode guard. The future elevated device
+        // broker MUST recheck the same ownership/identity atomically.
+        using var controlLease = VirtualDeviceControlLease.TryAcquire(device.Role)
+            ?? throw new InvalidOperationException(
+                $"Virtual {device.Role} is in use by another AuralWeave instance. " +
+                "Stop that virtual route before uninstalling its device.");
         var current = EnumerateInstalled().Any(x =>
             x.InstanceId.Equals(device.InstanceId, StringComparison.OrdinalIgnoreCase) &&
             x.HardwareId.Equals(device.HardwareId, StringComparison.OrdinalIgnoreCase));

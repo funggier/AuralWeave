@@ -22,6 +22,9 @@
         <ClCompile Include="..\*.cpp">
             <Filter>Source Files</Filter>
         </ClCompile>
+        <ClCompile Include="..\..\..\Transport\aw_pcm_wire.cpp">
+            <Filter>Source Files</Filter>
+        </ClCompile>
         <ClCompile Include="*.cpp">
             <Filter>Source Files</Filter>
         </ClCompile>

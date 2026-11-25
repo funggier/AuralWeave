@@ -38,6 +38,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Managed route configuration tests failed' }
 
     if ($RunDeviceDiagnostics) {
+        & (Join-Path $root 'scripts\test-multiple-portable-instances.ps1') -SkipBuild
+        if ($LASTEXITCODE -ne 0) { throw 'Cross-folder Virtual Driver ownership test failed' }
         & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj'
         if ($LASTEXITCODE -ne 0) { throw 'Native device diagnostics failed' }
     }

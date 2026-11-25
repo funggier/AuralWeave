@@ -169,3 +169,21 @@ This is a UI-only fix. Native WASAPI code and routing were not modified.
 Additional shutdown regression: closing the user-mode Virtual Output producer
 causes the Native Studio route to terminate cleanly without hanging. The
 Windows custom title-bar maximize/restore checks also passed on 3 monitors.
+
+
+## Portable copies and kernel PCM contract (2026-11-25)
+
+- Cross-folder test script: scripts/test-multiple-portable-instances.ps1
+  starts independent Windows processes from two different directories.
+- Duplicate Virtual Input is denied. Independent Virtual Output is
+  allowed. Duplicate Virtual Output is denied. Both leases can be
+  released and reclaimed; async disposal is safe.
+- Managed bridge owners now hold an exclusive role lease. User-mode
+  lease security is advisory until an authoritative driver broker exists.
+- scripts/test-kernel-transport.ps1 compiles the exact WDK wire/ring
+  C++ source on Windows 10 with warnings-as-errors. Invalid role,
+  slot, opcode, sample format, flags and length are rejected. The
+  bounded PCM ring preserved 64,000 frames through 1,000 wrap cycles.
+- scripts/build-virtual-driver-prototype.ps1 builds the same protocol
+  inside the unsigned prototype with INF/Inf2Cat checks.
+- Windows 11 is a theoretical target (no runtime or installed-driver test).

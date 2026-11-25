@@ -4,10 +4,10 @@
 
 | Target | Build family | Current engineering status |
 | --- | --- | --- |
-| Windows 10 x64 22H2 | 19045 (19041 API baseline) | INF target + compile/signability checks; no VM/runtime test |
-| Windows 11 x64 21H2 | 22000 | INF target + compile/signability checks; no VM/runtime test |
-| Windows 11 x64 22H2 / 23H2 | 22621 / 22631 | INF target + compile/signability checks; no VM/runtime test |
-| Windows 11 x64 24H2 and newer | 26100+ | INF target + compile/signability checks for 24H2 family; no runtime test |
+| Windows 10 x64 22H2 | 19045 (19041 API baseline) | Windows 10 native app / PCM contract tested; kernel driver not installed |
+| Windows 11 x64 21H2 | 22000 | Theoretical API/INF/WDK compatibility only; not runtime tested |
+| Windows 11 x64 22H2 / 23H2 | 22621 / 22631 | Theoretical API/INF/WDK compatibility only; not runtime tested |
+| Windows 11 x64 24H2 and newer | 26100+ | Theoretical API/INF/WDK compatibility; runtime not verified |
 
 The kernel implementation was derived from Microsoft's **Simple Audio
 Sample** and is **MS-PL** licensed. The portable app and original
@@ -53,3 +53,28 @@ Official references:
 - https://learn.microsoft.com/en-us/windows-hardware/test/hlk/
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/dashboard/driver-signing-offerings
 - https://learn.microsoft.com/en-us/samples/microsoft/windows-driver-samples/simple-audio-sample-device-driver/
+
+
+## Actual test environment and cross-copy coordination
+
+The project's available hardware development host uses Windows 10.
+Real test claims apply **only** to the Windows 10 Native user-mode app,
+shared PCM transport and virtual device discovery. The unsigned kernel
+audio driver has never been installed for runtime testing.
+
+Windows 11 remains a theoretical target. Build-time WDK compatibility
+and INF signability do not prove functional or quality compatibility.
+Do not claim Windows 11 is tested or certified.
+
+All portable copies share the one virtual microphone and one virtual
+speaker PnP identity. The managed control plane now coordinates
+competing AuralWeave processes through per-role Global named mutexes.
+Cross-folder Windows 10 tests are described in
+[Portable multi-instance ownership](PORTABLE_MULTI_INSTANCE_CONTROL.md).
+
+The kernel-side fixed-width PCM protocol validator and bounded ring
+also compile into the unsigned WDK prototype, documented in
+[Kernel PCM protocol](KERNEL_PCM_PROTOCOL.md). Actual WaveRT-to-user
+IOCTL dispatch is not yet implemented. When a signed driver becomes
+available, the privileged device management layer must enforce
+permissions and ownership rather than relying only on managed mutexes.
