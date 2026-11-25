@@ -244,3 +244,19 @@ kernel prototype passing a build is *not* a working Windows audio endpoint.
 Windows 11 is still a compatibility target, not runtime-verified.
 For download, safe listening checks and remaining acceptance criteria,
 see [Windows 10 Portable trial guide](docs/TRIAL_WINDOWS10.md).
+
+## Multi-client kernel PCM mock scheduling checkpoint (2026-11-25)
+
+The developer-only `VirtualKernelAudioCoordinator` combines independent
+Portable-app microphone PCM contributors into one simulated kernel-facing
+PCM32 writer, then fans PCM16 speaker data back out to independent listeners.
+`VirtualKernelAudioWorker` adds explicit start/stop, endpoint format checks,
+coalesced timer ticks and fail-stop error propagation. Tests for startup,
+shutdown, missing endpoints, device loss and multi-client mixing are wired
+into the Windows preview workflow.
+
+**Windows CI success has not yet been confirmed for these commits.** This is
+user-mode reference code, **not** an elevated broker, signed driver,
+auto-starting service or working Windows audio endpoint. Production timing,
+client authorization, runtime kernel validation and driver signing remain
+outstanding. See [coordinator checkpoint](docs/KERNEL_PCM_COORDINATOR_CHECKPOINT.md).
