@@ -16,7 +16,6 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
     private const uint ExpectedRate = 48000;
     private const uint ExpectedChannels = 2;
     private readonly VirtualKernelPcmClient _driver;
-    private readonly VirtualKernelAudioPump _pump;
     private readonly Func<int> _step;
     private readonly CancellationTokenSource _stop = new();
     private readonly object _gate = new();
@@ -31,7 +30,7 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
         VirtualKernelAudioPump pump)
     {
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
-        _pump = pump ?? throw new ArgumentNullException(nameof(pump));
+        ArgumentNullException.ThrowIfNull(pump);
         _step = pump.PumpOnce;
         if (pump.BlockFrames is < 1 or > VirtualKernelPcmProtocol.MaxFrames)
             throw new ArgumentOutOfRangeException(nameof(pump));
