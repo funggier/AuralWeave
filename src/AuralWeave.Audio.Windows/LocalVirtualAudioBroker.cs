@@ -17,7 +17,7 @@ namespace AuralWeave.Audio.Windows;
 /// </summary>
 public sealed class LocalVirtualAudioBroker : IDisposable
 {
-    public const string PipeName = "AuralWeave.MockBroker.Control.v2";
+    public const string PipeName = "AuralWeave.MockBroker.Control.v3";
     public const int MaxClients = 8;
     private const int FramesPerBlock = 128;
     private const int MaxCommandLength = 200;
@@ -38,10 +38,10 @@ public sealed class LocalVirtualAudioBroker : IDisposable
     private ulong _frames;
 
     private static readonly Regex InputMap = new(
-        @"\ALocal\\AuralWeave\.PCM\.v1\.IN\.1\.\{[0-9A-Fa-f-]{36}\}\z",
+        @"\ALocal\\AuralWeave\.PCM\.v2\.IN\.1\.\{[0-9A-Fa-f-]{36}\}\z",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex OutputMap = new(
-        @"\ALocal\\AuralWeave\.PCM\.v1\.OUT\.1\.\{[0-9A-Fa-f-]{36}\}\z",
+        @"\ALocal\\AuralWeave\.PCM\.v2\.OUT\.1\.\{[0-9A-Fa-f-]{36}\}\z",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public LocalVirtualAudioBroker()
@@ -169,6 +169,9 @@ public sealed class LocalVirtualAudioBroker : IDisposable
         bool greeted = false;
         try
         {
+            // Read from the connected OS pipe handle, never from a PID
+            // declared in a user-controlled command or mapping name.
+            var peerProcessId = LocalBrokerPeerIdentity.GetClientProcessId(pipe);
             using (pipe)
             {
                 while (!shutdown.IsCancellationRequested && pipe.IsConnected)
@@ -194,7 +197,7 @@ public sealed class LocalVirtualAudioBroker : IDisposable
                     // changed wire protocol after a broker replacement.
                     if (!greeted)
                     {
-                        if (request != "HELLO 2")
+                        if (request != "HELLO 3")
                         {
                             await ReplyAsync(pipe, "ERR PROTOCOL_VERSION", shutdown)
                                 .ConfigureAwait(false);
@@ -202,7 +205,7 @@ public sealed class LocalVirtualAudioBroker : IDisposable
                         }
                         greeted = true;
                         await ReplyAsync(pipe,
-                            $"OK HELLO 2 instance={_instanceId:N}", shutdown)
+                            $"OK HELLO 3 instance={_instanceId:N}", shutdown)
                             .ConfigureAwait(false);
                         continue;
                     }
@@ -242,9 +245,9 @@ public sealed class LocalVirtualAudioBroker : IDisposable
                             lock (_gate)
                             {
                                 if (parts[1] == "INPUT")
-                                    _input.AddContributor(parts[2]);
+                                    _input.AddContributor(parts[2], peerProcessId);
                                 else
-                                    _output.AddListener(parts[2]);
+                                    _output.AddListener(parts[2], peerProcessId);
                             }
                             microphone = parts[1] == "INPUT";
                             mapping = parts[2];

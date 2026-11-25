@@ -52,6 +52,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Same-user Named Pipe mock broker test failed' }
         & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-local-broker-restart
         if ($LASTEXITCODE -ne 0) { throw 'Mock broker crash/restart recovery test failed' }
+        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-local-broker-ownership
+        if ($LASTEXITCODE -ne 0) { throw 'Mock broker PCM owner process verification failed' }
         # The installer helper is checked in READ-ONLY mode. Never stage the
         # unsigned WDK SYS or developer helper into the Portable product.
         & (Join-Path $root 'scripts\build-virtual-driver-setup.ps1')

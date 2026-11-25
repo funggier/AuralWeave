@@ -24,7 +24,7 @@ to avoid implying that its virtual microphone/speaker is installable.
 - Core: `LocalVirtualAudioBroker` in the Windows Audio library.
 - Managed client API: `LocalBrokerControlClient.ConnectAsync(ownedMapping)`.
 - Native PCM sessions: `NativeVirtualAudioBridge.Create(role, 1, 48000, 2)`.
-- Named Pipe: `AuralWeave.MockBroker.Control.v2`, byte-mode,
+- Named Pipe: `AuralWeave.MockBroker.Control.v3`, byte-mode,
   `PipeOptions.CurrentUserOnly`, local machine only.
 - A per-session owner-thread mutex prevents duplicate cooperative brokers.
 - At most **eight concurrent pipe sessions**; each connection registers
@@ -35,11 +35,11 @@ to avoid implying that its virtual microphone/speaker is installable.
 - IPC is bounded to 200 printable ASCII characters per command or
   response. Invalid or oversized input closes only the offending pipe.
 
-Protocol v2 (one command per newline; v1 clients are not compatible):
+Protocol v3 (one command per newline; v1/v2 clients are not compatible):
 
 | Client request | Typical response | Description |
 |---|---|---|
-| `HELLO 2` | `OK HELLO 2 instance=<GUID>` | Required first command; negotiate version and read instance lifetime ID |
+| `HELLO 3` | `OK HELLO 3 instance=<GUID>` | Required first command; negotiate version and read instance lifetime ID |
 | `PING` | `OK PONG` | Check control plane |
 | `STATUS` | `OK STATUS input=N output=N ticks=N frames=N` | User-mode counters |
 | `REGISTER INPUT <mapping>` | `OK REGISTERED INPUT` | Attach one mic contributor |
@@ -83,7 +83,7 @@ For a **standalone portable test bundle** with .NET runtime included:
 .\scripts\publish-mock-broker.ps1
 ```
 
-Unpack `dist/AuralWeave-MockBroker-v0.2.0-Windows-x64.zip` and run
+Unpack `dist/AuralWeave-MockBroker-v0.3.0-Windows-x64.zip` and run
 `Start-MockBroker.cmd`. The launcher keeps .NET bundle extraction under
 the portable folder. No admin privileges or installer are required.
 The mock broker requires a separate PCM test client; it does not by itself
@@ -113,9 +113,9 @@ Before any privileged broker or real kernel driver is distributed:
 The ordinary Studio INSTALL option **must remain disabled** for this
 prototype. No signed driver package is available.
 
-## Protocol v2 / process restart
+## Protocol v3 / process ownership and restart
 
-The Mock Broker now requires `HELLO 2` before all other commands and returns
+The Mock Broker now requires `HELLO 3` before all other commands and returns
 a new instance GUID for each process lifetime. The managed
 `LocalBrokerRuntimeStatus` validates typed STATUS fields and exposes
 heartbeat counts and dropped speaker frames. The opt-in
@@ -125,4 +125,4 @@ Broker instance is available. It does not automatically reconnect or
 replay old samples. See [crash/restart checkpoint](BROKER_CRASH_RESTART_CHECKPOINT.md).
 
 The separate testing ZIP is now `AuralWeave-MockBroker-v0.2.0-Windows-x64.zip`.
-Protocol v1 executables cannot be connected to the new v2 pipe.
+Older v1/v2 client executables cannot connect to the v3 pipe. The Native PCM header is now v2 and includes an advisory creator Process ID; the broker checks it against the PID of the connected Windows Named Pipe client before accepting a registration. This check is not a security boundary against same-user tampering. Details: [PCM process-origin checkpoint](BROKER_PROCESS_ORIGIN_CHECKPOINT.md).

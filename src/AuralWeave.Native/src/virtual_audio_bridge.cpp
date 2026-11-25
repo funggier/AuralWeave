@@ -16,8 +16,8 @@
 namespace auralweave {
 namespace {
 constexpr std::uint32_t bridge_magic = 0x57415241u; // ARAW, not a disk format
-constexpr std::uint32_t bridge_version = 1;
-constexpr wchar_t bridge_prefix[] = L"Local\\AuralWeave.PCM.v1.";
+constexpr std::uint32_t bridge_version = 2;
+constexpr wchar_t bridge_prefix[] = L"Local\\AuralWeave.PCM.v2.";
 // An owner-only kernel HANDLE disappears on process termination even if
 // attached readers keep the shared PCM mapping alive.
 constexpr wchar_t lifetime_suffix[] = L".OwnerAlive";
@@ -38,7 +38,7 @@ struct alignas(64) SharedHeader {
     std::uint32_t sample_rate;
     std::uint32_t channels;
     std::uint32_t capacity_frames;
-    std::uint32_t reserved;
+    std::uint32_t owner_process_id; // process creating this FIFO, not trusted authentication
     // Interlocked* is used rather than std::atomic for interprocess mapping.
     alignas(8) volatile LONG64 written;
     alignas(8) volatile LONG64 read;
@@ -127,6 +127,10 @@ VirtualAudioBridge::~VirtualAudioBridge() = default;
 VirtualAudioBridge::VirtualAudioBridge(VirtualAudioBridge&&) noexcept = default;
 VirtualAudioBridge& VirtualAudioBridge::operator=(VirtualAudioBridge&&) noexcept = default;
 
+std::uint32_t VirtualAudioBridge::owner_process_id() const noexcept {
+    return state_ && state_->header ? state_->header->owner_process_id : 0;
+}
+
 VirtualAudioBridge VirtualAudioBridge::create(VirtualEndpointRole role,
                                                std::uint32_t slot,
                                                VirtualBridgeFormat format) {
@@ -162,6 +166,7 @@ VirtualAudioBridge VirtualAudioBridge::create(VirtualEndpointRole role,
     state->header->sample_rate = format.sample_rate;
     state->header->channels = format.channels;
     state->header->capacity_frames = format.capacity_frames;
+    state->header->owner_process_id = GetCurrentProcessId();
     InterlockedExchange(reinterpret_cast<volatile LONG*>(&state->header->magic),
                         static_cast<LONG>(bridge_magic)); // publish after initialization
     return VirtualAudioBridge(std::move(state), name, role, slot, format);
@@ -195,7 +200,7 @@ VirtualAudioBridge VirtualAudioBridge::attach(std::wstring_view exact_name,
     if (static_cast<std::uint32_t>(load32(
             reinterpret_cast<volatile LONG*>(&h->magic))) != bridge_magic ||
         h->version != bridge_version || role != expected_role ||
-        h->slot != expected_slot || !valid_format(format) ||
+        h->slot != expected_slot || h->owner_process_id == 0 || !valid_format(format) ||
         h->channels != format.channels ||
         mapped.RegionSize < size_bytes(format) || load32(&h->closed) ||
         !owner_alive(name))

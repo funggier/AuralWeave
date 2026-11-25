@@ -49,6 +49,9 @@ jobs:
       - name: Verify Mock Broker version and hard-kill restart recovery
         run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker-restart
 
+      - name: Verify Windows pipe client PID matches native PCM mapping creator
+        run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker-ownership
+
       - name: Verify PnP discovery and install fail-closed policy
         run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-virtual-driver-discovery
 
@@ -107,6 +110,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Relocated Mock Broker test failed' }
           dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker-restart
           if ($LASTEXITCODE -ne 0) { throw 'Relocated Mock Broker crash/restart test failed' }
+          dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker-ownership
+          if ($LASTEXITCODE -ne 0) { throw 'Relocated Mock Broker PCM owner process verification failed' }
           Write-Output 'RELOCATED_MOCK_BROKER_IPC_PCM_AND_RESTART=PASS'
 
       - name: Upload separate Mock Broker test artifact (never a kernel driver)

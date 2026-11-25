@@ -1,5 +1,5 @@
 #pragma once
-// Stable native C ABI for Windows user-mode PCM bridge, protocol version 1.
+// Stable native C ABI for Windows user-mode PCM bridge, mapping protocol v2.
 // AuralWeave original source (MIT). No signed kernel driver is required.
 // This API does NOT create a Windows playback/recording device.
 #include <stddef.h>
@@ -42,6 +42,10 @@ struct AwVirtualBridgeStats {
 };
 AW_BRIDGE_API int aw_bridge_get_stats(
     void* handle, AwVirtualBridgeStats* out_stats) noexcept;
+
+// Advisory owner PID for non-elevated same-user mock admission only.
+// Not a security token or trusted authorization evidence.
+AW_BRIDGE_API uint32_t aw_bridge_owner_process_id(void* handle) noexcept;
 
 // Error string for failed create/attach on this calling thread.
 // Length includes terminating NUL; failure returns 0.

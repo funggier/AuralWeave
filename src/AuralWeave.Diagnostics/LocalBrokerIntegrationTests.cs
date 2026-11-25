@@ -36,8 +36,8 @@ internal static class LocalBrokerIntegrationTests
             {
                 await pipe.ConnectAsync(8000);
                 var client = new Connection(pipe);
-                var hello = await client.SendAsync("HELLO 2");
-                const string prefix = "OK HELLO 2 instance=";
+                var hello = await client.SendAsync("HELLO 3");
+                const string prefix = "OK HELLO 3 instance=";
                 if (!hello.StartsWith(prefix, StringComparison.Ordinal) ||
                     !Guid.TryParseExact(hello[prefix.Length..], "N", out var instance))
                     throw new InvalidOperationException("Broker sent malformed protocol greeting.");
@@ -274,6 +274,118 @@ internal static class LocalBrokerIntegrationTests
             }
             await StopProcessAsync(first);
         }
+    }
+
+    /// <summary>
+    /// Launch independent actual Windows PCM creator processes and distinguish
+    /// a registration from the real owner from a registration sent by a peer.
+    /// This is advisory same-user identity binding, NOT security authorization
+    /// for an elevated Windows service or mutable shared-memory metadata.
+    /// </summary>
+    public static async Task RunOwnershipAsync()
+    {
+        using var broker = LaunchBroker();
+        try
+        {
+            if (await broker.StandardOutput.ReadLineAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(8))
+                != "AURALWEAVE_MOCK_BROKER_STARTING")
+                throw new InvalidOperationException("Mock broker failed to start.");
+
+            await using var monitor = await Connection.OpenAsync();
+            await using var speaker = await LocalBrokerEndpointSession.OpenAsync(2);
+            await WaitForStatusAsync(monitor, "input=0 output=1");
+
+            foreach (var (mode, roleName) in new[] {
+                ("unregistered", "INPUT"), ("unregistered-output", "OUTPUT")
+            })
+            {
+                using var foreign = LaunchOwnerChild(mode);
+                try
+                {
+                    var foreignMapping = await ReadChildMappingAsync(foreign);
+                    // The monitor's pipe belongs to this diagnostics process.
+                    // The native mapping belongs to the separate child PID.
+                    if (await monitor.SendAsync("REGISTER " + roleName + " " + foreignMapping)
+                        != "ERR ATTACH_REJECTED")
+                        throw new InvalidOperationException(
+                            "Mock broker let unrelated process claim another owner's " + roleName + " PCM.");
+                    await WaitForStatusAsync(monitor, "input=0 output=1");
+                    Console.WriteLine(
+                        "PASS: OS pipe PID mismatch rejects foreign " + roleName +
+                        " PCM mapping without affecting active sessions.");
+                }
+                finally { await StopProcessAsync(foreign); }
+            }
+
+            using (var owner = LaunchOwnerChild("registered"))
+            {
+                try
+                {
+                    var legitimateMapping = await ReadChildMappingAsync(owner);
+                    await WaitForStatusAsync(monitor, "input=1 output=1");
+                    if (await monitor.SendAsync("REGISTER INPUT " + legitimateMapping)
+                        != "ERR ATTACH_REJECTED")
+                        throw new InvalidOperationException(
+                            "Another process could hijack an active PCM registration.");
+
+                    await owner.StandardInput.WriteLineAsync("WRITE");
+                    await owner.StandardInput.FlushAsync();
+                    var written = await owner.StandardOutput.ReadLineAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(5));
+                    if (written != "OWNER_WROTE")
+                        throw new InvalidOperationException(
+                            "Independent PCM owner process could not write to its registered ring.");
+                    await CheckFramesAsync(speaker.Pcm, 0.23f);
+                    Console.WriteLine(
+                        "PASS: a separate verified owner process registers and delivers real PCM.");
+                }
+                finally { await StopProcessAsync(owner); }
+            }
+
+            await WaitForStatusAsync(monitor, "input=0 output=1");
+            Console.WriteLine(
+                "PASS: hard-terminated PCM owner releases its active registration.");
+            Console.WriteLine(
+                "LOCAL_MOCK_BROKER_PCM_ORIGIN_PID_BINDING=PASS (advisory, same-user only)");
+        }
+        finally { await StopProcessAsync(broker); }
+    }
+
+    private static Process LaunchOwnerChild(string mode)
+    {
+        var dll = Environment.GetEnvironmentVariable("AW_LEASE_PROBE_DLL")
+            ?? Path.Combine(AppContext.BaseDirectory, "AuralWeave.Diagnostics.dll");
+        var info = new ProcessStartInfo("dotnet")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        info.ArgumentList.Add(dll);
+        info.ArgumentList.Add("--mock-pcm-owner-child");
+        info.ArgumentList.Add(mode);
+        return Process.Start(info) ??
+            throw new InvalidOperationException("Could not launch separate PCM owner.");
+    }
+
+    private static async Task<string> ReadChildMappingAsync(Process process)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var line = await process.StandardOutput.ReadLineAsync()
+                .WaitAsync(TimeSpan.FromSeconds(8));
+            if (line?.StartsWith("OWNER_MAP=", StringComparison.Ordinal) == true)
+                return line["OWNER_MAP=".Length..];
+            if (line is null)
+                throw new InvalidOperationException(
+                    "Native PCM child exited before sending a mapping. " +
+                    await process.StandardError.ReadToEndAsync());
+        }
+        throw new InvalidOperationException(
+            "Native PCM child did not publish a valid owner mapping.");
     }
 
     public static async Task RunAsync()

@@ -306,3 +306,17 @@ correct new PCM and idle heartbeat. This is **not** a production service,
 a Windows audio device, or a working/signed Virtual Driver.
 See [restart design and tests](docs/BROKER_CRASH_RESTART_CHECKPOINT.md).
 
+## Mock Broker v0.3.0 — Native PCM origin validation
+
+The separate, non-elevated mock control pipe is now **v3** and the Native
+PCM shared-memory header is **v2**. A client registration is accepted only
+when the process ID reported by the connected Windows Named Pipe matches
+the advisory creator PID of the native PCM mapping. Independent Windows
+process tests prove that unrelated processes cannot casually claim an
+unregistered mapping created by another process, while the true creator
+can register, deliver PCM, and safely disconnect. **This is not trusted
+identity or security authorization**: a malicious same-user process may
+modify shared memory. The real privileged broker and signed driver remain
+separate, unimplemented milestones. See
+[origin checking scope and tests](docs/BROKER_PROCESS_ORIGIN_CHECKPOINT.md).
+

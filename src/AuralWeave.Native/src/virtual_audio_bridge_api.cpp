@@ -113,6 +113,10 @@ AW_BRIDGE_API int aw_bridge_get_stats(
     return 1;
 }
 
+AW_BRIDGE_API uint32_t aw_bridge_owner_process_id(void* handle) noexcept {
+    return handle ? static_cast<BridgeHandle*>(handle)->bridge.owner_process_id() : 0;
+}
+
 AW_BRIDGE_API uint32_t aw_bridge_last_error(
     wchar_t* buffer, uint32_t buffer_chars) noexcept {
     if (!buffer || !buffer_chars) return 0;

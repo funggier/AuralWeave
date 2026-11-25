@@ -54,9 +54,9 @@ public sealed class LocalBrokerControlClient : IAsyncDisposable
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(8));
             await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
-            var hello = await ExchangeAsync(pipe, "HELLO 2", timeout.Token)
+            var hello = await ExchangeAsync(pipe, "HELLO 3", timeout.Token)
                 .ConfigureAwait(false);
-            const string greeting = "OK HELLO 2 instance=";
+            const string greeting = "OK HELLO 3 instance=";
             if (!hello.StartsWith(greeting, StringComparison.Ordinal) ||
                 !Guid.TryParseExact(hello[greeting.Length..], "N", out var instance))
                 throw new InvalidDataException(

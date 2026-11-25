@@ -1,5 +1,8 @@
 # AuralWeave Mock Broker v0.2.0 — Protocol Identity and Crash/Restart
 
+*Historical v0.2.0 checkpoint. For the current v0.3.0 mock protocol v3 and
+PCM owner-process admission, see [Broker process-origin checkpoint](BROKER_PROCESS_ORIGIN_CHECKPOINT.md). Older v0.2.0 binaries must not be mixed with v0.3.0.*
+
 2026-11-25 | Windows 10 developer-only user-mode transport checkpoint.
 
 ## Scope

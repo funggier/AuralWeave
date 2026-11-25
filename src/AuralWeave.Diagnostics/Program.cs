@@ -6,6 +6,44 @@ try
     Console.OutputEncoding = System.Text.Encoding.UTF8;
     Console.WriteLine("AuralWeave diagnostics — Native C++ WASAPI only");
 
+    if (args.Length == 2 && args[0] == "--mock-pcm-owner-child")
+    {
+        if (args[1] is not ("registered" or "unregistered" or "unregistered-output"))
+            throw new ArgumentException("Invalid mock PCM owner child role.");
+        var role = args[1] == "unregistered-output" ? 2u : 1u;
+        using var owned = NativeVirtualAudioBridge.Create(role, 1, 48000, 2, 512);
+        if (owned.OwnerProcessId != (uint)Environment.ProcessId)
+            throw new InvalidOperationException("Native mapping does not report child creator PID.");
+
+        LocalBrokerControlClient? control = null;
+        try
+        {
+            if (args[1] == "registered")
+                control = await LocalBrokerControlClient.ConnectAsync(owned);
+
+            Console.WriteLine("OWNER_MAP=" + owned.Name);
+            Console.Out.Flush();
+            while (await Console.In.ReadLineAsync() is { } command)
+            {
+                if (command == "WRITE")
+                {
+                    if (owned.Write([0.23f, -0.23f, 0.23f, -0.23f]) != 2)
+                        throw new InvalidOperationException("Child native PCM write failed.");
+                    Console.WriteLine("OWNER_WROTE");
+                    Console.Out.Flush();
+                }
+                if (command == "EXIT")
+                    break;
+            }
+        }
+        finally
+        {
+            if (control is not null)
+                await control.DisposeAsync();
+        }
+        return 0;
+    }
+
     if (args.Length == 2 && args[0] == "--bridge-owner-child")
     {
         var role = uint.Parse(args[1]);
@@ -19,6 +57,12 @@ try
     if (args.Contains("--test-virtual-bus-recovery"))
     {
         await VirtualBusRecoveryTests.RunAsync();
+        return 0;
+    }
+
+    if (args.Contains("--test-local-broker-ownership"))
+    {
+        await LocalBrokerIntegrationTests.RunOwnershipAsync();
         return 0;
     }
 

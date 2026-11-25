@@ -30,6 +30,16 @@ public sealed class NativeVirtualAudioBridge : IDisposable
     public uint Role { get; }
     public uint Slot { get; }
     public uint Channels => _channels;
+    /// <summary>Advisory creator PID from the user-writable native header.
+    /// Never authorize elevated operations from this value.</summary>
+    public uint OwnerProcessId
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return NativeOwnerProcessId(_handle);
+        }
+    }
 
     public static NativeVirtualAudioBridge Create(uint role, uint slot,
         uint sampleRate = 48000, uint channels = 2, uint capacityFrames = 4096)
@@ -192,6 +202,10 @@ public sealed class NativeVirtualAudioBridge : IDisposable
 
     [DllImport(Library, EntryPoint = "aw_bridge_get_stats", CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeGetStats(IntPtr handle, out VirtualBridgeStats stats);
+
+    [DllImport(Library, EntryPoint = "aw_bridge_owner_process_id",
+        CallingConvention = CallingConvention.Cdecl)]
+    private static extern uint NativeOwnerProcessId(IntPtr handle);
 
     [DllImport(Library, EntryPoint = "aw_bridge_last_error", CallingConvention = CallingConvention.Cdecl,
         CharSet = CharSet.Unicode)]

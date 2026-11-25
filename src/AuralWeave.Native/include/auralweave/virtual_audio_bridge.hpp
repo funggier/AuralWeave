@@ -57,6 +57,9 @@ public:
     [[nodiscard]] VirtualEndpointRole role() const noexcept { return role_; }
     [[nodiscard]] std::uint32_t slot() const noexcept { return slot_; }
     [[nodiscard]] VirtualBridgeFormat format() const noexcept { return format_; }
+    // Advisory origin PID carried inside user-writable shared memory.
+    // Use only for same-user mock admission; NEVER as privileged authorization.
+    [[nodiscard]] std::uint32_t owner_process_id() const noexcept;
 
     // Returns frames transferred; may be partial if buffer is full/empty.
     std::uint32_t write(const float* interleaved, std::uint32_t frames) noexcept;

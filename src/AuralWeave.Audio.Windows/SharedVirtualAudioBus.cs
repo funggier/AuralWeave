@@ -57,18 +57,19 @@ public sealed class SharedVirtualAudioBus : IDisposable
     /// Register a client-owned SPSC bridge to receive its PCM contribution.
     /// The client writes to its own bridge; this bus reads exactly one copy.
     /// </summary>
-    public void AddContributor(string mappingName) =>
-        Add(mappingName, _contributors, _listeners);
+    public void AddContributor(string mappingName, uint? expectedOwnerProcessId = null) =>
+        Add(mappingName, _contributors, _listeners, expectedOwnerProcessId);
 
     /// <summary>
     /// Register a client-owned SPSC bridge to deliver independent PCM.
     /// One slow listener never consumes another listener's audio.
     /// </summary>
-    public void AddListener(string mappingName) =>
-        Add(mappingName, _listeners, _contributors);
+    public void AddListener(string mappingName, uint? expectedOwnerProcessId = null) =>
+        Add(mappingName, _listeners, _contributors, expectedOwnerProcessId);
 
     private void Add(string name, Dictionary<string, NativeVirtualAudioBridge> target,
-                     Dictionary<string, NativeVirtualAudioBridge> other)
+                     Dictionary<string, NativeVirtualAudioBridge> other,
+                     uint? expectedOwnerProcessId)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -78,12 +79,15 @@ public sealed class SharedVirtualAudioBus : IDisposable
             throw new InvalidOperationException("Too many user-mode PCM clients (maximum 16).");
         var bridge = NativeVirtualAudioBridge.Attach(name, Role, 1);
         var stats = bridge.GetStats();
-        if (stats.SampleRate != SampleRate || stats.Channels != Channels ||
+        if ((expectedOwnerProcessId.HasValue &&
+             (expectedOwnerProcessId.Value == 0 ||
+              bridge.OwnerProcessId != expectedOwnerProcessId.Value)) ||
+            stats.SampleRate != SampleRate || stats.Channels != Channels ||
             stats.CapacityFrames < (uint)BlockFrames)
         {
             bridge.Dispose();
             throw new InvalidOperationException(
-                "Virtual PCM format/capacity does not match the shared bus.");
+                "Virtual PCM owner process or format/capacity does not match the shared bus.");
         }
         target.Add(name, bridge);
     }

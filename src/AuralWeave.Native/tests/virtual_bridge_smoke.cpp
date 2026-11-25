@@ -130,6 +130,10 @@ int wmain(int argc, wchar_t* argv[]) {
             in2.name(), VirtualEndpointRole::input, 1);
         auto outPeer = VirtualAudioBridge::attach(
             out1.name(), VirtualEndpointRole::output, 1);
+        require(in1.owner_process_id() == GetCurrentProcessId() &&
+                peer1.owner_process_id() == GetCurrentProcessId() &&
+                outPeer.owner_process_id() == GetCurrentProcessId(),
+                "native PCM owner PID matches creator process across attached handles");
         require(peer1.format().channels == 2 && outPeer.format().channels == 1,
                 "shared PCM format is verified and retained across mappings");
 
@@ -251,6 +255,10 @@ int wmain(int argc, wchar_t* argv[]) {
                 "stable C ABI creates user-mode PCM session with mapping name");
         void* subscriber = aw_bridge_attach(c_name, 1, 1);
         require(subscriber != nullptr, "stable C ABI attaches exact role/slot");
+        require(aw_bridge_owner_process_id(owner) == GetCurrentProcessId() &&
+                aw_bridge_owner_process_id(subscriber) == GetCurrentProcessId() &&
+                aw_bridge_owner_process_id(nullptr) == 0,
+                "C ABI reports advisory PCM mapping creator PID");
         const auto c_data = signal(12, 2, 0.18f);
         std::vector<float> c_received(c_data.size());
         require(aw_bridge_write(owner, c_data.data(), 12) == 12 &&

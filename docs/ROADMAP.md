@@ -344,3 +344,19 @@ enable INSTALL. Details: [Mock Broker](LOCAL_BROKER_MOCK.md).
 
 See [Mock Broker crash/restart checkpoint](BROKER_CRASH_RESTART_CHECKPOINT.md).
 
+## Mock Broker v0.3.0 — advisory PCM process-origin binding
+
+- [x] Introduce Native PCM mapping header v2 with advisory creator PID
+- [x] Export owner PID from C++ C ABI and expose it through managed Native bridge
+- [x] Read the actual connected pipe client process ID via Win32
+- [x] Refuse source/listener mapping registration from mismatched process IDs
+- [x] Test independent creator/claimant processes and correct cross-process PCM
+- [x] Test failed admission leaves existing audio peers untouched
+- [x] Test crashed owner is pruned without interrupting the other listeners
+- [ ] Verify full v0.3.0 Mock Broker portable ZIP on GitHub Actions
+- [ ] Design privileged broker authorization independent of mutable shared-memory data
+- [ ] Implement signed kernel driver access and Windows 10/11 device tests
+
+This is **advisory same-user mock admission only**, not authenticated or
+privileged access control. Details: [PCM process-origin checkpoint](BROKER_PROCESS_ORIGIN_CHECKPOINT.md).
+

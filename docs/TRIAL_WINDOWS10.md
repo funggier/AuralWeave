@@ -107,3 +107,11 @@ User-mode **จำลอง** เท่านั้น ไม่ใช่ได�
 แพ็กเกจ Mock Broker สำหรับทดสอบเปลี่ยนเป็น `v0.2.0` โดยแยกช่อง Named Pipe `v2`
 เพื่อป้องกันการเชื่อมโปรแกรมรุ่นเก่าที่ใช้ Protocol ไม่ตรงกัน
 
+สำหรับ Mock Broker รุ่น **v0.3.0** จะเปลี่ยนเป็น `Named Pipe v3` และ
+`Native PCM v2` พร้อมการตรวจ Process ID ของเจ้าของช่อง PCM
+รันทดสอบได้ด้วยคำสั่ง
+`dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-local-broker-ownership`
+ยังเป็นการทดลองใน User-mode เท่านั้น ไม่ใช่ระบบยืนยันตัวตนสำหรับบริการสิทธิ์สูง
+และยังไม่มี Virtual Audio Driver ที่ติดตั้งได้ ดู
+[รายละเอียด](BROKER_PROCESS_ORIGIN_CHECKPOINT.md)
+

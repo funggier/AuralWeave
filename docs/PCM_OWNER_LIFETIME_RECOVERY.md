@@ -20,7 +20,7 @@ The Native C++ owner now creates a **separate, owner-only Windows named
 event HANDLE** for each random PCM mapping name:
 
 ```text
-Local\\AuralWeave.PCM.v1.IN.1.{GUID}
+Local\\AuralWeave.PCM.v2.IN.1.{GUID}
 Local\\AuralWeave.PCM.v1.IN.1.{GUID}.OwnerAlive
 ```
 
