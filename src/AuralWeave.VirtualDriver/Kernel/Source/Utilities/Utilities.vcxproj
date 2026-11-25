@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|ARM64">
@@ -183,8 +183,6 @@
   <ItemGroup>
     <ClCompile Include="hw.cpp" />
     <ClCompile Include="kshelper.cpp" />
-    <ClCompile Include="savedata.cpp" />
-    <ClCompile Include="tonegenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Inf Exclude="@(Inf)" Include="*.inf" />

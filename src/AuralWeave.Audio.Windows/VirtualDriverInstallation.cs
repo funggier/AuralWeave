@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
 namespace AuralWeave.Audio.Windows;
@@ -18,13 +19,34 @@ public static class VirtualDriverInstallation
     private const string DriverSys = "AuralWeaveVirtualAudio.sys";
     private const string DriverCat = "AuralWeaveVirtualAudio.cat";
 
+    // This is intentionally EMPTY until a production publisher signing
+    // certificate is obtained and independently verified. Do not allow an
+    // arbitrary trusted publisher whose subject happens to say AuralWeave
+    // to gain Administrator privileges via the Portable app.
+    // To enable production installation, pin the SHA-256 hash of the
+    // actual publisher certificate's DER bytes here during a signed release.
+    private const string ApprovedInstallerCertificateSha256 = "";
+
     public sealed record Readiness(bool CanInstall, string Description);
 
     public static Readiness Check(
         IReadOnlyList<AuralWeaveVirtualDevice> installed,
-        VirtualAudioEndpointRole role)
+        VirtualAudioEndpointRole role) =>
+        CheckBundle(installed, role,
+            Path.Combine(AppContext.BaseDirectory, "drivers", BundleFolder));
+
+    /// <summary>
+    /// Used by the future independently signed elevated installer. A signed
+    /// helper lives IN the bundle, so its base directory differs from the
+    /// Portable desktop's base directory. Re-validate from that location.
+    /// </summary>
+    public static Readiness CheckBundle(
+        IReadOnlyList<AuralWeaveVirtualDevice> installed,
+        VirtualAudioEndpointRole role,
+        string packageDirectory)
     {
         ArgumentNullException.ThrowIfNull(installed);
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageDirectory);
         if (role is not (VirtualAudioEndpointRole.Input or VirtualAudioEndpointRole.Output))
             throw new ArgumentOutOfRangeException(nameof(role));
 
@@ -38,9 +60,10 @@ public static class VirtualDriverInstallation
             return new(false, $"Virtual {role}: installed (1/1).");
         }
 
-        var folder = Path.Combine(AppContext.BaseDirectory, "drivers", BundleFolder);
-        // Portable application folder is the ONLY package source. No Internet,
-        // downloaded binary, test-signed WDK build, temp-file or arbitrary path.
+        // The desktop supplies a strictly relative bundle path; the
+        // elevated helper supplies its own base directory. This method
+        // never downloads or selects any arbitrary third-party package.
+        var folder = Path.GetFullPath(packageDirectory);
         if (!Directory.Exists(folder))
             return new(false, $"Virtual {role}: not installed. Production signed driver package is not yet included.");
 
@@ -52,9 +75,14 @@ public static class VirtualDriverInstallation
             !File.Exists(sys) || !File.Exists(cat))
             return new(false, $"Virtual {role}: not installed. Driver package files are incomplete.");
 
-        // Both Windows trust and product-identity checks are mandatory before
-        // enabling an elevated process. The Windows PnP installer independently
-        // validates the catalog association and full INF/SYS package.
+        // Production release must first pin its actual publisher signer.
+        // A trusted EXE from some unrelated vendor is NOT sufficient.
+        if (ApprovedInstallerCertificateSha256.Length != 64)
+            return new(false, $"Virtual {role}: not installed. No approved production driver publisher is configured.");
+
+        // Both Windows trust and exact publisher pin are mandatory before
+        // enabling UAC. The elevated installer must independently validate
+        // the catalog/INF/SYS relationship and certificate revocation.
         if (!IsTrustedAuralWeaveCode(setup) || !VerifyAuthenticode(cat))
             return new(false, $"Virtual {role}: not installed. Production driver signature could not be verified.");
 
@@ -120,8 +148,9 @@ public static class VirtualDriverInstallation
         try
         {
             using var signer = X509Certificate.CreateFromSignedFile(path);
-            var subject = signer.Subject;
-            return subject.Contains("AuralWeave", StringComparison.OrdinalIgnoreCase);
+            var publisherHash = SHA256.HashData(signer.GetRawCertData());
+            var approved = Convert.FromHexString(ApprovedInstallerCertificateSha256);
+            return CryptographicOperations.FixedTimeEquals(publisherHash, approved);
         }
         catch (Exception)
         {

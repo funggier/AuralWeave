@@ -21,6 +21,7 @@ Abstract:
 
 #include "definitions.h"
 #include "../../../Transport/aw_pcm_wire.h"
+#include "aw_kernel_pcm_queue.h"
 #include "endpoints.h"
 #include "minipairs.h"
 
@@ -45,12 +46,8 @@ StartDevice
 _Dispatch_type_(IRP_MJ_PNP)
 DRIVER_DISPATCH PnpHandler;
 
-//
-// Rendering streams are not saved to a file by default. Use the registry value 
-// DoNotCreateDataFiles (DWORD) = 0 to override this default.
-//
-DWORD g_DoNotCreateDataFiles = 1;  // default is off.
-DWORD g_DisableToneGenerator = 1;  // Prototype: never generate synthetic mic audio.
+// No tone generation or audio-file capture: those Microsoft sample
+// facilities are absent from the AuralWeave kernel binary.
 UNICODE_STRING g_RegistryPath;      // This is used to store the registry settings path for the driver
 
 //-----------------------------------------------------------------------------
@@ -170,23 +167,6 @@ NTSTATUS - SUCCESS if able to configure the framework
 //=============================================================================
 #pragma code_seg("INIT")
 __drv_requiresIRQL(PASSIVE_LEVEL)
-NTSTATUS
-GetRegistrySettings(
-    _In_ PUNICODE_STRING RegistryPath
-)
-{
-    PAGED_CODE();
-    UNREFERENCED_PARAMETER(RegistryPath);
-
-    // Product safety/privacy invariant: unlike Microsoft Simple Audio Sample,
-    // NEVER permit a service registry setting to enable disk recordings or
-    // synthetic microphone tones. Driver settings are not user-controllable
-    // until the real AuralWeave audio transport is implemented and verified.
-    g_DoNotCreateDataFiles = 1;
-    g_DisableToneGenerator = 1;
-    return STATUS_SUCCESS;
-}
-
 #pragma code_seg("INIT")
 extern "C" DRIVER_INITIALIZE DriverEntry;
 extern "C" NTSTATUS
@@ -253,14 +233,9 @@ Return Value:
         DPF(D_ERROR, ("WdfDriverCreate failed, 0x%x", ntStatus)),
         Done);
 
-    //
-    // Get registry configuration.
-    //
-    ntStatus = GetRegistrySettings(RegistryPathName);
-    IF_FAILED_ACTION_JUMP(
-        ntStatus,
-        DPF(D_ERROR, ("Registry Configuration error 0x%x", ntStatus)),
-        Done);
+    // Initialize the internal per-role PCM rings before PortCls can
+    // create any WaveRT streams. This does NOT expose kernel IOCTLs.
+    AwKernelPcmInitialize();
 
     //
     // Tell the class driver to initialize the driver.

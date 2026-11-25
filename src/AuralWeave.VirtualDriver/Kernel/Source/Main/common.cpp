@@ -16,15 +16,8 @@ Abstract:
 #include <initguid.h>
 #include "definitions.h"
 #include "hw.h"
-#include "savedata.h"
 #include "endpoints.h"
 
-//-----------------------------------------------------------------------------
-// CSaveData statics
-//-----------------------------------------------------------------------------
-
-PSAVEWORKER_PARAM       CSaveData::m_pWorkItems = NULL;
-PDEVICE_OBJECT          CSaveData::m_pDeviceObject = NULL;
 //=============================================================================
 // Classes
 //=============================================================================
@@ -375,14 +368,17 @@ Return Value:
 
     NTSTATUS ntStatus;
 
-    //
-    // This sample supports only one instance of this object.
-    // (b/c of CSaveData's static members and Bluetooth HFP logic). 
-    //
-    if (InterlockedCompareExchange(&CAdapterCommon::m_AdapterInstances, 1, 0) != 0)
+    // One PortCls adapter per separately enumerated root PnP device:
+    // the Input root ID and Output root ID may start concurrently.
+    // Keep a hard capacity of two adapters; the installer prevents
+    // creating duplicate root nodes of the same role.
+    const LONG instanceCount = InterlockedIncrement(
+        &CAdapterCommon::m_AdapterInstances);
+    if (instanceCount > 2)
     {
+        InterlockedDecrement(&CAdapterCommon::m_AdapterInstances);
         ntStatus = STATUS_DEVICE_BUSY;
-        DPF(D_ERROR, ("NewAdapterCommon failed, only one instance is allowed"));
+        DPF(D_ERROR, ("NewAdapterCommon: maximum of two root audio adapters"));
         goto Done;
     }
     
@@ -392,6 +388,7 @@ Return Value:
     CAdapterCommon *p = new(PoolFlags, MINADAPTER_POOLTAG) CAdapterCommon(UnknownOuter);
     if (p == NULL)
     {
+        InterlockedDecrement(&CAdapterCommon::m_AdapterInstances);
         ntStatus = STATUS_INSUFFICIENT_RESOURCES;
         DPF(D_ERROR, ("NewAdapterCommon failed, 0x%x", ntStatus));
         goto Done;
@@ -437,7 +434,7 @@ Return Value:
         m_pHW = NULL;
     }
     
-    CSaveData::DestroyWorkItems();
+    // No global file-save workers: audio stays in PCM memory rings.
     SAFE_RELEASE(m_pPortClsEtwHelper);
     SAFE_RELEASE(m_pServiceGroupWave);
  
@@ -448,7 +445,8 @@ Return Value:
     }
 
     InterlockedDecrement(&CAdapterCommon::m_AdapterInstances);
-    ASSERT(CAdapterCommon::m_AdapterInstances == 0);
+    ASSERT(CAdapterCommon::m_AdapterInstances >= 0 &&
+           CAdapterCommon::m_AdapterInstances <= 1);
 } // ~CAdapterCommon  
 
 //=============================================================================
@@ -609,12 +607,8 @@ Return Value:
     
     m_pHW->MixerReset();
 
-    //
-    // Initialize SaveData class.
-    //
-    CSaveData::SetDeviceObject(DeviceObject);   //device object is needed by CSaveData
-    ntStatus = CSaveData::InitializeWorkItems(DeviceObject);
-    IF_FAILED_JUMP(ntStatus, Done);
+    // AuralWeave deliberately has no disk-recording subsystem in
+    // its kernel driver. Only resident PCM rings are used.
 Done:
 
     return ntStatus;

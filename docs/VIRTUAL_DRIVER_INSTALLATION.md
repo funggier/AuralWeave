@@ -47,8 +47,8 @@ request administrator approval and verify that the requested role
 appears in Windows PnP after it exits.
 
 **IMPORTANT: The production setup executable does not yet exist and
-the present AuralWeaveVirtualAudio.sys is unsigned and has no complete
-kernel WaveRT PCM transport. This capability must remain disabled until
+the present AuralWeaveVirtualAudio.sys is unsigned and only has
+internal WaveRT PCM ring staging, without a secure user/kernel bridge. This capability must remain disabled until
 that driver is implemented, runtime-validated, and appropriately signed.**
 The unsigned WDK prototype stored in the ignored build directory is
 never copied into a user-installable driver bundle or portable release.
@@ -86,3 +86,30 @@ Official Microsoft references:
 
 No driver install/uninstall operation was performed on the user's PC
 during these tests.
+
+
+## Windows 10 installer-helper source (2026-11-25)
+
+The independent source project is
+src/AuralWeave.DriverSetup/AuralWeave.DriverSetup.csproj.
+It builds a future Windows x64 SetupAPI helper. The --check argument is
+read-only and verified not to change Windows PnP inventory. Production
+installation code is behind an exact SHA-256 publisher certificate pin
+that is currently empty, and the signed INF/CAT/SYS/setup files do not
+exist. It therefore cannot be used to install unsigned driver artifacts.
+
+Its intended production flow is SetupDiCreateDeviceInfoList ->
+SetupDiCreateDeviceInfo -> SPDRP_HARDWAREID ->
+DIF_REGISTERDEVICE -> UpdateDriverForPlugAndPlayDevices. A separate
+global mutex serializes competing installers across Portable folders.
+On failure after node registration, the helper attempts rollback of
+only the newly created node. It has no user-facing uninstall command.
+This install sequence is source-reviewed and compiled but has NOT
+been run with a signed production driver.
+
+Build for read-only tests:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\scriptsuild-virtual-driver-setup.ps1 -PublishStandalone
+
+The unsigned test EXE is staged ONLY under the ignored build folder,
+not the product distribution. More context in WDK_WAVERT_PCM_CHECKPOINT.md.

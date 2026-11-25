@@ -312,6 +312,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="adapter.cpp" />
+    <ClCompile Include="aw_kernel_pcm_queue.cpp" />
     <ClCompile Include="..\..\..\Transport\aw_pcm_wire.cpp" />
     <ClCompile Include="basetopo.cpp" />
     <ClCompile Include="common.cpp" />

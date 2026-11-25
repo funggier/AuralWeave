@@ -30,6 +30,11 @@ try {
     }
     Write-Output 'SINGLE_VIRTUAL_INPUT_AND_SINGLE_VIRTUAL_OUTPUT_INF_IDS=PASS'
 
+    # Also verify the two-root adapter limit, source-side WaveRT PCM
+    # queues, DRM gate and removal of sample file/tone components.
+    & (Join-Path $PSScriptRoot 'test-kernel-wavert-wiring.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Kernel WaveRT PCM wiring checks failed' }
+
     # Validate the SAME fixed-width protocol source in user mode before
     # linking the WDK driver. Neither test installs or starts the kernel.
     & (Join-Path $PSScriptRoot 'test-kernel-transport.ps1')
@@ -81,7 +86,7 @@ try {
     Write-Output "SYS_BYTES=$bytes"
     Write-Output "SYS_SHA256=$sha"
     Write-Output 'WIN10_WIN11_X64_TARGET_METADATA_AND_SIGNABILITY=PASS'
-    Write-Warning 'NOT INSTALLED, NOT MICROSOFT SIGNED, NOT RUNTIME TESTED. Kernel audio transport is not implemented. Do not copy to dist or install.'
+    Write-Warning 'NOT INSTALLED, NOT MICROSOFT SIGNED, NOT RUNTIME TESTED. Kernel-to-user secure control transport is not implemented. Do not copy to dist or install.'
 }
 finally {
     Pop-Location

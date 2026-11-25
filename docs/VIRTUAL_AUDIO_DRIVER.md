@@ -99,3 +99,29 @@ signed driver installation and fully isolated Windows endpoints
 are still pending. GUI Install remains disabled.
 
 See [Virtual PCM Bridge](VIRTUAL_PCM_BRIDGE.md).
+
+
+## WaveRT internal PCM and installer-helper checkpoint (2026-11-25)
+
+**Build-stage only. No Windows driver was installed or signed.**
+
+The unsigned Windows 10 WDK prototype now compiles kernel-internal,
+independently locked 64-KiB PCM rings for Virtual Input and Virtual
+Output. The WaveRT microphone DMA path consumes queued PCM or emits
+silence; WaveRT speaker DMA copies rendered frames into its bounded
+PCM queue. The Microsoft Sample sine generator, file recording worker
+and runtime registry toggles were unlinked. A global single-adapter
+restriction was found and changed to allow **Input + Output together**
+in the driver architecture. Digital rights that forbid copying disable
+render PCM mirroring and flush queued frames.
+
+No secure kernel device IOCTL or user broker is connected yet, so the
+driver is NOT a usable installed Windows audio endpoint.
+
+The separate Windows 10 DriverSetup project now builds as a self-contained
+read-only preflight utility and contains future signed-only PnP SetupAPI
+logic. The production certificate SHA-256 pin is intentionally blank,
+so all actual installation requests remain disabled. Uninstallation
+remains a Windows Device Manager operation.
+
+See docs/WDK_WAVERT_PCM_CHECKPOINT.md for source, design and QA.

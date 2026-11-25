@@ -1,9 +1,9 @@
 # Kernel / Native PCM Protocol v1 (Compile-Only Checkpoint)
 
 This checkpoint supplies the data contract and bounded audio FIFO needed
-before safely implementing a Windows kernel-to-user audio device. It does
-**not** install an audio device, expose any IOCTL handler, or transfer PCM
-from WaveRT to a Windows process yet.
+before safely implementing a Windows kernel-to-user audio device. It does **not** install an audio device or expose any IOCTL handler.
+The internal WaveRT DMA path has now been connected to per-role kernel
+queues, but no PCM can yet cross securely to a Windows process.
 
 Source under src/AuralWeave.VirtualDriver/Transport/:
 
@@ -88,3 +88,12 @@ it has not been runtime-tested.
    until independently tested.
 
 The current Portable package must not include the unsigned SYS.
+
+
+## Internal WaveRT queue integration (2026-11-25)
+
+See WDK_WAVERT_PCM_CHECKPOINT.md. The latest kernel source now links
+the protocol ring into real WaveRT DMA paths at source level,
+with two independent roles, silence fallback and DRM checks.
+It has been compiled by WDK but is not installed or kernel tested.
+User-mode IOCTL transport, credential checking and broker are pending.

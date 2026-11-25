@@ -38,6 +38,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Managed route configuration tests failed' }
 
     if ($RunDeviceDiagnostics) {
+        # The installer helper is checked in READ-ONLY mode. Never stage the
+        # unsigned WDK SYS or developer helper into the Portable product.
+        & (Join-Path $root 'scripts\build-virtual-driver-setup.ps1')
+        if ($LASTEXITCODE -ne 0) { throw 'Read-only Driver Setup preflight tests failed' }
         & (Join-Path $root 'scripts\test-multiple-portable-instances.ps1') -SkipBuild
         if ($LASTEXITCODE -ne 0) { throw 'Cross-folder Virtual Driver audio-sharing test failed' }
         & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-virtual-driver-discovery
