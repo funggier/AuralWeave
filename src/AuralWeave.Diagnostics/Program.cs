@@ -6,6 +6,22 @@ try
     Console.OutputEncoding = System.Text.Encoding.UTF8;
     Console.WriteLine("AuralWeave diagnostics — Native C++ WASAPI only");
 
+    if (args.Length == 2 && args[0] == "--bridge-owner-child")
+    {
+        var role = uint.Parse(args[1]);
+        using var owned = NativeVirtualAudioBridge.Create(role, 1, 48000, 2, 512);
+        Console.WriteLine("OWNER_MAP=" + owned.Name);
+        Console.Out.Flush();
+        await Task.Delay(Timeout.InfiniteTimeSpan);
+        return 0;
+    }
+
+    if (args.Contains("--test-virtual-bus-recovery"))
+    {
+        await VirtualBusRecoveryTests.RunAsync();
+        return 0;
+    }
+
     if (args.Contains("--test-kernel-pcm-client"))
     {
         KernelPcmControlTests.Run();

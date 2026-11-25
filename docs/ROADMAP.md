@@ -267,7 +267,7 @@ UNSIGNED and must NOT be installed on the host Windows 10 computer.
 - [x] Exclude unsigned Kernel SYS/INF/CAT, developer setup and debug binaries from test distribution
 - [x] Strengthen managed kernel response validation (role, operation, rate, channel geometry, transfer bounds)
 - [x] Add deterministic negative protocol tests and Windows 10 user trial instructions
-- [ ] Confirm first GitHub Actions run completed successfully and inspect build/test logs
+- [x] Confirm GitHub Actions run #22 completed successfully (Native/managed build, PCM mock, cross-folder and ZIP audit)
 - [ ] Execute low-volume hardware listening test using an extracted ZIP on Windows 10 22H2
 - [ ] Implement a tested, least-privilege broker with lifecycle, clock pacing and failure recovery
 - [ ] Run actual signed Virtual Input and Virtual Output kernel-driver tests in a controlled Windows 10 VM
@@ -284,7 +284,8 @@ prototype or turn on the INSTALL button on the basis of compile/mock tests.
 - [x] Combine microphone sources and fan out one simulated kernel PCM channel to independent listeners
 - [x] Add mock tests for stop, disconnected streams, device loss and multiple clients
 - [x] Wire tests into Windows diagnostics and Portable preview workflow
-- [ ] Confirm a successful Windows runner build and inspect diagnostics
+- [x] Confirm Windows runner build #22 passed previous worker/coordinator tests
+- [ ] Confirm Windows runner passes newer abrupt-owner-death recovery test
 - [ ] Implement least-privilege broker IPC, per-client permissions and crash recovery
 - [ ] Replace timer-based reference with event-driven audio clock and measured drift management
 - [ ] Validate signed kernel transport in controlled Windows 10 environment
@@ -292,3 +293,19 @@ prototype or turn on the INSTALL button on the basis of compile/mock tests.
 This is **not** a production broker, installed audio endpoint or CI pass.
 The INSTALL action remains disabled and Windows 11 runtime is unverified.
 See [coordinator checkpoint](KERNEL_PCM_COORDINATOR_CHECKPOINT.md).
+
+## Portable client owner lifetime / v0.3.0 checkpoint (2026-11-25)
+
+- [x] Add process-owned Windows event HANDLE to detect PCM creator death after hard kill
+- [x] Preserve independent virtual PCM writers/readers and their SPSC mapping ABI
+- [x] Auto-detach stale bus contributors/listeners without affecting surviving channels
+- [x] Exercise real Windows 10 child-process kill and both Virtual Input / Output roles
+- [x] Run native/managed Windows 10 diagnostics and create local Portable ZIP
+- [ ] Confirm CI success on the final v0.3.0 release source and ZIP archive
+- [ ] Test the extracted v0.3.0 Studio GUI with user listening hardware
+- [ ] Add trusted service, authenticated per-user IPC and cancelable kernel I/O
+- [ ] Test signed Kernel Virtual Driver on Windows 10, then Windows 11
+
+Owner-lifetime events are recovery hints, **not** identity or ACL protection.
+Studio-only release policy remains fail-closed for unsigned drivers.
+See [owner crash recovery](PCM_OWNER_LIFETIME_RECOVERY.md).

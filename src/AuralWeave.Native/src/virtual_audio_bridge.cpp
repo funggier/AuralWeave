@@ -18,6 +18,17 @@ namespace {
 constexpr std::uint32_t bridge_magic = 0x57415241u; // ARAW, not a disk format
 constexpr std::uint32_t bridge_version = 1;
 constexpr wchar_t bridge_prefix[] = L"Local\\AuralWeave.PCM.v1.";
+// An owner-only kernel HANDLE disappears on process termination even if
+// attached readers keep the shared PCM mapping alive.
+constexpr wchar_t lifetime_suffix[] = L".OwnerAlive";
+
+[[nodiscard]] bool owner_alive(std::wstring_view mapping_name) noexcept {
+    const std::wstring alive_name = std::wstring(mapping_name) + lifetime_suffix;
+    const HANDLE event = OpenEventW(SYNCHRONIZE, FALSE, alive_name.c_str());
+    if (!event) return false; // fail closed for missing names or denied access
+    CloseHandle(event);
+    return true;
+}
 
 struct alignas(64) SharedHeader {
     std::uint32_t magic;
@@ -91,6 +102,7 @@ void check_identity(VirtualEndpointRole role, std::uint32_t slot) {
 
 struct VirtualAudioBridge::State {
     HANDLE file_mapping{};
+    HANDLE owner_lifetime{}; // never duplicated into a peer
     SharedHeader* header{};
     float* pcm{};
     bool owner{};
@@ -99,6 +111,7 @@ struct VirtualAudioBridge::State {
         if (header && owner) {
             InterlockedExchange(&header->closed, 1);
         }
+        if (owner_lifetime) CloseHandle(owner_lifetime);
         if (header) UnmapViewOfFile(header);
         if (file_mapping) CloseHandle(file_mapping);
     }
@@ -130,6 +143,11 @@ VirtualAudioBridge VirtualAudioBridge::create(VirtualEndpointRole role,
         throw std::runtime_error("CreateFileMappingW failed for PCM bridge");
     if (GetLastError() == ERROR_ALREADY_EXISTS)
         throw std::runtime_error("Refusing to reuse existing PCM bridge mapping");
+
+    const auto alive_name = name + lifetime_suffix;
+    state->owner_lifetime = CreateEventW(nullptr, TRUE, FALSE, alive_name.c_str());
+    if (!state->owner_lifetime || GetLastError() == ERROR_ALREADY_EXISTS)
+        throw std::runtime_error("Could not create exclusive PCM owner lifetime event");
 
     state->header = static_cast<SharedHeader*>(MapViewOfFile(
         state->file_mapping, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 0));
@@ -179,8 +197,9 @@ VirtualAudioBridge VirtualAudioBridge::attach(std::wstring_view exact_name,
         h->version != bridge_version || role != expected_role ||
         h->slot != expected_slot || !valid_format(format) ||
         h->channels != format.channels ||
-        mapped.RegionSize < size_bytes(format) || load32(&h->closed))
-        throw std::runtime_error("PCM mapping header, role, slot or state invalid");
+        mapped.RegionSize < size_bytes(format) || load32(&h->closed) ||
+        !owner_alive(name))
+        throw std::runtime_error("PCM mapping header, role, slot or owner lifetime invalid");
     state->pcm = reinterpret_cast<float*>(
         reinterpret_cast<std::byte*>(state->header) + sizeof(SharedHeader));
     // Header validation does not replace authorization or kernel ACL checks.
@@ -255,7 +274,7 @@ VirtualBridgeCounters VirtualAudioBridge::counters() const noexcept {
         ? static_cast<std::uint32_t>(w - r) : 0;
     return {w, r, static_cast<std::uint64_t>(load64(&h->overflow)),
             static_cast<std::uint64_t>(load64(&h->underflow)), queued,
-            load32(&h->closed) != 0};
+            load32(&h->closed) != 0 || (!state_->owner && !owner_alive(name_))};
 }
 
 void VirtualAudioBridge::close() noexcept { state_.reset(); }

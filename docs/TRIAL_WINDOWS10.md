@@ -20,7 +20,7 @@
 2. เลือก workflow run ที่มีสถานะ **Success**. ถ้ายังไม่มี run ที่ผ่าน
    ให้ถือว่ายังไม่มีไฟล์ใหม่ที่ผ่านการตรวจสอบ; อย่าใช้ไฟล์จาก run ที่ล้มเหลว
 3. ดาวน์โหลด artifact ชื่อ **AuralWeave-Windows-x64-portable-preview**.
-4. แตก artifact ZIP แล้วแตกไฟล์ `AuralWeave-v0.3.0-preview.1-Windows-x64.zip`
+4. แตก artifact ZIP แล้วแตกไฟล์ `AuralWeave-v0.3.0-Windows-x64.zip`
    ที่อยู่ภายในไปยังโฟลเดอร์ที่เขียนไฟล์ได้ เช่น `T:\AuralWeave-Test`.
 5. เปิด `AuralWeave.exe`. โปรแกรมเป็น Portable ไม่ต้องติดตั้ง
    และไม่ต้องเปลี่ยนระบบลายเซ็นไดรเวอร์ของ Windows
@@ -61,6 +61,8 @@ Artifact ของ workflow มีอายุเก็บ 14 วัน (เม�
 dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-kernel-pcm-client
 # เวิร์กเกอร์และตัวผสมเสียงหลายโปรแกรม (ใช้ Mock ไม่ติดตั้ง Driver)
 dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-kernel-pcm-worker
+# ทดสอบการบังคับปิดเจ้าของ Shared PCM โดยช่องอื่นยังทำงานต่อ
+dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-virtual-bus-recovery
 .\scripts\test-multiple-portable-instances.ps1 -SkipBuild
 ```
 

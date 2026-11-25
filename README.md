@@ -255,8 +255,22 @@ coalesced timer ticks and fail-stop error propagation. Tests for startup,
 shutdown, missing endpoints, device loss and multi-client mixing are wired
 into the Windows preview workflow.
 
-**Windows CI success has not yet been confirmed for these commits.** This is
+**GitHub Actions run #22 passed for this checkpoint** (Native build,
+PCM tests, and Studio-only portable artifact). This is
 user-mode reference code, **not** an elevated broker, signed driver,
 auto-starting service or working Windows audio endpoint. Production timing,
 client authorization, runtime kernel validation and driver signing remain
 outstanding. See [coordinator checkpoint](docs/KERNEL_PCM_COORDINATOR_CHECKPOINT.md).
+
+## Windows Portable Studio v0.3.0 (2026-11-25)
+
+Studio v0.3.0 has ordered native filters, portable Filter Presets, the
+read-only Virtual Driver status page and safe user-mode multi-client PCM
+recovery. A source PCM owner killed without Dispose is detected through a
+Windows per-mapping lifetime HANDLE, and stale source/listener channels
+are removed while surviving channels continue. Windows 10 diagnostics and
+a Studio-only ZIP build passed locally; GitHub Actions verification of this
+new checkpoint is tracked separately. **No signed Virtual Audio Driver is
+included or installed; INSTALL remains disabled.** Windows 11 remains
+runtime-unverified. See [release notes](docs/releases/v0.3.0.md) and
+[owner crash recovery](docs/PCM_OWNER_LIFETIME_RECOVERY.md).

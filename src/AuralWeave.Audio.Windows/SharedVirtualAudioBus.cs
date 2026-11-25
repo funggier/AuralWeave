@@ -18,6 +18,8 @@ public sealed class SharedVirtualAudioBus : IDisposable
         new(StringComparer.Ordinal);
     private readonly float[] _mix;
     private readonly float[] _scratch;
+    private readonly List<string> _disconnected = new(16);
+    private int _pumpCycles;
     private bool _disposed;
 
     public SharedVirtualAudioBus(uint role, uint sampleRate = 48000,
@@ -48,6 +50,8 @@ public sealed class SharedVirtualAudioBus : IDisposable
     public ulong FramesMixed { get; private set; }
     public ulong FramesDelivered { get; private set; }
     public ulong FramesDropped { get; private set; }
+    public ulong DisconnectedContributors { get; private set; }
+    public ulong DisconnectedListeners { get; private set; }
 
     /// <summary>
     /// Register a client-owned SPSC bridge to receive its PCM contribution.
@@ -97,6 +101,38 @@ public sealed class SharedVirtualAudioBus : IDisposable
     }
 
     /// <summary>
+    /// Remove peer mappings after their owning Portable process disappears.
+    /// In addition to the normal closed flag, the native bridge checks the
+    /// per-owner HANDLE's lifetime, including after a hard process kill.
+    /// This is advisory user-mode recovery, not client authorization.
+    /// Call only on the coordinator's pump thread or while it is stopped.
+    /// </summary>
+    public int PruneDisconnected()
+    {
+        ThrowIfDisposed();
+        var sources = Prune(_contributors);
+        var receivers = Prune(_listeners);
+        DisconnectedContributors += (ulong)sources;
+        DisconnectedListeners += (ulong)receivers;
+        return sources + receivers;
+    }
+
+    private int Prune(Dictionary<string, NativeVirtualAudioBridge> clients)
+    {
+        _disconnected.Clear();
+        foreach (var (name, peer) in clients)
+        {
+            if (peer.GetStats().ClosedByOwner != 0)
+                _disconnected.Add(name);
+        }
+        foreach (var name in _disconnected)
+            Remove(clients, name);
+        var count = _disconnected.Count;
+        _disconnected.Clear();
+        return count;
+    }
+
+    /// <summary>
     /// Nonblocking one-block mix and independent fanout. The caller invokes
     /// Pump at an audio-appropriate cadence. This managed reference code is
     /// not a real-time kernel callback and must not run at elevated IRQL.
@@ -107,6 +143,10 @@ public sealed class SharedVirtualAudioBus : IDisposable
     public int Pump()
     {
         ThrowIfDisposed();
+        // Probe owner HANDLE liveness every 16 blocks, rather than opening
+        // Windows objects during every 48 kHz audio tick.
+        if ((++_pumpCycles & 15) == 0)
+            PruneDisconnected();
         Array.Clear(_mix);
         var producedFrames = 0;
         var channels = (int)Channels;
@@ -154,6 +194,7 @@ public sealed class SharedVirtualAudioBus : IDisposable
             client.Dispose();
         _contributors.Clear();
         _listeners.Clear();
+        _disconnected.Clear();
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);

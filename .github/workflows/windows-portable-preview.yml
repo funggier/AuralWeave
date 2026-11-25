@@ -40,6 +40,9 @@ jobs:
       - name: Verify explicit kernel PCM worker stop and device-failure handling
         run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-kernel-pcm-worker
 
+      - name: Verify abrupt PCM process-owner death and surviving audio routing
+        run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-virtual-bus-recovery
+
       - name: Verify PnP discovery and install fail-closed policy
         run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-virtual-driver-discovery
 

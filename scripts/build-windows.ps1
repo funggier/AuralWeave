@@ -45,6 +45,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'User-mode kernel PCM protocol test failed' }
         & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-kernel-pcm-worker
         if ($LASTEXITCODE -ne 0) { throw 'Virtual PCM worker/coordinator lifecycle test failed' }
+        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-virtual-bus-recovery
+        if ($LASTEXITCODE -ne 0) { throw 'Multi-process PCM crash recovery test failed' }
         # The installer helper is checked in READ-ONLY mode. Never stage the
         # unsigned WDK SYS or developer helper into the Portable product.
         & (Join-Path $root 'scripts\build-virtual-driver-setup.ps1')

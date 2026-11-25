@@ -111,3 +111,14 @@ The worker/coordinator tests cover:
 - Measure drift, jitter, latency, safety against feedback/DRM leaks,
   and recoverability under sleep/resume and endpoint hotplug.
 - Validate Windows 11 at runtime separately before claiming support.
+
+## Subsequent owner-lifetime recovery checkpoint
+
+The native Shared PCM owner now holds a unique per-mapping Windows Event
+HANDLE that disappears on abnormal process termination, while subscribers
+may keep the Shared Memory mapping alive. The user-mode SharedVirtualAudioBus
+periodically prunes detached sources/listeners; explicit cleanup is also
+available between pump cycles. Windows 10 real process-kill tests passed for
+both roles, and the remaining stream continued. This is separate from the
+unsigned Kernel driver and is NOT a privileged Broker. See
+[PCM owner lifetime recovery](PCM_OWNER_LIFETIME_RECOVERY.md).
