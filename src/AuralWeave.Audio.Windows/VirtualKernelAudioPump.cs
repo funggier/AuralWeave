@@ -60,22 +60,24 @@ public sealed class VirtualKernelAudioPump
     public int PumpOnce()
     {
         var micFrames = _micReader.Read(_input);
+        var microphoneAccepted = 0u;
         if (micFrames > 0)
         {
-            var transferred = _driver.WriteMicrophone(
+            microphoneAccepted = _driver.WriteMicrophone(
                 _input.AsSpan(0, checked((int)micFrames * 2)));
-            MicrophoneFramesAccepted += transferred;
-            MicrophoneFramesDropped += micFrames - transferred;
+            MicrophoneFramesAccepted += microphoneAccepted;
+            MicrophoneFramesDropped += micFrames - microphoneAccepted;
         }
 
         var speaker = _driver.ReadSpeaker(_blockFrames);
         var speakerFrames = (uint)(speaker.Length / 2);
+        var speakerDelivered = 0u;
         if (speakerFrames > 0)
         {
-            var accepted = _speakerWriter.Write(speaker, speakerFrames);
-            SpeakerFramesDelivered += accepted;
-            SpeakerFramesDropped += speakerFrames - accepted;
+            speakerDelivered = _speakerWriter.Write(speaker, speakerFrames);
+            SpeakerFramesDelivered += speakerDelivered;
+            SpeakerFramesDropped += speakerFrames - speakerDelivered;
         }
-        return checked((int)(micFrames + speakerFrames));
+        return checked((int)(microphoneAccepted + speakerDelivered));
     }
 }

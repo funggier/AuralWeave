@@ -54,6 +54,10 @@ Operations:
   return the actual frames and payload.
 - GET_STATUS: return actual stream format and queued frame count.
 
+A buffered read or write returns a successful header with zero transferred frames when its role has no attached WaveRT stream. Output mirroring also returns zero for protected streams. The queue checks its active format and protection under its own spin lock before copying PCM. Incompatible active format remains a protocol error.
+
+The managed worker accepts idle roles at startup. Its first active cycle can process the microphone or speaker independently. It drains and counts microphone frames discarded by an idle role, and counts active cycles only when either direction delivers frames. A transport failure still stops the worker. Coverage uses the user-mode mock and WDK compile checks. Event-driven pacing, cancellation, role generations and real kernel execution remain pending.
+
 The currently advertised WaveRT formats are 48,000 Hz stereo signed
 PCM32 integer for the virtual microphone and 48,000 Hz stereo signed
 PCM16 integer for the virtual speaker. These are NOT IEEE Float32.

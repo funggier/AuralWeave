@@ -1,6 +1,5 @@
 // Original AuralWeave kernel transport staging (MIT).
-// This file intentionally exposes NO user-mode IOCTL or openable device.
-// Audio endpoints remain unsigned, unconnected prototypes.
+// WaveRT and the separate control device share these internal queues.
 #include "definitions.h"
 #include "aw_kernel_pcm_queue.h"
 
@@ -44,11 +43,34 @@ bool AwKernelPcmDescribe(aw_pcm_u32 role,
     result->sampleRate = endpoint->rate;
     result->channels = endpoint->channels;
     result->bitsPerSample = endpoint->bits;
-    result->streamCount = endpoint->attached;
     result->queuedFrames = aw_pcm_ring_queued(&endpoint->ring);
-    result->blocked = endpoint->blocked ? 1u : 0u;
     KeReleaseSpinLock(&endpoint->lock, oldIrql);
     return true;
+}
+
+bool AwKernelPcmTransfer(const AW_PCM_WIRE_PACKET& request, aw_pcm_u8* pcm,
+                         aw_pcm_u32& transferred) noexcept {
+    auto* endpoint = get_endpoint(request.role);
+    if (!endpoint || !pcm) return false;
+
+    // Keep format, protection and copy atomic with WaveRT attach/detach.
+    transferred = 0;
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&endpoint->lock, &oldIrql);
+    bool compatible = true;
+    if (endpoint->attached > 0 && !endpoint->blocked) {
+        compatible = request.sample_rate == endpoint->rate &&
+            request.channels == endpoint->channels &&
+            request.bits_per_sample == endpoint->bits;
+        if (compatible) {
+            if (request.role == AW_PCM_WIRE_INPUT)
+                transferred = aw_pcm_ring_write(&endpoint->ring, pcm, request.frame_count);
+            else
+                transferred = aw_pcm_ring_read(&endpoint->ring, pcm, request.frame_count, 0);
+        }
+    }
+    KeReleaseSpinLock(&endpoint->lock, oldIrql);
+    return compatible;
 }
 
 void AwKernelPcmInitialize() noexcept {

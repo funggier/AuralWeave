@@ -74,6 +74,7 @@ The unsigned WDK binary currently available in the ignored build area is *not* a
 ## Current implementation evidence (2026-11-25)
 
 - Windows 10 SetupAPI lookup checks exact/legacy/partially installed IDs. Configuration Manager contributes devnode status and problem code. Any existing match or duplicate blocks creation of another node for that role.
+- The visible Virtual Driver page re-reads Windows inventory after a device-tree notification. Windows 10 UI Automation confirmed both cards refresh and Install stays disabled when the package is incomplete.
 - Elevated Driver Setup owns the installation lock and rechecks PnP. Cross-folder diagnostics verify serialization without blocking independent PCM for either role. Actual PnP setup remains untested.
 - Concurrent user-mode PCM sources/listeners and two Portable folders pass mock tests.
 - `src/AuralWeave.DriverSetup` contains a future SetupAPI helper. Read-only preflight is tested. Its production publisher certificate pin is blank, so **actual installation is disabled**.

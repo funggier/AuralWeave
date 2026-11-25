@@ -78,53 +78,33 @@ NTSTATUS Exchange(PIRP irp) noexcept {
           req.bits_per_sample != 16u)))
         return Complete(irp, STATUS_NOT_SUPPORTED);
 
-    AwKernelPcmSnapshot snapshot{};
-    if (!AwKernelPcmDescribe(req.role, &snapshot))
-        return Complete(irp, STATUS_INVALID_PARAMETER);
-
-    const aw_pcm_u32 frameBytes = req.channels * req.bits_per_sample / 8u;
-    if (req.opcode == AW_PCM_WIRE_INPUT_WRITE ||
-        req.opcode == AW_PCM_WIRE_OUTPUT_READ) {
-        if (!snapshot.streamCount ||
-            snapshot.sampleRate != req.sample_rate ||
-            snapshot.channels != req.channels ||
-            snapshot.bitsPerSample != req.bits_per_sample)
-            return Complete(irp, STATUS_DEVICE_NOT_READY);
-        if (snapshot.blocked)
-            return Complete(irp, STATUS_ACCESS_DENIED);
-    }
-
-    if (req.opcode == AW_PCM_WIRE_OUTPUT_READ) {
-        const aw_pcm_u32 maxPayload = req.frame_count * frameBytes;
-        if (fields.OutputBufferLength <
-            sizeof(AW_PCM_WIRE_PACKET) + maxPayload)
+    const bool read = req.opcode == AW_PCM_WIRE_OUTPUT_READ;
+    if (read || req.opcode == AW_PCM_WIRE_INPUT_WRITE) {
+        const aw_pcm_u32 frameBytes = req.channels * req.bits_per_sample / 8u;
+        if (read && fields.OutputBufferLength <
+            sizeof(AW_PCM_WIRE_PACKET) + req.frame_count * frameBytes)
             return Complete(irp, STATUS_BUFFER_TOO_SMALL);
-        // Copy PCM to the space beyond the returned header; this memory
-        // is exclusively owned by the I/O manager for METHOD_BUFFERED.
-        const auto copied = AwKernelPcmRead(AW_PCM_WIRE_OUTPUT,
-            data + sizeof(AW_PCM_WIRE_PACKET),
-            req.frame_count, frameBytes, false);
+
+        // No attached stream, or protected playback, is a normal no-progress
+        // result for this role. The other role can keep exchanging frames.
+        aw_pcm_u32 copied = 0;
+        if (!AwKernelPcmTransfer(req, data + sizeof(AW_PCM_WIRE_PACKET), copied))
+            return Complete(irp, STATUS_NOT_SUPPORTED);
+
         req.frame_count = copied;
-        req.payload_bytes = copied * frameBytes;
+        req.payload_bytes = read ? copied * frameBytes : 0;
         req.total_bytes = sizeof(AW_PCM_WIRE_PACKET) + req.payload_bytes;
         RtlCopyMemory(data, &req, sizeof(req));
         return Complete(irp, STATUS_SUCCESS, req.total_bytes);
     }
 
-    if (req.opcode == AW_PCM_WIRE_INPUT_WRITE) {
-        const auto copied = AwKernelPcmWrite(AW_PCM_WIRE_INPUT,
-            data + sizeof(AW_PCM_WIRE_PACKET),
-            req.frame_count, frameBytes);
-        req.frame_count = copied;
-        req.payload_bytes = 0;
-        req.total_bytes = sizeof(AW_PCM_WIRE_PACKET);
-        RtlCopyMemory(data, &req, sizeof(req));
-        return Complete(irp, STATUS_SUCCESS, sizeof(req));
-    }
+    AwKernelPcmSnapshot snapshot{};
+    if (!AwKernelPcmDescribe(req.role, &snapshot))
+        return Complete(irp, STATUS_INVALID_PARAMETER);
 
     if (req.opcode == AW_PCM_WIRE_GET_STATUS) {
         // A result-only metadata header. frame_count is the queued count.
-        // flags and reserved remain 0; blocked is reflected as a failure.
+        // Protected playback leaves the mirror queue empty.
         req.frame_count = snapshot.queuedFrames;
     } else if (req.opcode != AW_PCM_WIRE_HELLO) {
         return Complete(irp, STATUS_INVALID_DEVICE_REQUEST);

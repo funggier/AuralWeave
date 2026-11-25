@@ -69,8 +69,8 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
 
     /// <summary>
     /// Explicit start only; never called by the ordinary Studio app.
-    /// Fail closed if both virtual WaveRT endpoints are not currently active
-    /// at the exact 48 kHz/stereo/signed-PCM format of the v1 transport.
+    /// Check the v1 protocol and the format of any attached role. Either
+    /// role can remain idle and start streaming after the worker starts.
     /// </summary>
     public void Start()
     {
@@ -81,22 +81,24 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
                 throw new InvalidOperationException(
                     "Virtual PCM worker is single-use; construct another to restart.");
 
-            RequireActive(VirtualKernelPcmProtocol.InputRole,
+            CheckFormatIfAttached(VirtualKernelPcmProtocol.InputRole,
                 VirtualKernelPcmProtocol.Signed32Format, 32);
-            RequireActive(VirtualKernelPcmProtocol.OutputRole,
+            CheckFormatIfAttached(VirtualKernelPcmProtocol.OutputRole,
                 VirtualKernelPcmProtocol.Signed16Format, 16);
             _execution = Task.Run(() => RunLoopAsync(_stop.Token));
         }
     }
 
-    private void RequireActive(uint role, uint format, uint bits)
+    private void CheckFormatIfAttached(uint role, uint format, uint bits)
     {
         var actual = _driver.Query(role);
+        if (actual.SampleRate == 0 && actual.Channels == 0 && actual.Frames == 0)
+            return;
         if (actual.SampleRate != ExpectedRate ||
             actual.Channels != ExpectedChannels ||
             actual.Format != format || actual.Bits != bits)
             throw new InvalidOperationException(
-                "Virtual PCM kernel stream is absent or has an incompatible format.");
+                "Virtual PCM kernel stream has an incompatible format.");
     }
 
     private async Task RunLoopAsync(CancellationToken cancellationToken)

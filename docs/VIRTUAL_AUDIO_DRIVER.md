@@ -58,7 +58,7 @@ The required production design includes secure driver↔service authentication i
 - Native C++ WASAPI Studio routing and filter pipeline, WPF Portable host.
 - SetupAPI read-only detection, exact current/legacy PnP ID guard and install readiness checks.
 - Independent user-mode PCM rings; SharedVirtualAudioBus multi-contributor mixing and per-client listener fanout, including two Portable folders and owner-death cleanup.
-- An unsigned, **compile-only** WDK WaveRT/PCM/IOCTL kernel prototype, not installed or connected to Windows audio as a functioning device.
+- An unsigned, **compile-only** WDK WaveRT/PCM/IOCTL kernel prototype. The bridge mock covers independent virtual mic/speaker lifetimes, including zero-frame transfer while a role is idle. See [kernel transport](KERNEL_IOCTL_TRANSPORT.md).
 - A non-elevated, same-user Mock Broker v0.3.0. Its owner-PID admission check protects only **test-only internal PCM mapping registration**, not Windows apps using an audio endpoint.
 
 **Not implemented or proven:**

@@ -255,6 +255,14 @@ QA and remaining signed-driver prerequisites. The current driver is
 UNSIGNED and must NOT be installed on the host Windows 10 computer.
 
 
+## Independent role and PnP refresh regression (2026-11-25)
+
+- `--test-kernel-pcm-client` verifies standalone mock speaker/mic operation, reopened roles, stale input discard during an idle role and protected-output silence.
+- `--test-kernel-pcm-worker` verifies idle startup, format rejection, explicit stop and fail-stop on loss of the transport.
+- `build-virtual-driver-prototype.ps1` compiles the queue and control changes and verifies INF metadata/signability.
+- Windows 10 UI Automation observed both driver cards refresh after a device-tree notification, including the absent and incomplete-package states. Both Install buttons stayed disabled and the tested page offered no removal or repair action. The notification was simulated, without changing Windows PnP.
+- Two Diagnostics processes from separate Portable folders concurrently routed the same physical Line In to the same 192 kHz and 48 kHz physical outputs in WASAPI Shared Mode, with muted outputs. Both stopped cleanly with zero new overrun or underrun frames after warmup.
+
 ## Approved Windows Virtual Driver acceptance matrix — docs-only plan (2026-11-25)
 
 This checklist is a **future production release gate**, not a claim these Windows

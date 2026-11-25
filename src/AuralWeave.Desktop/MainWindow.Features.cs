@@ -2,7 +2,9 @@ using System.IO;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using AuralWeave.Audio.Windows;
 using AuralWeave.Core;
 using Microsoft.Win32;
@@ -13,7 +15,49 @@ public partial class MainWindow
 {
     private readonly FilterPresetStore _presetStore = new(
         Path.Combine(AppContext.BaseDirectory, "presets", "filters"));
+    private const int WmDeviceChange = 0x0219;
+    private const int DbtDevnodesChanged = 0x0007;
+    private readonly DispatcherTimer _virtualRefreshTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(200)
+    };
     private bool _virtualRefreshPending;
+    private bool _virtualRefreshQueued;
+    private bool _virtualInstallPending;
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        if (PresentationSource.FromVisual(this) is HwndSource source)
+            source.AddHook(OnDeviceChange);
+        _virtualRefreshTimer.Tick += async (_, _) =>
+        {
+            _virtualRefreshTimer.Stop();
+            if (VirtualDriverPanel.IsVisible)
+                await RefreshVirtualDriversAsync();
+        };
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _virtualRefreshTimer.Stop();
+        base.OnClosed(e);
+    }
+
+    private IntPtr OnDeviceChange(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam,
+        ref bool handled)
+    {
+        if (message == WmDeviceChange && wParam.ToInt64() == DbtDevnodesChanged)
+            QueueVirtualDriverRefresh();
+        return IntPtr.Zero;
+    }
+
+    private void QueueVirtualDriverRefresh()
+    {
+        if (!VirtualDriverPanel.IsVisible) return;
+        _virtualRefreshTimer.Stop();
+        _virtualRefreshTimer.Start();
+    }
 
     private void ShowStudioModeClicked(object sender, RoutedEventArgs e)
     {
@@ -186,9 +230,15 @@ public partial class MainWindow
 
     private async Task RefreshVirtualDriversAsync()
     {
-        if (_virtualRefreshPending) return;
+        if (_virtualRefreshPending)
+        {
+            _virtualRefreshQueued = true;
+            return;
+        }
         _virtualRefreshPending = true;
         RefreshVirtualDriversButton.IsEnabled = false;
+        InstallVirtualInputButton.IsEnabled = false;
+        InstallVirtualOutputButton.IsEnabled = false;
         VirtualDriverSummary.Text = "Searching installed AuralWeave-family PnP devices...";
         try
         {
@@ -228,8 +278,9 @@ public partial class MainWindow
                 inputDevices.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             InstallVirtualOutputButton.Visibility =
                 outputDevices.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-            InstallVirtualInputButton.IsEnabled = inputReadiness.CanInstall;
-            InstallVirtualOutputButton.IsEnabled = outputReadiness.CanInstall;
+            var canOfferInstall = !_virtualInstallPending && !_virtualRefreshQueued;
+            InstallVirtualInputButton.IsEnabled = canOfferInstall && inputReadiness.CanInstall;
+            InstallVirtualOutputButton.IsEnabled = canOfferInstall && outputReadiness.CanInstall;
 
             VirtualDriverSummary.Text =
                 $"Virtual Input {activeInput}/1 | Virtual Output {activeOutput}/1. " +
@@ -249,6 +300,11 @@ public partial class MainWindow
         {
             _virtualRefreshPending = false;
             RefreshVirtualDriversButton.IsEnabled = true;
+            if (_virtualRefreshQueued)
+            {
+                _virtualRefreshQueued = false;
+                QueueVirtualDriverRefresh();
+            }
         }
     }
 
@@ -298,6 +354,8 @@ public partial class MainWindow
 
     private async Task InstallVirtualDeviceAsync(VirtualAudioEndpointRole role)
     {
+        if (_virtualInstallPending) return;
+        _virtualInstallPending = true;
         InstallVirtualInputButton.IsEnabled = false;
         InstallVirtualOutputButton.IsEnabled = false;
         try
@@ -338,6 +396,7 @@ public partial class MainWindow
         }
         finally
         {
+            _virtualInstallPending = false;
             await RefreshVirtualDriversAsync();
         }
     }

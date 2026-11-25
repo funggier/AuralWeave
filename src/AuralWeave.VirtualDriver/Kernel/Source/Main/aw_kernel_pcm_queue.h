@@ -1,7 +1,7 @@
 #pragma once
 // Original AuralWeave MIT code, separate from the MS-PL sample modules.
-// Kernel-internal, bounded WaveRT PCM queues. They are NOT exposed through
-// an IOCTL, a device interface, user memory mapping, or driver installation.
+// Kernel-internal, bounded WaveRT PCM queues. The secure control device
+// uses bounded copies to exchange PCM without exposing queue memory.
 //
 // IRQL contract: Initialize at PASSIVE_LEVEL from DriverEntry; the other
 // methods are callable through DISPATCH_LEVEL; any byte buffers supplied by
@@ -12,11 +12,14 @@ struct AwKernelPcmSnapshot {
     aw_pcm_u32 sampleRate;
     aw_pcm_u32 channels;
     aw_pcm_u32 bitsPerSample;
-    aw_pcm_u32 streamCount;
     aw_pcm_u32 queuedFrames;
-    aw_pcm_u32 blocked;
 };
 bool AwKernelPcmDescribe(aw_pcm_u32 role, AwKernelPcmSnapshot* result) noexcept;
+
+// Exchange data for one already validated control request. Idle or protected
+// streams transfer zero frames. An incompatible active format is an error.
+bool AwKernelPcmTransfer(const AW_PCM_WIRE_PACKET& request, aw_pcm_u8* pcm,
+                         aw_pcm_u32& transferred) noexcept;
 
 void AwKernelPcmInitialize() noexcept;
 
@@ -32,8 +35,7 @@ void AwKernelPcmFlush(aw_pcm_u32 role) noexcept;
 // reset within the same KSPIN_LOCK critical section as the write guard.
 void AwKernelPcmDisableOutput() noexcept;
 
-// Studio -> virtual microphone: future secure producer calls Write(INPUT).
-// Virtual speaker -> Studio: WaveRT render path calls Write(OUTPUT).
+// WaveRT render publishes virtual speaker audio.
 aw_pcm_u32 AwKernelPcmWrite(aw_pcm_u32 role, const aw_pcm_u8* bytes,
                             aw_pcm_u32 frames, aw_pcm_u32 bytesPerFrame) noexcept;
 

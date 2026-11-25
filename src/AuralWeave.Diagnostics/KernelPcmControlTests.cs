@@ -10,7 +10,9 @@ internal static class KernelPcmControlTests
         public bool TamperRequestId { get; set; }
         public bool TamperSampleRate { get; set; }
         public bool TamperChannels { get; set; }
-        public bool NoActiveStream { get; set; }
+        public bool MicrophoneAttached { get; set; } = true;
+        public bool SpeakerAttached { get; set; } = true;
+        public bool SpeakerProtected { get; set; }
         public bool FailSpeakerRead { get; set; }
 
         public byte[] Exchange(byte[] request, int maxResponse)
@@ -35,6 +37,7 @@ internal static class KernelPcmControlTests
                         req.PayloadBytes != req.Frames * 8 ||
                         req.Frames > VirtualKernelPcmProtocol.MaxFrames)
                         throw new InvalidDataException("Invalid microphone WRITE.");
+                    if (!MicrophoneAttached) break;
                     CapturedMicrophoneSamples = new int[req.Frames * 2];
                     for (var i = 0; i < CapturedMicrophoneSamples.Length; i++)
                         CapturedMicrophoneSamples[i] = BinaryPrimitives.ReadInt32LittleEndian(
@@ -49,6 +52,7 @@ internal static class KernelPcmControlTests
                         req.PayloadBytes != 0 || req.Frames < 1 ||
                         req.Frames > VirtualKernelPcmProtocol.MaxFrames)
                         throw new InvalidDataException("Invalid speaker READ.");
+                    if (!SpeakerAttached || SpeakerProtected) break;
                     frames = Math.Min(req.Frames, 2);
                     data = new byte[frames * 4];
                     var signal = new short[] {16384, -16384, 8192, -8192};
@@ -69,12 +73,17 @@ internal static class KernelPcmControlTests
             {
                 // A live kernel queue can have >2048 frames even though each
                 // read/write IOCTL transfers a maximum of 2048 at once.
-                BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(40), 8192);
-            }
-            if (req.Opcode == VirtualKernelPcmProtocol.Status && NoActiveStream)
-            {
-                BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(28), 0);
-                BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(32), 0);
+                var attached = req.Role == VirtualKernelPcmProtocol.InputRole
+                    ? MicrophoneAttached : SpeakerAttached;
+                if (attached)
+                {
+                    BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(40), 8192);
+                }
+                else
+                {
+                    BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(28), 0);
+                    BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(32), 0);
+                }
             }
             if (TamperSampleRate)
                 BinaryPrimitives.WriteUInt32LittleEndian(reply.AsSpan(28), 44100);
@@ -244,6 +253,31 @@ internal static class KernelPcmControlTests
                   Math.Abs(speakerSamples[0] - 0.5f) < 0.0001f &&
                   Math.Abs(speakerSamples[1] + 0.5f) < 0.0001f,
                 "user-mode PCM bus -> kernel protocol mock -> second PCM bus data path");
+
+            mock.MicrophoneAttached = false;
+            Check(micOwner.Write([0.9f, 0.9f]) == 1 && pump.PumpOnce() == 2 &&
+                  speakerOwner.Read(speakerSamples) == 2 &&
+                  mock.Writes == 1 && pump.MicrophoneFramesDropped == 1,
+                "speaker continues while the microphone is detached and queued mic PCM is discarded");
+
+            mock.MicrophoneAttached = true;
+            mock.SpeakerAttached = false;
+            Check(micOwner.Write([0.2f, -0.2f]) == 1 && pump.PumpOnce() == 1 &&
+                  speakerOwner.Read(speakerSamples) == 0 && mock.Writes == 2 &&
+                  mock.CapturedMicrophoneSamples.Length == 2 &&
+                  Math.Abs(mock.CapturedMicrophoneSamples[0] / (float)int.MaxValue - 0.2f) < 0.0001f,
+                "microphone can reopen independently and forwards only fresh PCM with speaker detached");
+
+            mock.SpeakerAttached = true;
+            mock.SpeakerProtected = true;
+            Check(micOwner.Write([0.3f, -0.3f]) == 1 && pump.PumpOnce() == 1 &&
+                  speakerOwner.Read(speakerSamples) == 0 && mock.Writes == 3,
+                "protected speaker sends no PCM and microphone keeps streaming");
+
+            // A new unprotected speaker stream can start while input stays active.
+            mock.SpeakerProtected = false;
+            Check(pump.PumpOnce() == 2 && speakerOwner.Read(speakerSamples) == 2,
+                "fresh speaker stream can reopen after protection with input still attached");
         }
         Console.WriteLine("KERNEL_PCM_USER_MODE_MOCK_BRIDGE=PASS (no driver installed)");
     }
@@ -294,23 +328,37 @@ internal static class KernelPcmControlTests
         }
         Console.WriteLine("PASS: paced virtual PCM mock worker starts and stops without a busy retry loop.");
 
-        // Both WaveRT endpoints must be active BEFORE the first audio tick.
-        var detached = new SimulatedDriver { NoActiveStream = true };
+        // Endpoint pins are demand-driven. Starting the reference worker
+        // before Windows opens either endpoint must be valid.
+        var detached = new SimulatedDriver { MicrophoneAttached = false, SpeakerAttached = false };
         var detachedDriver = new VirtualKernelPcmClient(detached);
         var detachedPump = new VirtualKernelAudioPump(
             detachedDriver, inputReader, outputWriter, 64);
         await using (var worker = new VirtualKernelAudioWorker(detachedDriver, detachedPump))
         {
+            worker.Start();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            while (worker.Cycles < 3 && !timeout.IsCancellationRequested)
+                await Task.Delay(10);
+            if (worker.Cycles < 3 || worker.ActiveCycles != 0 || worker.LastFailure is not null)
+                throw new InvalidOperationException("Idle WaveRT roles stopped or falsely advanced the worker.");
+            await worker.StopAsync();
+            Console.WriteLine("PASS: worker starts and remains idle with both WaveRT roles detached.");
+        }
+
+        var unsupported = new VirtualKernelPcmClient(new SimulatedDriver { TamperSampleRate = true });
+        var unsupportedPump = new VirtualKernelAudioPump(unsupported, inputReader, outputWriter, 64);
+        await using (var worker = new VirtualKernelAudioWorker(unsupported, unsupportedPump))
+        {
             try
             {
                 worker.Start();
-                throw new InvalidOperationException(
-                    "Worker started when no kernel WaveRT stream was attached.");
+                throw new InvalidOperationException("Worker accepted an incompatible active WaveRT format.");
             }
             catch (InvalidOperationException ex) when (
-                ex.Message.Contains("absent", StringComparison.Ordinal))
+                ex.Message.Contains("has an incompatible format", StringComparison.Ordinal))
             {
-                Console.WriteLine("PASS: detached kernel stream prevents worker startup.");
+                Console.WriteLine("PASS: worker validates formats of attached WaveRT roles before start.");
             }
         }
 

@@ -31,13 +31,16 @@ jobs:
       - name: Verify standalone C++ PCM wire and FIFO
         run: ./scripts/test-kernel-transport.ps1
 
+      - name: Check WaveRT source wiring without installing a driver
+        run: ./scripts/test-kernel-wavert-wiring.ps1
+
       - name: Compile native engine, test, and package portable Studio
         run: ./scripts/build-windows.ps1 -PublishPortable
 
       - name: Verify virtual kernel protocol mock (no driver)
         run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-kernel-pcm-client
 
-      - name: Verify explicit kernel PCM worker stop and device-failure handling
+      - name: Verify independently active PCM roles, worker stop and device-failure handling
         run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-kernel-pcm-worker
 
       - name: Verify abrupt PCM process-owner death and surviving audio routing

@@ -15,6 +15,13 @@ sections must **not** override the current Install-only/shared-device plan.
 - On Windows 10 22H2, native and managed release builds, 32 managed tests, SetupAPI (zero AuralWeave nodes), read-only setup and the cross-folder lock/PCM regression passed. The unsigned setup helper and driver remain outside Studio distribution.
 - [ADR 0004](adr/0004-shared-windows-virtual-audio.md) records the topology, service permissions and VM tests required for production.
 
+## Independent WaveRT role lifetimes (2026-11-25)
+
+- The prototype kernel copy checks each role's format and protection under the queue lock. An unattached role or protected speaker mirror reports zero transferred frames. The other direction can continue.
+- The managed reference worker can start while both roles are idle. It validates active format, tracks delivered/discarded frames, and reports actual transport loss. Windows 10 mock tests and compile-only WDK/INF checks passed.
+- Studio re-reads Windows inventory after a device-tree notification while the Virtual Driver page is visible. A Windows 10 UI Automation test posted the notification to an isolated Studio copy and observed both role statuses refresh. Install stayed disabled for absent/incomplete packages.
+- Runtime behavior on signed virtual endpoints, service identity and event-driven/cancelable transport are still pending.
+
 ## Architecture
 
 - The only production-path audio backend is `AuralWeave.Native.dll` (C++20, WASAPI shared mode).

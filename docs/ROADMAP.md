@@ -386,6 +386,7 @@ exclusive audio-session role leases or an Uninstall button in the Studio UI.
 
 ### P1 — real driver audio transport (test VM first)
 
+- [x] Compile independent role transfer in the WaveRT/IOCTL prototype. The mock covers idle start, running with one role, reattachment and protected speaker output.
 - [ ] Connect WaveRT virtual recording/playback streams to a trusted bounded PCM user↔kernel transport, independent of Mock Broker's advisory PID checks
 - [ ] Implement event/clock-driven scheduling, format conversion, drift management, safe stop/restart, device removal and resumption
 - [ ] Verify both roles can be installed and opened concurrently; no hidden per-app lock

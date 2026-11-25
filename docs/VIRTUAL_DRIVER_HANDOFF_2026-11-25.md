@@ -3,10 +3,13 @@
 ## ความคืบหน้าหลังยืนยันข้อกำหนด (2026-11-25)
 
 - ตรวจ live `main` บน Windows 10 22H2 แล้วพบว่าเริ่มจาก `2b920b4` ตรงกับ GitHub และ worktree ว่าง ดู commit ล่าสุดจาก Git ก่อนทำงานต่อ
-- เสร็จ P0 ใน Roadmap. [ADR 0004](adr/0004-shared-windows-virtual-audio.md) กำหนด Windows Audio Engine, WaveRT, Native Studio และ trusted bridge รวมถึง clock, consent และ service identity
+- เสร็จ P0 ใน Roadmap ที่ [fc22ca9](https://github.com/funggier/AuralWeave/commit/fc22ca922d1ed3655079b7837500fef998d1f961). [Windows CI #29](https://github.com/funggier/AuralWeave/actions/runs/45639754506) ผ่าน. [ADR 0004](adr/0004-shared-windows-virtual-audio.md) กำหนด Windows Audio Engine, WaveRT, Native Studio และ trusted bridge รวมถึง clock, consent และ service identity
 - Mutex การติดตั้งมีผู้ใช้เฉพาะ Driver Setup ที่ผ่าน elevation แล้ว Setup จะตรวจ PnP ภายใต้ mutex ก่อนตัดสินใจสร้างอุปกรณ์ Studio แยกสถานะ duplicate, unbound, stopped และ Windows problem code ออกจากสถานะติดตั้งพร้อมใช้งาน
 - บน Windows 10 ผ่าน build/diagnostics รวม Core 32 tests, read-only SetupAPI (พบ 0 AuralWeave nodes), mutex และ PCM ข้ามโฟลเดอร์, Mock Broker และ Native WASAPI แบบ mute ไปยังสอง output. WDK build, InfVerif และ Inf2Cat signability ผ่านแบบ compile-only
-- ขั้นถัดไปตาม Roadmap คือ P1 ทดสอบการเปิด/ปิดแต่ละบทบาทแยกกันและเตรียม timing/cancellation สำหรับ signed VM. ยังไม่มีแพ็กเกจที่ลงลายเซ็นและการตรวจ Hyper-V จาก session นี้ถูกปฏิเสธสิทธิ์. ปุ่ม Install คง disabled และระบบทดสอบหลักยังไม่มี AuralWeave PnP nodes
+- เริ่ม P1 ด้วยการแยกอายุสตรีมของไมค์และลำโพงใน [WaveRT/IOCTL bridge](KERNEL_IOCTL_TRANSPORT.md). เริ่ม worker ได้ตั้งแต่ยังไม่มี client เปิดอุปกรณ์ ทดสอบแบบ mock แล้วว่าฝั่งที่เปิดอยู่ส่ง PCM ต่อเมื่ออีกฝั่งปิด และการป้องกันเนื้อหาของลำโพงยังมีผล โค้ด kernel ที่แก้ผ่าน WDK compile-only
+- หน้า Virtual Driver อ่าน PnP ใหม่เมื่อ Windows แจ้งการเปลี่ยนอุปกรณ์ในขณะที่หน้าเปิดอยู่ UI Automation บน Windows 10 ยืนยันว่าทั้งสองการ์ดอัปเดตหลังส่งข้อความทดสอบและปุ่ม Install ยัง disabled
+- ทดสอบ Native WASAPI สองโปรเซสจากคนละโฟลเดอร์พร้อมกันแล้ว ทั้งคู่ใช้ Line In และ output จริงชุดเดียวกันใน Shared Mode โดยปิดเสียง ไม่มี overrun หรือ underrun เพิ่มหลัง warmup
+- งานถัดไปคือ P1 ส่วน progress notifications, cancelable I/O และ stream generation ตาม ADR 0004 จากนั้นทดสอบ VM ด้วยแพ็กเกจที่ Windows ยอมรับและใช้หลาย Windows audio clients จริง การตรวจ Hyper-V จาก session นี้ถูกปฏิเสธสิทธิ์และยังไม่มี signed package พร้อมใช้ Windows 11 ยังไม่มีผลทดสอบจริง
 
 รายละเอียดด้านล่างเก็บเป็นบันทึกจากรอบเอกสารก่อนหน้า
 
