@@ -1,0 +1,79 @@
+name: Windows portable preview (no kernel driver)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-portable:
+    name: Compile and verify Windows x64 portable
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout source, including submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Prepare .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Verify standalone C++ PCM wire and FIFO
+        run: ./scripts/test-kernel-transport.ps1
+
+      - name: Compile native engine, test, and package portable Studio
+        run: ./scripts/build-windows.ps1 -PublishPortable
+
+      - name: Verify virtual kernel protocol mock (no driver)
+        run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-kernel-pcm-client
+
+      - name: Verify PnP discovery and install fail-closed policy
+        run: dotnet run --no-build -c Release --project src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj -- --test-virtual-driver-discovery
+
+      - name: Verify two distinct portable folders share virtual PCM correctly
+        run: ./scripts/test-multiple-portable-instances.ps1 -SkipBuild
+
+      - name: Verify unsigned installer helper is read-only
+        run: ./scripts/build-virtual-driver-setup.ps1
+
+      - name: Audit packaged ZIP for forbidden driver and debug artifacts
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zips = @(Get-ChildItem -LiteralPath dist -Filter 'AuralWeave-v*-Windows-x64.zip' -File)
+          if ($zips.Count -ne 1) { throw "Expected exactly one portable ZIP, found $($zips.Count)" }
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($zips[0].FullName)
+          try {
+            $names = @($zip.Entries | ForEach-Object { $_.FullName })
+            if (!($names | Where-Object { $_ -match '(^|/)AuralWeave\.exe$' })) {
+              throw 'Portable ZIP is missing AuralWeave.exe'
+            }
+            if (!($names | Where-Object { $_ -match '(^|/)AuralWeave\.Native\.dll$' })) {
+              throw 'Portable ZIP is missing AuralWeave.Native.dll'
+            }
+            $forbidden = @($names | Where-Object {
+              $_ -match '(?i)\.(sys|inf|cat|pdb)$' -or
+              $_ -match '(?i)(^|/)(AuralWeaveVirtualAudioSetup|AuralWeavePcmWireSmoke)\.exe$' -or
+              $_ -match '(?i)(^|/)virtual-driver-prototype-package/'
+            })
+            if ($forbidden.Count) { throw "Forbidden kernel/debug files in ZIP: $($forbidden -join ', ')" }
+          }
+          finally { $zip.Dispose() }
+          Write-Output 'PORTABLE_ZIP_NO_KERNEL_OR_DEBUG_BINARIES=PASS'
+
+      - name: Publish verified Studio-only test archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: AuralWeave-Windows-x64-portable-preview
+          path: dist/AuralWeave-v*-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
