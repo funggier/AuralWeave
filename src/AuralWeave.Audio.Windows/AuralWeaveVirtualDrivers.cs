@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -14,7 +13,7 @@ public enum VirtualAudioEndpointRole { Input, Output }
 
 public sealed record AuralWeaveVirtualDevice(
     string InstanceId, string Name, VirtualAudioEndpointRole Role,
-    string HardwareId)
+    string HardwareId, bool IsDriverBound = true)
 {
     public string RoleLabel => Role == VirtualAudioEndpointRole.Input
         ? "Virtual Input (recording / microphone)" : "Virtual Output (playback)";
@@ -66,11 +65,10 @@ public static class AuralWeaveVirtualDrivers
                     throw new Win32Exception(error, "PnP device enumeration failed.");
                 }
 
-                if (data.ClassGuid != MediaClassGuid ||
-                    !ReadProperty(infoSet, ref data, SpdrpService).Equals(
-                        ExpectedServiceName, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
+                // Enumerate exact reserved PnP IDs even if the driver service
+                // is missing or the devnode was only partly registered. Such
+                // a node STILL blocks creation of a duplicate root device.
+                // Do not mistake a missing service for an absent device.
                 var ids = ReadProperty(infoSet, ref data, SpdrpHardwareId)
                     .Split('\0', StringSplitOptions.RemoveEmptyEntries);
                 var ownId = ids.FirstOrDefault(id =>
@@ -92,8 +90,11 @@ public static class AuralWeaveVirtualDrivers
                 if (string.IsNullOrWhiteSpace(name))
                     name = role == VirtualAudioEndpointRole.Input
                         ? "AuralWeave Virtual Input" : "AuralWeave Virtual Output";
+                var bound = data.ClassGuid == MediaClassGuid &&
+                    ReadProperty(infoSet, ref data, SpdrpService).Equals(
+                        ExpectedServiceName, StringComparison.OrdinalIgnoreCase);
                 result.Add(new AuralWeaveVirtualDevice(
-                    instance.ToString(), name.TrimEnd('\0'), role, ownId));
+                    instance.ToString(), name.TrimEnd('\0'), role, ownId, bound));
             }
             return result.OrderBy(d => d.Role).ThenBy(d => d.Name,
                 StringComparer.CurrentCultureIgnoreCase).ToArray();
@@ -176,44 +177,6 @@ public static class AuralWeaveVirtualDrivers
             out _, buffer, (uint)buffer.Length, out _))
             return string.Empty;
         return Encoding.Unicode.GetString(buffer).TrimEnd('\0');
-    }
-
-    /// <summary>
-    /// Removes only one verified AuralWeave devnode, not a shared driver-store
-    /// package. Caller must confirm intent; Windows UAC is required.
-    /// </summary>
-    public static async Task<int> RequestDeviceRemovalAsync(
-        AuralWeaveVirtualDevice device)
-    {
-        ArgumentNullException.ThrowIfNull(device);
-        // A separate Portable copy must not uninstall a virtual audio
-        // devnode while another copy is actively controlling that role.
-        // This is an advisory user-mode guard. The future elevated device
-        // broker MUST recheck the same ownership/identity atomically.
-        using var controlLease = VirtualDeviceControlLease.TryAcquire(device.Role)
-            ?? throw new InvalidOperationException(
-                $"Virtual {device.Role} is in use by another AuralWeave instance. " +
-                "Stop that virtual route before uninstalling its device.");
-        var current = EnumerateInstalled().Any(x =>
-            x.InstanceId.Equals(device.InstanceId, StringComparison.OrdinalIgnoreCase) &&
-            x.HardwareId.Equals(device.HardwareId, StringComparison.OrdinalIgnoreCase));
-        if (!current)
-            throw new InvalidOperationException(
-                "Device identity could not be reverified. Refresh the list first.");
-
-        var system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
-        var tool = Path.Combine(system32, "pnputil.exe");
-        var start = new ProcessStartInfo
-        {
-            FileName = tool,
-            Arguments = "/remove-device \"" + device.InstanceId.Replace("\"", "") + "\"",
-            UseShellExecute = true,
-            Verb = "runas"
-        };
-        using var process = Process.Start(start)
-            ?? throw new InvalidOperationException("Windows did not start PnPUtil.");
-        await process.WaitForExitAsync().ConfigureAwait(false);
-        return process.ExitCode;
     }
 
     [StructLayout(LayoutKind.Sequential)]

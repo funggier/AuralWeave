@@ -187,3 +187,19 @@ Windows custom title-bar maximize/restore checks also passed on 3 monitors.
 - scripts/build-virtual-driver-prototype.ps1 builds the same protocol
   inside the unsigned prototype with INF/Inf2Cat checks.
 - Windows 11 is a theoretical target (no runtime or installed-driver test).
+
+
+## Install-only Virtual Driver and sharing regressions (2026-11-25)
+
+- Windows SetupAPI detects current, legacy and partially bound AuralWeave
+  PnP IDs so no second root device is created.
+- Signed production package absence disables INSTALL.
+- Existing/legacy/unbound devices suppress installation.
+- Desktop shows read-only installed-device details, no uninstall action.
+- Device removal is delegated to the Windows Device Manager.
+- Cross-folder user-mode PCM test: two sources mixed and two independent
+  listeners received the same signal in Input and Output roles.
+- Source removal, 37-frame partial blocks, PCM limiting and slow
+  subscriber isolation passed.
+- No unsigned SYS was installed. The elevated production setup helper
+  is not shipped; install/uninstall hardware integration is not tested.

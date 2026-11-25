@@ -154,21 +154,30 @@ limitations see [Virtual PCM Bridge](docs/VIRTUAL_PCM_BRIDGE.md).
   have NOT yet been implemented or performed.
 
 
-## Multiple Portable instances and virtual driver ownership
+## Shared Virtual Audio and Windows Install-Only management (2026-11-25)
 
-AuralWeave may run from several directories on the same Windows machine.
-Studio instances keep their own portable presets and can use regular audio
-devices independently. Windows owns a **single Virtual Input** and a
-**single Virtual Output**, regardless of the folder used to launch the app.
-Cooperating app copies now take separate machine-wide named-mutex leases
-before controlling each virtual role; competing controllers are rejected,
-while the other role remains available. A lease is returned on clean
-shutdown and abandoned automatically after a process crash.
+AuralWeave can run from more than one Portable directory. Each Studio
+has its own presets and Filters. Windows supports only **one virtual
+recording device and one virtual playback device**, but user-mode audio
+can be shared among multiple processes: source streams are mixed
+together and listeners receive independent copies of that mix.
 
-This is currently a **user-mode advisory guard**, not a signed kernel
-driver authorization mechanism. The driver Install controls remain
-disabled. On Windows 10, different-folder and different-process tests
-passed. See [Portable multi-instance ownership](docs/PORTABLE_MULTI_INSTANCE_CONTROL.md)
-and [Kernel PCM wire protocol](docs/KERNEL_PCM_PROTOCOL.md). Windows 11
-remains a theoretical compatibility target; no Windows 11 runtime test
-is claimed.
+The developer-only SharedVirtualAudioBus has passed Windows 10
+cross-folder tests involving two simultaneous source processes and
+two independent listeners, including short blocks, clipping, and
+slow subscribers. It is **not a functioning installed Windows driver**.
+
+The Virtual Driver UI now **only displays device state and offers
+INSTALL when the role is absent**. It has no Uninstall button and never
+calls PnPUtil to remove a device. Windows Device Manager is responsible
+for uninstalling hardware driver devices. Install stays disabled
+without the complete, trusted, signed production driver bundle.
+
+Current unsigned WDK prototype has no completed WaveRT PCM transport;
+no production installer exists yet. Windows 11 remains a theoretical
+compatibility target, not a tested runtime.
+
+Details:
+- [Portable multi-copy audio sharing](docs/PORTABLE_MULTI_INSTANCE_CONTROL.md)
+- [Windows install-only driver workflow](docs/VIRTUAL_DRIVER_INSTALLATION.md)
+- [Native PCM bridge](docs/VIRTUAL_PCM_BRIDGE.md)

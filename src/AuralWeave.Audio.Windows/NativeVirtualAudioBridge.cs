@@ -6,14 +6,15 @@ namespace AuralWeave.Audio.Windows;
 /// <summary>
 /// Separate user-mode IPC transport for development of future AuralWeave
 /// virtual audio endpoints. Does NOT install or communicate with a kernel driver.
-/// Fixed SPSC contract: exactly one writer and one reader per mapping.
+/// Each temporary mapping is SPSC. Multiple program copies participate
+/// through independent mappings joined by SharedVirtualAudioBus.
 /// </summary>
 public sealed class NativeVirtualAudioBridge : IDisposable
 {
     private const string Library = "AuralWeave.Native";
     private IntPtr _handle;
     private readonly uint _channels;
-    private VirtualDeviceControlLease? _controlLease;
+    private SharedVirtualAudioActivityLease? _activityLease;
     private bool _disposed;
 
     private NativeVirtualAudioBridge(IntPtr handle, string name, uint role, uint slot, uint channels)
@@ -33,34 +34,42 @@ public sealed class NativeVirtualAudioBridge : IDisposable
     public static NativeVirtualAudioBridge Create(uint role, uint slot,
         uint sampleRate = 48000, uint channels = 2, uint capacityFrames = 4096)
     {
-        // Windows drivers are installed at most once per computer, not once
-        // per Portable app folder. Only one controlling producer per role.
-        // A receiver may Attach() to the existing mapping without acquiring
-        // its writer's role lease (the SPSC reader is coordinated separately).
+        // One Windows PnP Virtual Input/Output, but many independent
+        // user-mode audio clients. Each Create() owns a unique SPSC mapping.
+        // The coordinating mixer/fanout bus may attach all mappings.
+        // The machine-wide role mutex protects administrative PnP changes,
+        // NEVER monopolizes shared playback/recording audio.
         if (slot != 1 || role is not (1 or 2))
             throw new ArgumentOutOfRangeException(nameof(slot),
                 "Only Virtual Input 1 and Virtual Output 1 are supported.");
-        var endpointRole = role == 1
+        var endpointRole = role == 1u
             ? VirtualAudioEndpointRole.Input : VirtualAudioEndpointRole.Output;
-        var lease = VirtualDeviceControlLease.TryAcquire(endpointRole)
+
+        // Creation and administrative PnP removal serialize briefly.
+        // Unlike the former exclusive audio-owner lease, all working
+        // sessions may coexist AFTER the mutex is released. Each keeps
+        // an OS event handle alive so a second Portable copy cannot
+        // uninstall the shared device while anyone is using it.
+        using var coordinator = VirtualDeviceControlLease.TryAcquire(endpointRole, waitMilliseconds: 500)
             ?? throw new InvalidOperationException(
-                $"Virtual {endpointRole} is controlled by another AuralWeave instance. " +
-                "Close or release that instance's virtual session before taking control.");
+                $"Virtual {endpointRole} management is in progress. Retry audio connection.");
+        var activity = SharedVirtualAudioActivityLease.Open(endpointRole);
         try
         {
             var name = new StringBuilder(160);
             var handle = NativeCreate(role, slot, sampleRate, channels, capacityFrames,
                 name, (uint)name.Capacity);
             if (handle == IntPtr.Zero)
-                throw new InvalidOperationException("Native PCM bridge create failed: " + GetLastError());
+                throw new InvalidOperationException(
+                    "Native PCM bridge create failed: " + GetLastError());
             return new NativeVirtualAudioBridge(handle, name.ToString(), role, slot, channels)
             {
-                _controlLease = lease
+                _activityLease = activity
             };
         }
         catch
         {
-            lease.Dispose();
+            activity.Dispose();
             throw;
         }
     }
@@ -81,11 +90,23 @@ public sealed class NativeVirtualAudioBridge : IDisposable
 
     public uint Write(float[] samples)
     {
-        ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(samples);
         if (samples.Length % _channels != 0)
             throw new ArgumentException("PCM sample array must contain whole frames.", nameof(samples));
-        return NativeWrite(_handle, samples, (uint)(samples.Length / _channels));
+        return Write(samples, (uint)(samples.Length / _channels));
+    }
+
+    /// <summary>
+    /// Writes only the requested prefix of a preallocated PCM buffer,
+    /// avoiding a managed allocation for partial mixer blocks.
+    /// </summary>
+    public uint Write(float[] samples, uint frames)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(samples);
+        if (frames > (uint)samples.Length / _channels)
+            throw new ArgumentOutOfRangeException(nameof(frames));
+        return NativeWrite(_handle, samples, frames);
     }
 
     public uint Read(float[] samples, bool padWithSilence = false)
@@ -120,8 +141,8 @@ public sealed class NativeVirtualAudioBridge : IDisposable
         }
         finally
         {
-            _controlLease?.Dispose();
-            _controlLease = null;
+            _activityLease?.Dispose();
+            _activityLease = null;
         }
         GC.SuppressFinalize(this);
     }

@@ -24,21 +24,35 @@ try {
     foreach ($name in @('AuralWeave.Core.dll', 'AuralWeave.Audio.Windows.dll')) {
         Copy-Item -LiteralPath (Join-Path $source $name) -Destination $alternative -Force
     }
+    $nativeDll = Join-Path $root 'build\native\AuralWeave.Native.dll'
+    if (!(Test-Path -LiteralPath $nativeDll)) {
+        throw 'Build Native audio DLL before running cross-folder shared PCM tests.'
+    }
+    Copy-Item -LiteralPath $nativeDll -Destination (Join-Path $source 'AuralWeave.Native.dll') -Force
+    Copy-Item -LiteralPath $nativeDll -Destination (Join-Path $alternative 'AuralWeave.Native.dll') -Force
     $alternateDll = Join-Path $alternative 'AuralWeave.Diagnostics.dll'
     Write-Output "PARENT_FOLDER=$source"
     Write-Output "SECOND_FOLDER=$alternative"
     if ($source -eq $alternative) { throw 'Portable copies must be in different folders.' }
-    $old = [Environment]::GetEnvironmentVariable('AW_LEASE_PROBE_DLL','Process')
+    $oldLease = [Environment]::GetEnvironmentVariable('AW_LEASE_PROBE_DLL','Process')
+    $oldShared = [Environment]::GetEnvironmentVariable('AW_SHARED_BUS_PROBE_DLL','Process')
     try {
         [Environment]::SetEnvironmentVariable('AW_LEASE_PROBE_DLL', $alternateDll, 'Process')
+        [Environment]::SetEnvironmentVariable('AW_SHARED_BUS_PROBE_DLL', $alternateDll, 'Process')
         & dotnet $origin --test-virtual-device-ownership
         if ($LASTEXITCODE -ne 0) {
             throw "Cross-folder driver lease coordination failed: $LASTEXITCODE"
         }
+        & dotnet $origin --test-shared-virtual-audio
+        if ($LASTEXITCODE -ne 0) {
+            throw "Cross-folder shared-audio mix/broadcast failed: $LASTEXITCODE"
+        }
     }
     finally {
-        [Environment]::SetEnvironmentVariable('AW_LEASE_PROBE_DLL', $old, 'Process')
+        [Environment]::SetEnvironmentVariable('AW_LEASE_PROBE_DLL', $oldLease, 'Process')
+        [Environment]::SetEnvironmentVariable('AW_SHARED_BUS_PROBE_DLL', $oldShared, 'Process')
     }
     Write-Output 'TWO_DIFFERENT_PORTABLE_FOLDERS_INPUT_OUTPUT_OWNERSHIP=PASS'
+    Write-Output 'TWO_DIFFERENT_PORTABLE_FOLDERS_SHARED_PCM_FANOUT_AND_MIX=PASS'
 }
 finally { Pop-Location }

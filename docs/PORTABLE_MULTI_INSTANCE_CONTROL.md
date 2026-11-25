@@ -1,108 +1,114 @@
-# Multiple Portable Copies — Virtual Driver Ownership (2026-11-25)
+# Multiple Portable Copies and Shared Virtual Audio
 
-## Design
+Status: Windows 10 user-mode implementation and tests. The Windows kernel
+virtual audio driver is still an unsigned, noninstallable prototype.
 
-AuralWeave can be copied, moved, or launched from multiple directories on
-the same Windows 10 machine. Portable Studio settings, presets and caches are
-local to each program folder. They must **not** become the authoritative
-identity for a virtual audio driver installed in Windows.
+## One installed device per role, shared by all programs
 
-Windows Plug and Play owns the installed driver nodes:
+AuralWeave targets **at most one Virtual Input** (recording device) and
+**at most one Virtual Output** (playback device) in the entire Windows
+installation, regardless of how many folders contain AuralWeave.
 
-- **AuralWeave Virtual Input:** at most **one** PnP device,
-  hardware ID ROOT\AURALWEAVE_VINPUT_0001
-- **AuralWeave Virtual Output:** at most **one** PnP device,
-  hardware ID ROOT\AURALWEAVE_VOUTPUT_0001
+- Input: ROOT\AURALWEAVE_VINPUT_0001
+- Output: ROOT\AURALWEAVE_VOUTPUT_0001
 
-The manager lists actual matching Windows MEDIA devices by hardware ID,
-driver service and class, not by the executable folder. Old experimental
-device IDs 0002–0016 remain discoverable for explicit cleanup only.
-The Windows driver prototype is not currently signed or installed;
-all Install actions stay disabled.
+This is a limit on **Windows PnP devices**, NOT the number of programs,
+capture streams, playback streams or Portable copies that may use them.
 
-## Independent Studios; exclusive virtual control
+Each Portable Studio uses its own Filters, hardware outputs, local
+presets and settings. Participating programs can contribute audio
+to a shared mix and obtain independent copies of that audio.
 
-Multiple Studio windows may use their own *physical* capture devices,
-outputs and filter chains; actual Windows hardware sharing still depends
-on the audio device and driver. No global app singleton prevents
-independent, ordinary Studio sessions.
+## User-mode audio distribution implemented
 
-Virtual audio roles require exactly **one active controller per role**.
-The first AuralWeave instance that creates a user-mode Virtual Input session
-takes the Input controller lease; an attempt from a different Portable
-copy is rejected while that session exists. Output has a separate lease
-so another copy can control the other direction at the same time.
+SharedVirtualAudioBus is a managed reference mixer/distributor built
+on the native Shared PCM bridge. Audio contributors and listeners each
+have a separate Float32 SPSC ring. Pump() sums the available source
+frames, clamps them to [-1,+1] and sends the resulting frames to each
+listener's independent ring. One subscriber reading slowly cannot
+consume another subscriber's frames or block their progress.
 
-The managed control plane implements
-VirtualDeviceControlLease.TryAcquire(role) with two Windows named mutexes:
+The current developer-only bus is explicit/caller-driven. It is not
+yet a persistent automatic service for general Windows applications
+and is **not connected to the unsigned WaveRT kernel driver**.
+Clients must agree on format/cadence. The current reference bus has
+16 source and 16 listener slots, independent of the one-Windows-device
+limit. Production must add clock reconciliation, hot-plug, reconnect,
+low-latency native mixing and secure per-client authorization.
 
-- Global\AuralWeave.VirtualAudio.Input.Controller.v1
-- Global\AuralWeave.VirtualAudio.Output.Controller.v1
+## Administrative coordination versus audio sharing
 
-These names do not contain a drive letter, path, session-specific filename
-or preset. Windows mutex handles are automatically abandoned when a
-process exits unexpectedly. A dedicated worker thread owns each mutex,
-ensuring that Dispose() remains safe even when asynchronous WPF or
-.NET code calls it from a different thread.
+Earlier prototypes acquired a machine-wide mutex for the **entire**
+audio session, preventing two AuralWeave copies from controlling the
+same role. That behavior has been superseded.
 
-NativeVirtualAudioBridge.Create() now acquires the corresponding
-role lease **before** creating a new user-mode PCM session, and releases
-it when that session is disposed or a creation error occurs. Receiver
-Attach() does not acquire the writer/controller lease: existing
-cross-process transport is one producer / one consumer per mapping.
-The future driver broker must enforce reader ownership separately.
+VirtualDeviceControlLease now only briefly coordinates device
+management and new audio-session creation, with a bounded wait at
+startup. It is NOT held while streams play or record. Audio sessions
+can be created concurrently in independent Portable folders.
 
-AuralWeaveVirtualDrivers.RequestDeviceRemovalAsync() also attempts
-to obtain the appropriate role lease, then rechecks the exact Windows
-PnP identity before invoking administrator-approved PnPUtil removal.
-It refuses to remove a device while another AuralWeave session
-controls its role. It only removes the selected devnode, not an
-entire shared driver package.
+Each owner session holds a Windows-named
+SharedVirtualAudioActivityLease handle while active. The named object
+remains present until the last cooperating owner closes it, even
+across different app folders. This is an advisory safeguard for future
+driver management, **not an OS-level kernel authorization boundary**.
+The Windows user and driver security model must be authoritative.
 
-These locks coordinate **cooperating AuralWeave processes**. They do
-not prevent arbitrary external programs, malicious object pre-creation,
-or kernel access; a signed driver / privileged management service must
-verify role ownership and security descriptors independently. Other
-Windows user accounts may have different access rights to the global
-mutex; access failure must be treated as denial, not permission.
-Future installation must serialize installation and check the PnP
-inventory atomically rather than relying solely on MayInstall().
+## Install-only UI; Windows-managed uninstall
+
+The Virtual Driver screen contains two cards and **no Uninstall button**.
+It enumerates reserved AuralWeave PnP identities using Windows SetupAPI:
+
+- If the correct or legacy identity exists, its device is listed and
+  installing another of that role is blocked.
+- A partially installed device ID also blocks duplicate installation,
+  with status explaining that Windows Device Manager needs attention.
+- If no device exists, the Install button is displayed.
+- The Install button becomes enabled only when a complete, trusted,
+  production driver package is available in the Portable folder.
+  The unsigned WDK prototype does not qualify.
+
+The installer control is prepared to request Windows administrator
+approval and invoke a separate **signed production setup program**;
+such a setup binary and signed kernel driver have **not** yet been
+produced, and the button therefore remains disabled in the current
+build. No test-signing, Secure Boot changes or unsigned kernel
+installation are performed.
+
+The user can uninstall the device later through **Windows Device
+Manager**. Removing the PnP device and deleting its driver package
+from the Windows Driver Store are separate operations; Windows
+handles them, not AuralWeave. If a future installed product also
+registers an entry in Windows Installed Apps, its own installer would
+need to provide that entry and uninstaller.
+
+See docs/VIRTUAL_DRIVER_INSTALLATION.md for preflight and distribution.
 
 ## Tested on Windows 10
 
-Run:
+Run the script:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-multiple-portable-instances.ps1
 
-The script builds managed Diagnostics, copies the second Diagnostics
-executable's dependencies into the project's ignored
-build\multiple-portable-folders\Portable-B folder, then starts
-*separate Windows processes from different directories*.
+The test runs two different copies of Diagnostics from two actual
+directories and verifies that:
 
-Assertions:
+1. Administration locks are mutually exclusive per role, independent
+   between Input and Output, and cleanly released.
+2. Audio owners may coexist in both roles without that exclusivity.
+3. Two different source processes contribute PCM (0.25 and 0.40),
+   and two distinct subscribers each read the same mixed 0.65 signal.
+4. A contributor leaving does not interrupt other participants.
+5. Short 37-frame blocks and clipping (0.8 + 0.8 -> 1.0) behave as intended.
+6. A slow listener drops only its own buffered data.
+7. Session activity remains visible across app folders until the last
+   owner closes, at which point the shared activity marker disappears.
 
-1. Input held in copy A -> Input request from copy B is denied.
-2. Input held in A -> Output in B can be acquired independently.
-3. Output held in A -> Output request in B is denied.
-4. Release Output in A -> B can acquire Output.
-5. Release Input after an asynchronous continuation -> B can acquire Input.
+The separately run Windows 10 native WASAPI post-filter diagnostics
+were retained. The signed Windows Driver installation and WaveRT
+transport are **not** runtime-tested. Windows 11 remains a theoretical
+API/INF compatibility target, not a tested platform.
 
-All five checks passed on Windows 10. No real driver is installed or
-removed during these tests. This also does **not** establish that the
-currently unsigned kernel prototype routes PCM to a Windows device.
-
-## Windows 11
-
-Windows 11 x64 is kept as a **theoretical target** using the Windows
-10.0 shared driver API baseline, INF model declarations, WDK build and
-signability checks. Windows 11 hardware/VM testing has **not** been
-performed. Windows 10 remains the actual hardware development and QA
-baseline. Do not represent Windows 11 as runtime-tested.
-
-## Remaining integration
-
-- Secure kernel-to-user PCM transport for the single microphone and
-  speaker miniport roles, with authoritative control ownership.
-- Reliable device hot-plug, owner handoff, latency and crash recovery.
-- Proper signed driver packaging and administrator installation.
-- UI state for ownership / conflicts once the installable driver exists.
+Reference: Microsoft Learn, Using Device Manager to Uninstall Devices
+and Driver Packages.
+https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-device-manager-to-uninstall-devices-and-driver-packages

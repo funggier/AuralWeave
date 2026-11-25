@@ -97,3 +97,20 @@ A separate, strictly sized protocol and caller-synchronized ring for
 future Kernel WaveRT interaction are implemented and compiled in the
 unsigned WDK prototype. The protocol does **not** expose a functioning
 Windows audio endpoint or IOCTL dispatcher. See KERNEL_PCM_PROTOCOL.md.
+
+
+## Multi-client audio bus (2026-11-25)
+
+SharedVirtualAudioBus now implements developer-only user-mode mixing
+and broadcasting across multiple AuralWeave Portable copies. It
+aggregates independent SPSC source rings and writes the resulting
+Float32 PCM to each listener's independent ring. Normal Windows
+virtual devices are still limited to one Input and one Output; the
+number of user-mode client sessions does not change that limit.
+
+The prior full-session VirtualDeviceControlLease restriction has been
+replaced with a brief administrative mutex and cross-process activity
+handles. A slow listener loses frames only in its own ring. Cross-folder
+Windows 10 tests passed; the current unsigned kernel driver is NOT
+connected to this bus. See PORTABLE_MULTI_INSTANCE_CONTROL.md and
+VIRTUAL_DRIVER_INSTALLATION.md.

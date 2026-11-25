@@ -192,8 +192,19 @@ public partial class MainWindow
         VirtualDriverSummary.Text = "Searching installed AuralWeave-family PnP devices...";
         try
         {
-            var installed = await Task.Run(
-                AuralWeaveVirtualDrivers.EnumerateInstalled);
+            // PnP enumeration and Authenticode signature validation may
+            // block, including while Windows checks certificate revocation.
+            // Keep all of that work off the WPF dispatcher/UI thread.
+            var scan = await Task.Run(() =>
+            {
+                var devices = AuralWeaveVirtualDrivers.EnumerateInstalled();
+                var input = VirtualDriverInstallation.Check(
+                    devices, VirtualAudioEndpointRole.Input);
+                var output = VirtualDriverInstallation.Check(
+                    devices, VirtualAudioEndpointRole.Output);
+                return (Devices: devices, Input: input, Output: output);
+            });
+            var installed = scan.Devices;
             var inputDevices = installed.Where(
                 x => x.Role == VirtualAudioEndpointRole.Input).ToArray();
             var outputDevices = installed.Where(
@@ -206,34 +217,32 @@ public partial class MainWindow
             var activeInput = inputDevices.Count(x => !x.IsLegacy);
             var activeOutput = outputDevices.Count(x => !x.IsLegacy);
             var legacy = installed.Count(x => x.IsLegacy);
-            VirtualInputPackageStatus.Text = activeInput > 0
-                ? $"Virtual Input: {activeInput}/1 installed. Maximum reached; no additional installation."
-                : "Virtual Input: 0/1. Installation unavailable until audio bridge and driver signing are complete.";
-            VirtualOutputPackageStatus.Text = activeOutput > 0
-                ? $"Virtual Output: {activeOutput}/1 installed. Maximum reached; no additional installation."
-                : "Virtual Output: 0/1. Installation unavailable until audio bridge and driver signing are complete.";
+            var inputReadiness = scan.Input;
+            var outputReadiness = scan.Output;
+            VirtualInputPackageStatus.Text = inputReadiness.Description;
+            VirtualOutputPackageStatus.Text = outputReadiness.Description;
+            // The UI offers INSTALL only if the Windows PnP ID is absent.
+            // The signed production package must also pass trust preflight
+            // before enabling the button. No install of unsigned WDK demos.
+            InstallVirtualInputButton.Visibility =
+                inputDevices.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            InstallVirtualOutputButton.Visibility =
+                outputDevices.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            InstallVirtualInputButton.IsEnabled = inputReadiness.CanInstall;
+            InstallVirtualOutputButton.IsEnabled = outputReadiness.CanInstall;
 
-            var conflict = activeInput > 1 || activeOutput > 1 ||
-                           (legacy > 0);
             VirtualDriverSummary.Text =
-                $"Virtual Input {activeInput}/1 · Virtual Output {activeOutput}/1. " +
-                (legacy > 0
-                    ? $"{legacy} legacy PnP device(s) require optional explicit cleanup. "
-                    : "") +
-                (conflict
-                    ? "Review devices before any future installation. "
-                    : "") +
-                "Discovery uses PnP identity, independent of the portable app folder. " +
-                "Unsigned/unbridged kernel prototypes cannot be installed.";
-            // No signed kernel package yet: keep all INSTALL buttons disabled
-            // regardless of inventory. Future install must also enforce
-            // AuralWeaveVirtualDrivers.MayInstall(...).
-            InstallVirtualInputButton.IsEnabled = false;
-            InstallVirtualOutputButton.IsEnabled = false;
+                $"Virtual Input {activeInput}/1 | Virtual Output {activeOutput}/1. " +
+                (legacy > 0 ? $"{legacy} legacy PnP device(s) detected. " : "") +
+                "Windows Plug and Play is shared across portable folders. " +
+                "To uninstall a driver, use Windows Device Manager. " +
+                "Only complete, trusted production driver packages are installable.";
         }
         catch (Exception ex)
         {
             VirtualDriverSummary.Text = "PnP enumeration failed: " + ex.Message;
+            InstallVirtualInputButton.IsEnabled = false;
+            InstallVirtualOutputButton.IsEnabled = false;
             Status("Virtual device discovery failed: " + ex.Message, true);
         }
         finally
@@ -254,6 +263,8 @@ public partial class MainWindow
         }
         foreach (var device in devices)
         {
+            // Read-only list. Windows Device Manager owns driver removal.
+            // No administrator /uninstall actions are exposed by AuralWeave.
             var row = new Border
             {
                 Margin = new Thickness(0, 0, 0, 8),
@@ -263,15 +274,14 @@ public partial class MainWindow
             };
             row.SetResourceReference(Border.BorderBrushProperty, "PanelStroke");
             row.SetResourceReference(Border.BackgroundProperty, "SubtleBackground");
-            var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition {
-                Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var details = new StackPanel();
             details.Children.Add(new TextBlock
             {
-                Text = device.IsLegacy ? device.Name + " (LEGACY — cleanup only)"
-                                       : device.Name,
+                Text = !device.IsDriverBound
+                    ? device.Name + " (PnP ID present; driver not fully registered)"
+                    : device.IsLegacy
+                        ? device.Name + " (legacy Windows driver)"
+                        : device.Name + " (installed)",
                 FontWeight = FontWeights.SemiBold,
                 TextWrapping = TextWrapping.Wrap
             });
@@ -279,40 +289,48 @@ public partial class MainWindow
             identity.FontSize = 10;
             identity.ToolTip = device.HardwareId;
             details.Children.Add(identity);
-            grid.Children.Add(details);
-            var remove = new Button
-            {
-                Content = "UNINSTALL",
-                ToolTip = device.IsLegacy
-                    ? "Uninstall this obsolete AuralWeave prototype device only"
-                    : "Uninstall only this AuralWeave-owned PnP device",
-                MinWidth = 106,
-                Margin = new Thickness(10, 0, 0, 0)
-            };
-            Grid.SetColumn(remove, 1);
-            remove.Click += async (_, _) => await UninstallVirtualDeviceAsync(device);
-            grid.Children.Add(remove);
-            row.Child = grid;
+            row.Child = details;
             panel.Children.Add(row);
         }
     }
 
-    private async Task UninstallVirtualDeviceAsync(AuralWeaveVirtualDevice device)
+    private async void InstallVirtualInputClicked(object sender, RoutedEventArgs e) =>
+        await InstallVirtualDeviceAsync(VirtualAudioEndpointRole.Input);
+
+    private async void InstallVirtualOutputClicked(object sender, RoutedEventArgs e) =>
+        await InstallVirtualDeviceAsync(VirtualAudioEndpointRole.Output);
+
+    private async Task InstallVirtualDeviceAsync(VirtualAudioEndpointRole role)
     {
-        var result = MessageBox.Show(this,
-            $"Uninstall this AuralWeave virtual device from Windows?\n\n" +
-            $"{device.Name}\n{device.InstanceId}\n\n" +
-            "Administrator approval will be required. Other audio drivers will not be touched.",
-            "AuralWeave — Confirm Uninstall", MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-        if (result != MessageBoxResult.Yes) return;
+        InstallVirtualInputButton.IsEnabled = false;
+        InstallVirtualOutputButton.IsEnabled = false;
         try
         {
-            var exitCode = await AuralWeaveVirtualDrivers.RequestDeviceRemovalAsync(device);
-            Status(exitCode == 0
-                ? $"Removed virtual device: {device.Name}."
-                : $"Windows PnPUtil reported exit code {exitCode} while removing {device.Name}.",
-                exitCode != 0);
+            var eligibility = await Task.Run(() =>
+                VirtualDriverInstallation.Check(
+                    AuralWeaveVirtualDrivers.EnumerateInstalled(), role));
+            if (!eligibility.CanInstall)
+            {
+                Status(eligibility.Description, true);
+                return;
+            }
+
+            var confirmation = MessageBox.Show(this,
+                $"Install the AuralWeave Virtual {role} Windows audio driver?\n\n" +
+                "This installs one signed driver device for the entire PC, " +
+                "shared by every Portable copy. Windows will request administrator approval. " +
+                "You can later remove the device using Windows Device Manager.",
+                "AuralWeave - Install Virtual Driver",
+                MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirmation != MessageBoxResult.Yes) return;
+
+            // Kernel deployment and UAC may block; never wait on the UI thread.
+            var installedSuccessfully = await Task.Run(
+                () => VirtualDriverInstallation.InstallAsync(role));
+            Status(installedSuccessfully
+                ? $"Virtual {role} installed. Device is shared across all AuralWeave copies."
+                : $"Installer completed, but Windows did not report Virtual {role}. Check Device Manager.",
+                !installedSuccessfully);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
@@ -320,14 +338,11 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            Status("Virtual device removal failed: " + ex.Message, true);
+            Status($"Virtual {role} installation failed: {ex.Message}", true);
         }
-        await RefreshVirtualDriversAsync();
+        finally
+        {
+            await RefreshVirtualDriversAsync();
+        }
     }
-
-    private void InstallVirtualInputClicked(object sender, RoutedEventArgs e) =>
-        Status("A signed, installable AuralWeave Virtual Input driver has not been built.", true);
-
-    private void InstallVirtualOutputClicked(object sender, RoutedEventArgs e) =>
-        Status("A signed, installable AuralWeave Virtual Output driver has not been built.", true);
 }

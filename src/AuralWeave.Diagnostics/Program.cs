@@ -83,6 +83,166 @@ try
         return 0;
     }
 
+    if (args.Length == 3 && args[0] == "--probe-shared-audio-active")
+    {
+        var role = uint.Parse(args[1]) == 1
+            ? VirtualAudioEndpointRole.Input : VirtualAudioEndpointRole.Output;
+        var expected = bool.Parse(args[2]);
+        var actual = SharedVirtualAudioActivityLease.IsActive(role);
+        if (actual != expected)
+            throw new InvalidOperationException(
+                $"Audio lifetime guard mismatch for {role}: expected {expected} got {actual}.");
+        Console.WriteLine($"PASS: cross-process shared audio role {role}, active={actual}");
+        return 0;
+    }
+
+    if (args.Length == 5 && args[0] == "--shared-bus-producer")
+    {
+        // Separate Portable copy writes to its own SPSC mapping.
+        var mappingName = args[1];
+        var role = uint.Parse(args[2]);
+        var amplitude = int.Parse(args[3]) / 100f;
+        var expectedFrames = int.Parse(args[4]);
+        using var peer = NativeVirtualAudioBridge.Attach(mappingName, role, 1);
+        var block = Enumerable.Repeat(amplitude,
+            checked(expectedFrames * (int)peer.Channels)).ToArray();
+        if (peer.Write(block) != (uint)expectedFrames)
+            throw new InvalidOperationException("Cross-folder PCM producer could not write its own stream.");
+        Console.WriteLine($"SHARED_PCM_PRODUCER_PASS {role} {amplitude}");
+        return 0;
+    }
+    if (args.Length == 5 && args[0] == "--shared-bus-consumer")
+    {
+        // Each subscriber reads an independent SPSC mapping, not a shared
+        // read cursor that could steal frames from another Portable copy.
+        var name = args[1];
+        var role = uint.Parse(args[2]);
+        var expected = int.Parse(args[3]) / 100f;
+        var expectedFrames = int.Parse(args[4]);
+        using var peer = NativeVirtualAudioBridge.Attach(name, role, 1);
+        var buffer = new float[checked(expectedFrames * (int)peer.Channels)];
+        if (peer.Read(buffer) != expectedFrames ||
+            buffer.Any(v => Math.Abs(v - expected) > 0.0001f))
+            throw new InvalidOperationException("Cross-folder PCM fanout samples differ.");
+        Console.WriteLine($"SHARED_PCM_CONSUMER_PASS {role} {expected} {expectedFrames}");
+        return 0;
+    }
+    if (args.Contains("--test-shared-virtual-audio"))
+    {
+        int Probe(string dll, params string[] arguments)
+        {
+            var command = new System.Diagnostics.ProcessStartInfo("dotnet")
+            {
+                UseShellExecute = false, RedirectStandardOutput = true,
+                RedirectStandardError = true, CreateNoWindow = true
+            };
+            command.ArgumentList.Add(dll);
+            foreach (var argument in arguments) command.ArgumentList.Add(argument);
+            using var child = System.Diagnostics.Process.Start(command)
+                ?? throw new InvalidOperationException("Unable to start portable PCM client.");
+            if (!child.WaitForExit(12000))
+            {
+                child.Kill(entireProcessTree: true);
+                throw new TimeoutException("Portable PCM client did not complete.");
+            }
+            var log = child.StandardOutput.ReadToEnd();
+            if (child.ExitCode != 0)
+                throw new InvalidOperationException($"Client exit {child.ExitCode}: " +
+                    log + child.StandardError.ReadToEnd());
+            Console.WriteLine(log.Trim());
+            return child.ExitCode;
+        }
+
+        var local = Path.Combine(AppContext.BaseDirectory, "AuralWeave.Diagnostics.dll");
+        var alternative = Environment.GetEnvironmentVariable("AW_SHARED_BUS_PROBE_DLL")
+            ?? local;
+        Console.WriteLine("Shared-bus client A: " + local);
+        Console.WriteLine("Shared-bus client B: " + alternative);
+        foreach (var role in new[] { 1u, 2u })
+        {
+            using var sourceA = NativeVirtualAudioBridge.Create(role, 1, 48000, 2, 512);
+            using var sourceB = NativeVirtualAudioBridge.Create(role, 1, 48000, 2, 512);
+            using var receiveA = NativeVirtualAudioBridge.Create(role, 1, 48000, 2, 512);
+            using var receiveB = NativeVirtualAudioBridge.Create(role, 1, 48000, 2, 512);
+            using var hub = new SharedVirtualAudioBus(role, 48000, 2, 256);
+            var endpointRole = role == 1u
+                ? VirtualAudioEndpointRole.Input : VirtualAudioEndpointRole.Output;
+            if (!SharedVirtualAudioActivityLease.IsActive(endpointRole))
+                throw new InvalidOperationException("Audio owner activity guard missing.");
+            Probe(alternative, "--probe-shared-audio-active", $"{role}", "true");
+            hub.AddContributor(sourceA.Name);
+            hub.AddContributor(sourceB.Name);
+            hub.AddListener(receiveA.Name);
+            hub.AddListener(receiveB.Name);
+            Console.WriteLine($"Testing role {role}: {hub.Contributors} independent sources and {hub.Listeners} listeners.");
+            // Writer A and B run in different folder copies. Their streams
+            // are mixed by a single logical device (0.25+0.40 = 0.65).
+            Probe(local, "--shared-bus-producer", sourceA.Name, $"{role}", "25", "256");
+            Probe(alternative, "--shared-bus-producer", sourceB.Name, $"{role}", "40", "256");
+            if (hub.Pump() != 256 || hub.FramesDelivered != 512 ||
+                hub.FramesDropped != 0)
+                throw new InvalidOperationException("Two-user mixer did not publish both streams.");
+            Probe(local, "--shared-bus-consumer", receiveA.Name, $"{role}", "65", "256");
+            Probe(alternative, "--shared-bus-consumer", receiveB.Name, $"{role}", "65", "256");
+            Console.WriteLine($"PASS: role {role}: two Portable clients hear identical 0.65 mixed PCM.");
+
+            // After one contributor leaves, the other still works.
+            if (!hub.RemoveContributor(sourceA.Name))
+                throw new InvalidOperationException("Could not detach previous source.");
+            Probe(alternative, "--shared-bus-producer", sourceB.Name, $"{role}", "20", "256");
+            if (hub.Pump() != 256)
+                throw new InvalidOperationException("Remaining producer failed.");
+            Probe(local, "--shared-bus-consumer", receiveA.Name, $"{role}", "20", "256");
+            Probe(alternative, "--shared-bus-consumer", receiveB.Name, $"{role}", "20", "256");
+            Console.WriteLine($"PASS: role {role}: remaining copy continues independently.");
+
+            // Short final blocks must preserve only real frames and avoid
+            // writing the stale tail of a preallocated mixer buffer.
+            Probe(alternative, "--shared-bus-producer", sourceB.Name, $"{role}", "80", "37");
+            if (hub.Pump() != 37)
+                throw new InvalidOperationException("Short PCM block was not processed.");
+            Probe(local, "--shared-bus-consumer", receiveA.Name, $"{role}", "80", "37");
+            Probe(alternative, "--shared-bus-consumer", receiveB.Name, $"{role}", "80", "37");
+            Console.WriteLine($"PASS: role {role}: exact 37-frame partial PCM block.");
+
+            // Mix clipping is intentionally bounded; PCM never wraps,
+            // and each listener receives precisely the same clamped value.
+            hub.AddContributor(sourceA.Name);
+            Probe(local, "--shared-bus-producer", sourceA.Name, $"{role}", "80", "256");
+            Probe(alternative, "--shared-bus-producer", sourceB.Name, $"{role}", "80", "256");
+            if (hub.Pump() != 256)
+                throw new InvalidOperationException("Clamped multi-writer PCM block failed.");
+            Probe(local, "--shared-bus-consumer", receiveA.Name, $"{role}", "100", "256");
+            Probe(alternative, "--shared-bus-consumer", receiveB.Name, $"{role}", "100", "256");
+            Console.WriteLine($"PASS: role {role}: multiple contributions clamp safely at 1.0.");
+
+            // Simulate a slow receiver. It must not steal samples from
+            // the fast receiver, or stall the mixer and other clients.
+            for (var cycle = 0; cycle < 3; cycle++)
+            {
+                Probe(alternative, "--shared-bus-producer", sourceB.Name, $"{role}", "25", "256");
+                if (hub.Pump() != 256)
+                    throw new InvalidOperationException("Slow subscriber blocked PCM mixing.");
+                Probe(alternative, "--shared-bus-consumer", receiveB.Name, $"{role}", "25", "256");
+                // receiveA intentionally does not consume three blocks;
+                // its 512-frame buffer fills after two blocks.
+            }
+            if (hub.FramesDropped < 256)
+                throw new InvalidOperationException("Slow listener overflow not counted.");
+            Console.WriteLine($"PASS: role {role}: slow listener dropped {hub.FramesDropped} frames " +
+                "but independent listener received all three blocks.");
+        }
+        if (SharedVirtualAudioActivityLease.IsActive(VirtualAudioEndpointRole.Input) ||
+            SharedVirtualAudioActivityLease.IsActive(VirtualAudioEndpointRole.Output))
+            throw new InvalidOperationException(
+                "An audio role is still marked active after all owners closed.");
+        Probe(alternative, "--probe-shared-audio-active", "1", "false");
+        Probe(alternative, "--probe-shared-audio-active", "2", "false");
+        Console.WriteLine("PASS: all user-mode audio owner handles released across copies.");
+        Console.WriteLine("MULTI_PORTABLE_SHARED_VIRTUAL_MIX_AND_FANOUT=PASS");
+        return 0;
+    }
+
     var sources = NativeAudioDeviceCatalog.CaptureDevices();
     var outputs = NativeAudioDeviceCatalog.RenderDevices();
     Console.WriteLine($"CAPTURE / LOOPBACK SOURCES: {sources.Count}");
@@ -150,7 +310,39 @@ try
         if (!legacyInstalled[0].IsLegacy ||
             AuralWeaveVirtualDrivers.MayInstall(legacyInstalled, VirtualAudioEndpointRole.Input))
             throw new InvalidOperationException("Legacy device must be discoverable and block installation.");
-        Console.WriteLine("PASS: one current PnP ID per role, duplicate install guard and legacy cleanup recognition.");
+        Console.WriteLine("PASS: one current PnP ID per role, duplicate install guard and legacy detection.");
+
+        // The install-only UI must NEVER create another PnP node if a
+        // current, legacy or half-registered Windows device ID already
+        // exists. The unsigned development prototype is not installable.
+        var halfInstalled = new[] {
+            new AuralWeaveVirtualDevice(
+                @"ROOT\AURALWEAVE_VINPUT_0001", "Half-installed mic",
+                VirtualAudioEndpointRole.Input,
+                AuralWeaveVirtualDrivers.InputHardwareId,
+                IsDriverBound: false)
+        };
+        var current = VirtualDriverInstallation.Check(
+            simulatedInstalled, VirtualAudioEndpointRole.Input);
+        var obsolete = VirtualDriverInstallation.Check(
+            legacyInstalled, VirtualAudioEndpointRole.Input);
+        var incomplete = VirtualDriverInstallation.Check(
+            halfInstalled, VirtualAudioEndpointRole.Input);
+        if (current.CanInstall || obsolete.CanInstall || incomplete.CanInstall ||
+            !current.Description.Contains("installed", StringComparison.OrdinalIgnoreCase) ||
+            !obsolete.Description.Contains("obsolete", StringComparison.OrdinalIgnoreCase) ||
+            !incomplete.Description.Contains("not fully", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Signed installer readiness must reject existing root devices.");
+
+        var noBundleFolder = Path.Combine(AppContext.BaseDirectory, "drivers", "AuralWeaveVirtualAudio");
+        if (!Directory.Exists(noBundleFolder))
+        {
+            var missing = VirtualDriverInstallation.Check([], VirtualAudioEndpointRole.Output);
+            if (missing.CanInstall || !missing.Description.Contains(
+                    "not yet included", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Unsigned/missing production package was enabled.");
+        }
+        Console.WriteLine("PASS: install-only eligibility denies existing/legacy/partly installed PnP IDs and missing package.");
         var installed = AuralWeaveVirtualDrivers.EnumerateInstalled();
         Console.WriteLine($"PASS: Windows SetupAPI discovery; {installed.Count} owned devices found.");
         foreach (var device in installed)

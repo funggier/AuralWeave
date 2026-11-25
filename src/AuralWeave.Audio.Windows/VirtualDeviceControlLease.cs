@@ -3,9 +3,11 @@ using System.Threading;
 namespace AuralWeave.Audio.Windows;
 
 /// <summary>
-/// A machine-wide, folder-independent advisory controller lease for one
-/// AuralWeave virtual audio endpoint. It is NOT the kernel/driver security
-/// boundary: a future privileged driver broker must recheck ownership.
+/// A machine-wide, folder-independent advisory PnP management mutex.
+/// It is held briefly during audio-session startup and deployment, NOT
+/// throughout audio playback or recording. Multiple Portable copies
+/// can share the same logical Virtual Input and Virtual Output audio.
+/// A future privileged driver broker must still enforce authorization.
 /// </summary>
 /// <remarks>
 /// The named Windows mutex is owned by a dedicated thread. This is important:
@@ -19,13 +21,15 @@ public sealed class VirtualDeviceControlLease : IDisposable
     private readonly ManualResetEventSlim _ready = new(false);
     private readonly ManualResetEventSlim _release = new(false);
     private readonly Thread _ownerThread;
+    private readonly int _waitMilliseconds;
     private Exception? _initializationError;
     private bool _acquired;
     private int _disposed;
 
-    private VirtualDeviceControlLease(VirtualAudioEndpointRole role)
+    private VirtualDeviceControlLease(VirtualAudioEndpointRole role, int waitMilliseconds)
     {
         Role = role;
+        _waitMilliseconds = waitMilliseconds;
         _ownerThread = new Thread(OwnMutex)
         {
             IsBackground = true,
@@ -35,14 +39,18 @@ public sealed class VirtualDeviceControlLease : IDisposable
 
     public VirtualAudioEndpointRole Role { get; }
 
-    public static VirtualDeviceControlLease? TryAcquire(VirtualAudioEndpointRole role)
+    public static VirtualDeviceControlLease? TryAcquire(
+        VirtualAudioEndpointRole role, int waitMilliseconds = 0)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(waitMilliseconds);
+        if (waitMilliseconds > 2000)
+            throw new ArgumentOutOfRangeException(nameof(waitMilliseconds));
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("Virtual driver control requires Windows.");
         if (role is not (VirtualAudioEndpointRole.Input or VirtualAudioEndpointRole.Output))
             throw new ArgumentOutOfRangeException(nameof(role));
 
-        var lease = new VirtualDeviceControlLease(role);
+        var lease = new VirtualDeviceControlLease(role, waitMilliseconds);
         lease._ownerThread.Start();
         lease._ready.Wait();
         if (lease._initializationError is { } error)
@@ -74,7 +82,7 @@ public sealed class VirtualDeviceControlLease : IDisposable
             mutex = new Mutex(initiallyOwned: false, name);
             try
             {
-                ownsMutex = mutex.WaitOne(0);
+                ownsMutex = mutex.WaitOne(_waitMilliseconds);
             }
             catch (AbandonedMutexException)
             {

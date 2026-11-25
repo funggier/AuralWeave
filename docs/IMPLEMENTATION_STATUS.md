@@ -107,3 +107,21 @@ compiles inside the WDK kernel prototype and runs as a Windows 10
 user-mode test. It validates direction, version, length and PCM format.
 **Kernel IOCTL dispatch and WaveRT PCM transport are not implemented.**
 No driver is signed or installed. Windows 11 compatibility is theoretical.
+
+
+## Current Virtual Driver product behavior — install-only (2026-11-25)
+
+The Virtual Driver screen no longer offers an uninstall button or
+administrator PnPUtil removal path. It checks the Windows PnP ID list,
+including legacy and partially registered nodes, and offers Install
+only if the selected role is absent. Readiness also requires all
+production INF/SYS/CAT/setup files and trusted Windows signatures.
+Because the current kernel driver has neither a completed WaveRT PCM
+transport nor a signed production installer, Install is deliberately
+disabled in the current build.
+
+Meanwhile the user-mode SharedVirtualAudioBus mixes simultaneous PCM
+sources and broadcasts independent copies to listeners. Audio-session
+activity guards are cross-folder; the brief PnP management mutex
+does not monopolize ongoing audio use. These user-mode tests passed
+on Windows 10. Windows 11 is a theoretical compatibility target.

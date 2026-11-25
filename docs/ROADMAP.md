@@ -195,3 +195,19 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [ ] Implement secure IOCTL dispatch, owner authorization and WaveRT audio queues
 - [ ] Test actual installed/approved kernel driver on Windows 10, then sign
 - [ ] Keep Windows 11 as theoretical unless a real compatibility test is performed
+
+
+## Install-only Virtual Driver UI and shared-client audio (2026-11-25)
+
+- [x] Support multi-client user-mode audio mixing and independent fanout
+- [x] Keep Windows device count at one Virtual Input and one Virtual Output
+- [x] Stop holding a global role lock for the entire audio session
+- [x] Track active audio sessions across Portable copies using Windows handles
+- [x] Remove AuralWeave UI Uninstall button and privileged device-removal API
+- [x] Detect current, legacy and partially bound PnP identities before install
+- [x] Prepare package trust checks and administrator setup invocation
+- [x] Disable INSTALL when the signed production package is missing
+- [x] Document Windows Device Manager as the removal pathway
+- [ ] Finish safe signed production setup helper and complete WaveRT transport
+- [ ] Verify production installation/uninstallation on Windows 10 test machine
+- [ ] Keep Windows 11 theoretical until runtime validation is available

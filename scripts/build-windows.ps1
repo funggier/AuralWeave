@@ -39,7 +39,9 @@ try {
 
     if ($RunDeviceDiagnostics) {
         & (Join-Path $root 'scripts\test-multiple-portable-instances.ps1') -SkipBuild
-        if ($LASTEXITCODE -ne 0) { throw 'Cross-folder Virtual Driver ownership test failed' }
+        if ($LASTEXITCODE -ne 0) { throw 'Cross-folder Virtual Driver audio-sharing test failed' }
+        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-virtual-driver-discovery
+        if ($LASTEXITCODE -ne 0) { throw 'Virtual Driver installation-readiness and PnP inventory tests failed' }
         & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj'
         if ($LASTEXITCODE -ne 0) { throw 'Native device diagnostics failed' }
     }
