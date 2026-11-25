@@ -26,6 +26,9 @@ typedef unsigned long long aw_pcm_size_t;
 #define AW_PCM_WIRE_OUTPUT 2u  /* Virtual speaker/render -> Studio */
 #define AW_PCM_WIRE_FORMAT_S16 1u
 #define AW_PCM_WIRE_FORMAT_F32 2u
+#define AW_PCM_WIRE_FORMAT_S32 3u
+/* CTL_CODE(FILE_DEVICE_UNKNOWN=0x22, 0x800, METHOD_BUFFERED, READ|WRITE). */
+#define AW_PCM_IOCTL_EXCHANGE 0x0022E000u
 #define AW_PCM_WIRE_HELLO 1u
 #define AW_PCM_WIRE_INPUT_WRITE 2u
 #define AW_PCM_WIRE_OUTPUT_READ 3u

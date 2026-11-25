@@ -22,6 +22,7 @@ Abstract:
 #include "definitions.h"
 #include "../../../Transport/aw_pcm_wire.h"
 #include "aw_kernel_pcm_queue.h"
+#include "aw_kernel_control.h"
 #include "endpoints.h"
 #include "minipairs.h"
 
@@ -95,6 +96,8 @@ Environment:
 
     DPF(D_TERSE, ("[DriverUnload]"));
 
+    // The secured admin-only PCM device must go before PortCls unload.
+    AwKernelControlDestroy();
     ReleaseRegistryStringBuffer();
 
     if (DriverObject == NULL)
@@ -252,6 +255,15 @@ Return Value:
     // To intercept stop/remove/surprise-remove.
     //
     DriverObject->MajorFunction[IRP_MJ_PNP] = PnpHandler;
+
+    // PortCls has registered its handlers. Add exactly one admin/SYSTEM-only
+    // WDM control device for bounded PCM messages, while forwarding all
+    // unrelated audio requests back to PcDispatchIrp.
+    ntStatus = AwKernelControlCreate(DriverObject);
+    IF_FAILED_ACTION_JUMP(
+        ntStatus,
+        DPF(D_ERROR, ("Virtual PCM control device failed, 0x%x", ntStatus)),
+        Done);
 
     //
     // Hook the port class unload function

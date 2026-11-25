@@ -38,6 +38,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Managed route configuration tests failed' }
 
     if ($RunDeviceDiagnostics) {
+        # The kernel interface is not installed; verify the managed packet
+        # codec and exact PCM16/PCM32 sample conversions against a deterministic
+        # test backend before any signed-driver runtime test is allowed.
+        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-kernel-pcm-client
+        if ($LASTEXITCODE -ne 0) { throw 'User-mode kernel PCM protocol test failed' }
         # The installer helper is checked in READ-ONLY mode. Never stage the
         # unsigned WDK SYS or developer helper into the Portable product.
         & (Join-Path $root 'scripts\build-virtual-driver-setup.ps1')

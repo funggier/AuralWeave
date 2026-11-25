@@ -9,7 +9,8 @@ bool supported_format(const AW_PCM_WIRE_PACKET& packet) {
         return false;
     return (packet.sample_format == AW_PCM_WIRE_FORMAT_S16 &&
             packet.bits_per_sample == 16u) ||
-           (packet.sample_format == AW_PCM_WIRE_FORMAT_F32 &&
+           ((packet.sample_format == AW_PCM_WIRE_FORMAT_F32 ||
+             packet.sample_format == AW_PCM_WIRE_FORMAT_S32) &&
             packet.bits_per_sample == 32u);
 }
 

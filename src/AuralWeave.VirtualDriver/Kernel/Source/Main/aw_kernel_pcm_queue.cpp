@@ -35,6 +35,22 @@ bool valid_format(aw_pcm_u32 rate, aw_pcm_u32 channels,
 }
 } // namespace
 
+bool AwKernelPcmDescribe(aw_pcm_u32 role,
+                         AwKernelPcmSnapshot* result) noexcept {
+    auto* endpoint = get_endpoint(role);
+    if (!endpoint || !result) return false;
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&endpoint->lock, &oldIrql);
+    result->sampleRate = endpoint->rate;
+    result->channels = endpoint->channels;
+    result->bitsPerSample = endpoint->bits;
+    result->streamCount = endpoint->attached;
+    result->queuedFrames = aw_pcm_ring_queued(&endpoint->ring);
+    result->blocked = endpoint->blocked ? 1u : 0u;
+    KeReleaseSpinLock(&endpoint->lock, oldIrql);
+    return true;
+}
+
 void AwKernelPcmInitialize() noexcept {
     // Called before PortCls initializes adapters/streams; no publication of
     // these endpoints exists before DriverEntry calls this function.

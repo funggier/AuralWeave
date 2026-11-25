@@ -8,6 +8,16 @@
 // WaveRT must be resident/nonpaged and accessible for the full request.
 #include "../../../Transport/aw_pcm_wire.h"
 
+struct AwKernelPcmSnapshot {
+    aw_pcm_u32 sampleRate;
+    aw_pcm_u32 channels;
+    aw_pcm_u32 bitsPerSample;
+    aw_pcm_u32 streamCount;
+    aw_pcm_u32 queuedFrames;
+    aw_pcm_u32 blocked;
+};
+bool AwKernelPcmDescribe(aw_pcm_u32 role, AwKernelPcmSnapshot* result) noexcept;
+
 void AwKernelPcmInitialize() noexcept;
 
 // Attach a WaveRT stream with a consistent frame layout. Other streams may

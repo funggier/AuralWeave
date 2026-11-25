@@ -86,7 +86,7 @@ try {
     Write-Output "SYS_BYTES=$bytes"
     Write-Output "SYS_SHA256=$sha"
     Write-Output 'WIN10_WIN11_X64_TARGET_METADATA_AND_SIGNABILITY=PASS'
-    Write-Warning 'NOT INSTALLED, NOT MICROSOFT SIGNED, NOT RUNTIME TESTED. Kernel-to-user secure control transport is not implemented. Do not copy to dist or install.'
+    Write-Warning 'NOT INSTALLED, NOT MICROSOFT SIGNED, NOT RUNTIME TESTED. Secured control IOCTL compiles but is NOT kernel-runtime-tested; trusted elevated broker and signing pending. Do not copy to dist or install.'
 }
 finally {
     Pop-Location

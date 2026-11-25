@@ -207,3 +207,24 @@ so all actual installation requests remain disabled. Uninstallation
 remains a Windows Device Manager operation.
 
 See docs/WDK_WAVERT_PCM_CHECKPOINT.md for source, design and QA.
+
+
+## Secured Kernel IOCTL PCM checkpoint (2026-11-25)
+
+The unsigned Windows 10 WDK prototype now compiles a separate
+SYSTEM/Administrator-only WDM control device with strict
+METHOD_BUFFERED request validation. Audio PnP requests still reach
+PortCls through PcDispatchIrp. Virtual Input accepts signed PCM32
+and Virtual Output returns signed PCM16. The versioned protocol is
+bounded to 2,048 frames per transfer and at most 16,384 bytes of PCM.
+
+The managed WindowsVirtualKernelPcm client and the explicit
+VirtualKernelAudioPump are compiled and mock-tested. A Native C++
+Shared PCM input flowed through the simulated kernel protocol and
+was received on an independent Shared PCM output with correct
+stereo sample values. Real kernel installation/IOCTL transfer has
+NOT been tested. An elevated trusted broker is not yet shipped.
+
+See docs/KERNEL_IOCTL_TRANSPORT.md for the exact access, data layout,
+QA and remaining signed-driver prerequisites. The current driver is
+UNSIGNED and must NOT be installed on the host Windows 10 computer.

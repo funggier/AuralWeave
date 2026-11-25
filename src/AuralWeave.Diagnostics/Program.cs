@@ -6,6 +6,12 @@ try
     Console.OutputEncoding = System.Text.Encoding.UTF8;
     Console.WriteLine("AuralWeave diagnostics — Native C++ WASAPI only");
 
+    if (args.Contains("--test-kernel-pcm-client"))
+    {
+        KernelPcmControlTests.Run();
+        return 0;
+    }
+
     if (args.Contains("--probe-virtual-input-lease") ||
         args.Contains("--probe-virtual-output-lease"))
     {
