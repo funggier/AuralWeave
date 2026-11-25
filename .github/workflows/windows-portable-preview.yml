@@ -96,7 +96,9 @@ jobs:
       - name: Test Mock Broker after relocating its portable folder
         run: |
           $ErrorActionPreference = 'Stop'
-          $archive = Join-Path (Get-Location) 'dist/AuralWeave-MockBroker-v0.2.0-Windows-x64.zip'
+          $zips = @(Get-ChildItem -LiteralPath dist -Filter 'AuralWeave-MockBroker-v*-Windows-x64.zip' -File)
+          if ($zips.Count -ne 1) { throw "Expected one Mock Broker ZIP; found $($zips.Count)" }
+          $archive = $zips[0].FullName
           $destination = Join-Path $env:RUNNER_TEMP 'AuralWeave-Relocated-MockBroker'
           Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
           $env:AW_BROKER_EXE = Join-Path $destination 'AuralWeave.Broker.exe'
@@ -111,6 +113,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AuralWeave-MockBroker-Windows-x64-testing-only
-          path: dist/AuralWeave-MockBroker-v0.1.0-Windows-x64.zip
+          path: dist/AuralWeave-MockBroker-v*-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14
