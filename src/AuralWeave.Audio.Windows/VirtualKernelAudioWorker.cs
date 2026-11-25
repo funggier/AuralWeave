@@ -31,6 +31,10 @@ public sealed class VirtualKernelAudioWorker : IAsyncDisposable
     {
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         ArgumentNullException.ThrowIfNull(pump);
+        if (!ReferenceEquals(driver, pump.Driver))
+            throw new ArgumentException(
+                "Worker readiness queries and PCM transfers must use the same kernel client.",
+                nameof(driver));
         _step = pump.PumpOnce;
         if (pump.BlockFrames is < 1 or > VirtualKernelPcmProtocol.MaxFrames)
             throw new ArgumentOutOfRangeException(nameof(pump));
