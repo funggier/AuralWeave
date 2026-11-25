@@ -12,6 +12,12 @@ try
         return 0;
     }
 
+    if (args.Contains("--test-kernel-pcm-worker"))
+    {
+        await KernelPcmControlTests.RunWorkerAsync();
+        return 0;
+    }
+
     if (args.Contains("--probe-virtual-input-lease") ||
         args.Contains("--probe-virtual-output-lease"))
     {
