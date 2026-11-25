@@ -39,26 +39,19 @@ $catalog = '"' + (Join-Path $src 'src\device_catalog.cpp') + '" '
 $catalogApi = '"' + (Join-Path $src 'src\device_catalog_api.cpp') + '" '
 $tests = '"' + (Join-Path $src 'tests\native_smoke.cpp') + '" '
 $engine = '"' + (Join-Path $src 'src\audio_engine.cpp') + '" '
-$bridge = '"' + (Join-Path $src 'src\virtual_audio_bridge.cpp') + '" '
-$bridgeApi = '"' + (Join-Path $src 'src\virtual_audio_bridge_api.cpp') + '" '
-$bridgeTest = '"' + (Join-Path $src 'tests\virtual_bridge_smoke.cpp') + '" '
 $exe = Join-Path $out 'AuralWeaveNativeSmoke.exe'
 $dll = Join-Path $out 'AuralWeave.Native.dll'
-$bridgeExe = Join-Path $out 'AuralWeaveVirtualBridgeSmoke.exe'
 
 $compileTests = 'cl ' + $common + $graph + $resampler + $noise + $filterChain + $catalog +
     $tests + $rnObjs + ' /link ole32.lib propsys.lib /OUT:"' + $exe + '"'
-$compileBridge = 'cl ' + $common + $bridge + $bridgeApi + $bridgeTest + ' /link ole32.lib /OUT:"' + $bridgeExe + '"'
-$compileEngine = 'cl ' + $common + '/LD ' + $bridge + $bridgeApi + $engine + $resampler + $noise + $filterChain +
+$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler + $noise + $filterChain +
     $catalog + $catalogApi + $rnObjs + ' /link ole32.lib propsys.lib uuid.lib /OUT:"' + $dll + '"'
 
 Push-Location $out
 try {
     & cmd.exe /d /s /c ('call "' + $vcvars + '" >nul && ' +
-        $compileRnnoise + ' && ' + $compileTests + ' && ' + $compileBridge + ' && ' + $compileEngine)
+        $compileRnnoise + ' && ' + $compileTests + ' && ' + $compileEngine)
     if ($LASTEXITCODE -ne 0) { throw "Native compile/link failed ($LASTEXITCODE)" }
-    & $bridgeExe
-    if ($LASTEXITCODE -ne 0) { throw "Virtual PCM bridge cross-process test failed ($LASTEXITCODE)" }
     if ($ListDevices) { & $exe --devices } else { & $exe }
     if ($LASTEXITCODE -ne 0) { throw "Native smoke test failed ($LASTEXITCODE)" }
     if (!(Test-Path -LiteralPath $dll)) { throw 'Native WASAPI DLL was not generated' }

@@ -19,27 +19,8 @@ commit `6cbfd53eb348a8d394e0757b4025c6ded34eb2b6`.
 **Windows Core Audio, .NET 8/WPF** — Microsoft platform/runtime components;
 relevant redistribution conditions must be observed.
 
-## Not included
+## Optional external audio routing
 
-NAudio was removed in earlier native-only versions.
-Little/Custom RNNoise models, EQ, AI processing and virtual audio drivers have
-not been bundled.
+VB-CABLE is distributed by VB-Audio under its own license and installed separately. The AuralWeave package links to the publisher and includes the VB-CABLE routing guide in `RELEASE_NOTES.md`.
 
-The project's MIT License does not relicense third-party software.
-
-## Kernel driver prototype source (NOT bundled in the portable app)
-
-**Microsoft Simple Audio Sample**, from `microsoft/Windows-driver-samples`,
-repository commit `d49bb7d72f3651952b2b6e4ad28d14fe2247eb69`.
-
-- Location: `src/AuralWeave.VirtualDriver/Kernel/Source/`
-- License: **Microsoft Public License (MS-PL)**; full license text:
-  `src/AuralWeave.VirtualDriver/Kernel/LICENSE.MS-PL.txt`
-- Adaptations: separate input/output PnP models, AuralWeave-branded
-  INF, per-hardware-ID role registration, prototype default mute of
-  synthetic generator, renamed kernel output.
-- This derived source remains **MS-PL** and does not acquire the root
-  MIT project's license.
-- Driver SYS/INF prototypes are **unsigned and not ready for
-  installation or redistribution**. They are deliberately excluded
-  from the Studio Portable ZIP and all public Releases.
+The project's MIT License applies to original AuralWeave source.

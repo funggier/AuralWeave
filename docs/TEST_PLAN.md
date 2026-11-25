@@ -1,6 +1,6 @@
 # Verification & Acceptance Plan
 
-**Status:** Historical test evidence is recorded below. Signed-driver acceptance is still pending.
+**Status:** This plan records historical evidence and current Windows 10 acceptance checks.
 
 ## Functional scenarios
 
@@ -25,7 +25,7 @@
 | SAFE-01 | Change chain while playing | No crash/deadlock or invalid concurrent access |
 | SAFE-02 | Stop/restart after device error | Route returns to consistent state |
 | PORTABLE-01 | Move app folder to another drive | Local settings/presets continue to resolve |
-| DRIVER-01 | No optional driver installed | Physical routing still works |
+| VB-01 | With VB-CABLE installed, route processed audio to AuralWeave Sound Output and select its recording endpoint in a receiving app | The receiver sees the processed signal via CABLE Output |
 
 ## Non-functional
 
@@ -45,7 +45,7 @@ Test reported vs measured latency, long-session stability, CPU use, buffer under
 - 13 managed core checks and 16 native core/resampler tests passed.
 - Muted native route: Line In (192 kHz) to USB Headphones (192 kHz) passed, 291,840 captured frames, 0 reported ring overruns.
 - Muted mixed-rate native route: Line In (192 kHz) to USB Headphones (192 kHz) plus ASUS VG249 (48 kHz) passed for 2.5 s, 483,840 captured frames, 0 reported ring overruns.
-- **Not yet passed:** audible signal quality, anti-aliased resampling fidelity, long-session drift, hotplug, per-sink isolation, Virtual Driver, RNNoise, and actual two-channel subjective listening tests.
+- **Not yet passed:** audible signal quality, anti-aliased resampling fidelity, long-session drift, hotplug, per-sink isolation, RNNoise, and actual two-channel subjective listening tests.
 
 ## UI and audio regression scenarios (2026-11-24)
 
@@ -110,200 +110,15 @@ bounding rectangles and tests minimize, restoration and close.
 - [x] Maximize / restore / minimize / close actions succeed
 
 This is a UI-only fix. Native WASAPI code and routing were not modified.
-## v0.3.0-preview.1 — mode/preset/virtual driver diagnostics
 
-- Managed Core: 32/32 tests including exact Filter Preset roundtrip, repeated RNNoise, enabled states, excluded audio device identifiers, strict schema checking and local discovery.
-- Native device-discovery diagnostics: SetupAPI enumerated zero owned devices on the test machine; reserved INPUT/OUTPUT hardware IDs were recognized; unrelated hardware IDs rejected.
-- Real Windows WPF UI automation: switch Studio → Virtual Driver → Studio; verify both Virtual Input and Virtual Output cards; verify PnP discovery ran successfully.
-- Layout gaps: mode selector and Filter Preset button groups have expanded spacing; Virtual Input/Output installation status margins increased.
-- Actual installation and audio transport require a future signed driver package; buttons remain disabled until then.
+## Portable Studio v0.3.1 acceptance
 
-## Windows 10/11 virtual audio kernel prototype QA
+| ID | Scenario | Expected |
+| --- | --- | --- |
+| STUDIO-01 | Launch the Windows x64 build | Sound Input, Filters and Sound Output appear on launch, with one Start/Stop control |
+| STUDIO-02 | Open and stop a muted mixed-rate route | Both render endpoints initialize and Stop completes |
+| VB-02 | Open the Windows VB-CABLE capture and playback endpoints in two muted routes | Both WASAPI endpoints can stream and stop independently |
+| VB-03 | Test Discord Mic Test with VB-CABLE and an intentional input | Discord receives the AuralWeave output |
+| ZIP-01 | Extract generated Portable ZIP | AuralWeave.exe, native DLL and RELEASE_NOTES.md with the VB-CABLE guide are present |
 
-- Compiler: Visual Studio 2026 / WDK 10.0.28000.0 x64.
-- `scripts/build-virtual-driver-prototype.ps1` passed: .SYS built;
-  `InfVerif /w` and `InfVerif /u` both passed; Inf2Cat
-  `/nocat` signability passed with no errors or warnings.
-- INF targets Windows 10 build 19041+ and Windows 11; candidate
-  active device IDs are only 0001 for Input and 0001 for Output.
-- Managed PnP ownership checks reject unrelated/bare/malformed
-  hardware IDs; available classes and service are checked.
-- Current Windows 10 development host: 0 owned devices installed.
-- NOT YET TESTED: Windows 11 runtime, Windows 10 installed driver,
-  concurrent devices, PCM transport, HLK, Microsoft signing, or
-  portable-folder relocation of a real installed driver.
-
-## Native virtual PCM IPC tests (2026-11-25)
-
-- Native Windows C++ bridge: real separate process writes and reads
-  16,000 sequential PCM frames with exact Float32 equality.
-- Ring wrap, frame alignment, independent roles/slots, invalid
-  format/ID, full-buffer rejection and zero-padded underruns passed.
-- C ABI create/attach/read/write/close/statistics/error paths passed.
-- Native Studio physical output graph remains independent of the
-  optional, post-filter Virtual Input tap.
-- Windows 10 real capture smoke: Line In 192 kHz -> Gain DSP ->
-  Virtual Input PCM mapping 48 kHz, with physical render output muted.
-  Continuous consumer reported captured 232,320 frames, produced
-  58,080 bridge frames, read 57,120 frames, and **zero bridge
-  overrun frames** during 1.2 seconds. Polling read requests sometimes
-  underrun; this is a functional test, NOT measured end-to-end latency.
-- Full build-windows.ps1 with WPF, Diagnostics, Core and 32 managed
-  tests passed; no compiler warnings/errors.
-- Kernel transport and Windows 11 runtime tests NOT YET performed.
-
-
-## One Virtual Input / One Virtual Output (2026-11-25)
-
-- The current INF exposes one PnP hardware ID for each role, both ending in 0001.
-- The AuralWeave PnP manager allows future installation only when no current
-  or legacy device of that role exists; unsigned driver installation stays disabled.
-- Former 0002..0016 prototype IDs are recognized for safe, explicit cleanup.
-- The developer-only Native Studio route now accepts a Virtual Output PCM source
-  through the same ordered Filter graph and optional Virtual Input PCM tap.
-- Windows 10 user-mode test: 57,600 frames consumed, 57,599 frames emitted,
-  Gain applied, zero source overflow, physical output muted.
-- Windows Kernel driver transport, signing and Windows 11 runtime validation
-  have NOT yet been implemented or performed.
-
-Additional shutdown regression: closing the user-mode Virtual Output producer
-causes the Native Studio route to terminate cleanly without hanging. The
-Windows custom title-bar maximize/restore checks also passed on 3 monitors.
-
-
-## Portable copies and kernel PCM contract (2026-11-25)
-
-- Cross-folder test script: scripts/test-multiple-portable-instances.ps1
-  starts independent Windows processes from two different directories.
-- Duplicate Virtual Input is denied. Independent Virtual Output is
-  allowed. Duplicate Virtual Output is denied. Both leases can be
-  released and reclaimed; async disposal is safe.
-- **Historical, superseded:** this checkpoint used an exclusive role lease
-  for user-mode bridge owners. Subsequent multi-Portable tests removed the
-  full-session lock and allow simultaneous owners; only administrative
-  installation/PnP coordination remains exclusive. See
-  [shared-driver contract](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md).
-- scripts/test-kernel-transport.ps1 compiles the exact WDK wire/ring
-  C++ source on Windows 10 with warnings-as-errors. Invalid role,
-  slot, opcode, sample format, flags and length are rejected. The
-  bounded PCM ring preserved 64,000 frames through 1,000 wrap cycles.
-- scripts/build-virtual-driver-prototype.ps1 builds the same protocol
-  inside the unsigned prototype with INF/Inf2Cat checks.
-- Windows 11 is a theoretical target (no runtime or installed-driver test).
-
-
-## Install-only Virtual Driver and sharing regressions (2026-11-25)
-
-- Windows SetupAPI detects current, legacy and partially bound AuralWeave
-  PnP IDs so no second root device is created.
-- Signed production package absence disables INSTALL.
-- Existing/legacy/unbound devices suppress installation.
-- Desktop shows read-only installed-device details, no uninstall action.
-- Device removal is delegated to the Windows Device Manager.
-- Cross-folder user-mode PCM test: two sources mixed and two independent
-  listeners received the same signal in Input and Output roles.
-- Source removal, 37-frame partial blocks, PCM limiting and slow
-  subscriber isolation passed.
-- No unsigned SYS was installed. The elevated production setup helper
-  is not shipped; install/uninstall hardware integration is not tested.
-
-
-## WaveRT internal PCM and installer-helper checkpoint (2026-11-25)
-
-**Build-stage only. No Windows driver was installed or signed.**
-
-The unsigned Windows 10 WDK prototype now compiles kernel-internal,
-independently locked 64-KiB PCM rings for Virtual Input and Virtual
-Output. The WaveRT microphone DMA path consumes queued PCM or emits
-silence; WaveRT speaker DMA copies rendered frames into its bounded
-PCM queue. The Microsoft Sample sine generator, file recording worker
-and runtime registry toggles were unlinked. A global single-adapter
-restriction was found and changed to allow **Input + Output together**
-in the driver architecture. Digital rights that forbid copying disable
-render PCM mirroring and flush queued frames.
-
-No secure kernel device IOCTL or user broker is connected yet, so the
-driver is NOT a usable installed Windows audio endpoint.
-
-The separate Windows 10 DriverSetup project now builds as a self-contained
-read-only preflight utility and contains future signed-only PnP SetupAPI
-logic. The production certificate SHA-256 pin is intentionally blank,
-so all actual installation requests remain disabled. Uninstallation
-remains a Windows Device Manager operation.
-
-See docs/WDK_WAVERT_PCM_CHECKPOINT.md for source, design and QA.
-
-
-## Secured Kernel IOCTL PCM checkpoint (2026-11-25)
-
-The unsigned Windows 10 WDK prototype now compiles a separate
-SYSTEM/Administrator-only WDM control device with strict
-METHOD_BUFFERED request validation. Audio PnP requests still reach
-PortCls through PcDispatchIrp. Virtual Input accepts signed PCM32
-and Virtual Output returns signed PCM16. The versioned protocol is
-bounded to 2,048 frames per transfer and at most 16,384 bytes of PCM.
-
-The managed WindowsVirtualKernelPcm client and the explicit
-VirtualKernelAudioPump are compiled and mock-tested. A Native C++
-Shared PCM input flowed through the simulated kernel protocol and
-was received on an independent Shared PCM output with correct
-stereo sample values. Real kernel installation/IOCTL transfer has
-NOT been tested. An elevated trusted broker is not yet shipped.
-
-See docs/KERNEL_IOCTL_TRANSPORT.md for the exact access, data layout,
-QA and remaining signed-driver prerequisites. The current driver is
-UNSIGNED and must NOT be installed on the host Windows 10 computer.
-
-
-## Independent role and PnP refresh regression (2026-11-25)
-
-- `--test-kernel-pcm-client` verifies standalone mock speaker/mic operation, reopened roles, stale input discard during an idle role and protected-output silence.
-- `--test-kernel-pcm-worker` verifies idle startup, format rejection, explicit stop and fail-stop on loss of the transport.
-- `build-virtual-driver-prototype.ps1` compiles the queue and control changes and verifies INF metadata/signability.
-- Windows 10 UI Automation observed both driver cards refresh after a device-tree notification, including the absent and incomplete-package states. Both Install buttons stayed disabled and the tested page offered no removal or repair action. The notification was simulated, without changing Windows PnP.
-- Two Diagnostics processes from separate Portable folders concurrently routed the same physical Line In to the same 192 kHz and 48 kHz physical outputs in WASAPI Shared Mode, with muted outputs. Both stopped cleanly with zero new overrun or underrun frames after warmup.
-
-## PCM protocol v2 regression (2026-11-25)
-
-- The Windows 10 standalone C++ test links the actual driver queue implementation. It verifies independent role clocks, silence before and after RUN, queue reset on pause, stale-generation rejection and protected speaker mirroring.
-- Managed diagnostics check that old-generation microphone/speaker requests move zero frames and reject unexpected PCM returned for a different generation.
-- The WDK/INF checks compile and validate the unsigned Windows 10 target. Tests of an installed driver remain separate.
-
-## Approved Windows Virtual Driver acceptance matrix — docs-only plan (2026-11-25)
-
-This checklist is a **future production release gate**, not a claim these Windows
-audio endpoint scenarios have passed. Canonical specification:
-[VIRTUAL_DRIVER_PRODUCT_CONTRACT.md](VIRTUAL_DRIVER_PRODUCT_CONTRACT.md).
-Previous user-mode Mock Broker and Shared PCM tests must not be counted as
-successfully installed Windows virtual audio device acceptance.
-
-| ID | Scenario | Required observable behavior | Current |
-| --- | --- | --- | --- |
-| VDRV-01 | Clean Windows 10 x64 install | One AuralWeave Virtual Input recording PnP device and one AuralWeave Virtual Output playback PnP device; both appear in Windows audio endpoint enumeration | Not tested (signed driver missing) |
-| VDRV-02 | Open second Portable Studio from another folder | Same system-wide two endpoints; no new PnP nodes; both Studios retain separate filters and routing | User-mode simulation only |
-| VDRV-03 | Two concurrent apps recording from Virtual Input (Discord + OBS or two independent WASAPI clients) | Both capture independent streams of the same mic signal, simultaneously; stopping one does not disrupt the other | Not tested on driver |
-| VDRV-04 | Browser and game/media player playing to Virtual Output at the same time | Windows Shared Mode mix is accepted from both apps; neither silently excludes the other; Studio can route received audio | Not tested on driver |
-| VDRV-05 | Two Studio microphone contributors | Both independently add post-filter audio to shared virtual mic according to defined mixing policy; no competing read of one SPSC ring | Developer-only PCM mock passed; production untested |
-| VDRV-06 | Studio closed while virtual endpoints are installed | Windows device enumeration retains endpoints; trusted background bridge lifecycle gives silence/valid state rather than disappearing or hanging | Not tested on driver |
-| VDRV-07 | Two Studio windows press Install concurrently | Serialized setup/UAC/recheck creates at most one device per role; no false duplicate success | Setup mutex and guard mocked across folders. Signed install pending |
-| VDRV-08 | Input installed but Output absent | Input reports installed without Install; missing Output alone may offer Install when signed package available | Product design only |
-| VDRV-09 | Output installed but Input absent | Symmetric behavior to VDRV-08 | Product design only |
-| VDRV-10 | Both roles already present | Read-only installed states; no Install or create/add-driver action | PnP UI mock/guard only |
-| VDRV-11 | Legacy / partially installed / mismatched PnP node | Block duplicate installation, show explicit reason; do not silently repair or delete any existing node | Synthetic legacy/unbound/stopped/problem/duplicate guard checks and read-only SetupAPI passed |
-| VDRV-12 | Production package unavailable or unsigned | Install disabled and reason visible; NEVER install unsigned WDK kernel prototype | Guard tested |
-| VDRV-13 | Check all Studio UI screens | **No Uninstall / Remove / Repair** driver actions anywhere, and no forced auto-install | UI intent and historical mock checked; full GUI regression needed |
-| VDRV-14 | Remove from Windows Device Manager | AuralWeave node can be uninstalled, remaining resources cleanly handled, Studio displays absent state afterward | Not tested on signed driver |
-| VDRV-15 | Windows Installed apps / Apps & Features (if implemented) | One registered `AuralWeave Virtual Driver` entry offers a tested independent driver-set uninstaller; **INF-only package must not be claimed to do this** | Not implemented |
-| VDRV-16 | Reboot / restart driver / disable / unplug physical dependency | Stable PnP identity, bounded reconnect, no retained stale audio and other clients recover | Not tested on installed driver |
-| VDRV-17 | Multiple Windows users/logon sessions, including permission-restricted clients | Correct per-user/capture permissions and endpoint sharing, no unintended audio disclosure | Security design pending |
-| VDRV-18 | Endpoint Exclusive Mode request and conflict | Document Windows policy behavior; normal Shared Mode clients stay supported without deliberately imposing global Studio-exclusive control | Not tested |
-| VDRV-19 | Move/delete Portable Studio after driver installation | System PnP device does not disappear; trusted background lifecycle and uninstaller are not broken by relocated/deleted Portable folder | Design pending |
-| VDRV-20 | Windows 10 x64 driver signed with applicable HLK/testing gates | Actual Windows 10 22H2 runtime and shared-mode tests pass. Windows 11 runtime can be verified separately when available. | Signed driver untested |
-
-**Test discipline:** Windows 10 22H2 is the real local environment; Windows 11
-remains theoretical until a real test. Run device/driver scenarios in an
-appropriate controlled VM or test device, not by enabling Windows Test Signing
-or installing the unsigned kernel prototype on the active user machine. Any
-reported PASS must identify whether it was a **user-mode mock**, **VM-installed
-signed driver**, or **real audio application** test. User-mode broker
-process-origin PID binding is not a restriction on normal Windows audio clients.
+Windows 10 22H2 x64 passed STUDIO-01 via UI Automation, STUDIO-02 using physical endpoints and VB-02 using the installed VB-CABLE pair in muted modes. Discord Mic Test remains a manual check. [VB-CABLE guide](VB_CABLE.md)

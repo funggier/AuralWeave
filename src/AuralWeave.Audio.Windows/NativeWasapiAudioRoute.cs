@@ -100,29 +100,6 @@ public sealed class NativeWasapiAudioRoute : IDisposable
         ApplyEffects();
     }
 
-    /// <summary>
-    /// Developer-only user-mode bridge tap. Native Studio continues sending
-    /// audio to all physical outputs; post-filter PCM is copied into this
-    /// shared session. No virtual Windows endpoint is installed by this.
-    /// </summary>
-    public void BindVirtualInputBridge(NativeVirtualAudioBridge bridge)
-    {
-        ThrowIfDisposed();
-        ArgumentNullException.ThrowIfNull(bridge);
-        if (bridge.Role != 1 || bridge.Slot != 1)
-            throw new ArgumentException("Only owned Virtual Input bridges may be bound.");
-        if (!IsRunning)
-            throw new InvalidOperationException("Start the physical audio route first.");
-        if (NativeBindVirtualInput(_handle, bridge.Name, bridge.Slot) != 1)
-            throw new InvalidOperationException("Native route failed to bind Virtual Input PCM bridge.");
-    }
-
-    public void UnbindVirtualInputBridge()
-    {
-        ThrowIfDisposed();
-        NativeUnbindVirtualInput(_handle);
-    }
-
     public void ReplaceEffects(IEnumerable<AudioEffectInstance> effects)
     {
         ThrowIfDisposed();
@@ -221,15 +198,6 @@ public sealed class NativeWasapiAudioRoute : IDisposable
 
     [DllImport(Library, EntryPoint = "aw_set_output", CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeSetOutput(IntPtr handle, int index, float gain, int muted);
-
-    [DllImport(Library, EntryPoint = "aw_route_bind_virtual_input",
-        CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-    private static extern int NativeBindVirtualInput(
-        IntPtr handle, [MarshalAs(UnmanagedType.LPWStr)] string exactName, uint slot);
-
-    [DllImport(Library, EntryPoint = "aw_route_unbind_virtual_input",
-        CallingConvention = CallingConvention.Cdecl)]
-    private static extern void NativeUnbindVirtualInput(IntPtr handle);
 
     [DllImport(Library, EntryPoint = "aw_last_error", CallingConvention = CallingConvention.Cdecl,
         CharSet = CharSet.Unicode)]

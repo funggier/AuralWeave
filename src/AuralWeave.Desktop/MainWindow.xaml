@@ -76,14 +76,12 @@
                         <ComboBoxItem Content="Monochrome Dark"/>
                         <ComboBoxItem Content="Graphite"/>
                     </ComboBox>
-                    <StackPanel x:Name="StudioHeaderActions" Orientation="Horizontal">
                     <Button x:Name="RefreshButton" Content="↻  Refresh devices"
                             Click="RefreshClicked" Margin="0,0,8,0"/>
                     <Button x:Name="StartButton" Content="START" Click="StartStopClicked"
                             Background="{DynamicResource Accent}"
                             Foreground="{DynamicResource AccentText}" MinWidth="120"
                             FontWeight="SemiBold"/>
-                    </StackPanel>
                 </StackPanel>
             </Grid>
         </Border>
@@ -110,23 +108,6 @@
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel MaxWidth="1020" Margin="24,24,24,18">
-                <!-- Two-mode selector; the Virtual Driver page contains TWO cards,
-                     one for each direction, on the SAME page. -->
-                <Grid Margin="0,0,0,26">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button x:Name="StudioModeButton" Grid.Column="0" Content="STUDIO"
-                            FontWeight="SemiBold" Height="48" Margin="0,0,12,0"
-                            Click="ShowStudioModeClicked"
-                            Background="{DynamicResource Accent}"
-                            Foreground="{DynamicResource AccentText}"/>
-                    <Button x:Name="VirtualModeButton" Grid.Column="1" Content="VIRTUAL DRIVER"
-                            FontWeight="SemiBold" Height="48" Margin="12,0,0,0"
-                            Click="ShowVirtualDriverModeClicked"/>
-                </Grid>
-                <StackPanel x:Name="StudioPanel">
                 <Border Style="{StaticResource StageCard}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,14">
@@ -259,51 +240,6 @@
                                    Style="{StaticResource MutedCaption}"/>
                     </StackPanel>
                 </Border>
-                </StackPanel>
-                <StackPanel x:Name="VirtualDriverPanel" Visibility="Collapsed">
-                    <TextBlock Text="VIRTUAL DRIVER MANAGEMENT"
-                               FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <TextBlock Text="At most one Virtual Input and Virtual Output can be installed on Windows. Portable copies may share audio. Remove drivers using Windows Device Manager."
-                               Style="{StaticResource MutedCaption}" Margin="0,0,0,14"/>
-                    <Button x:Name="RefreshVirtualDriversButton"
-                            Content="REFRESH INSTALLED DEVICES" HorizontalAlignment="Left"
-                            Click="RefreshVirtualDriversClicked" Margin="0,0,0,17"/>
-                    <Border Style="{StaticResource StageCard}">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource SectionHeader}"
-                                       Text="VIRTUAL INPUT (MAX 1)"/>
-                            <TextBlock Style="{StaticResource MutedCaption}"
-                                       Text="One Windows recording endpoint per computer: other apps select it as a microphone."/>
-                            <StackPanel x:Name="VirtualInputDevices" Margin="0,16,0,16"/>
-                            <Button x:Name="InstallVirtualInputButton"
-                                    Content="+ INSTALL VIRTUAL INPUT"
-                                    IsEnabled="False" HorizontalAlignment="Left"
-                                    Click="InstallVirtualInputClicked"/>
-                            <TextBlock x:Name="VirtualInputPackageStatus" Style="{StaticResource MutedCaption}"
-                                       Margin="0,13,0,0"
-                                       Text="Checking Windows and the signed production driver package..."/>
-                        </StackPanel>
-                    </Border>
-                    <Border Style="{StaticResource StageCard}">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource SectionHeader}"
-                                       Text="VIRTUAL OUTPUT (MAX 1)"/>
-                            <TextBlock Style="{StaticResource MutedCaption}"
-                                       Text="One Windows playback endpoint per computer: other apps play audio into it."/>
-                            <StackPanel x:Name="VirtualOutputDevices" Margin="0,16,0,16"/>
-                            <Button x:Name="InstallVirtualOutputButton"
-                                    Content="+ INSTALL VIRTUAL OUTPUT"
-                                    IsEnabled="False" HorizontalAlignment="Left"
-                                    Click="InstallVirtualOutputClicked"/>
-                            <TextBlock x:Name="VirtualOutputPackageStatus" Style="{StaticResource MutedCaption}"
-                                       Margin="0,13,0,0"
-                                       Text="Checking Windows and the signed production driver package..."/>
-                        </StackPanel>
-                    </Border>
-                    <TextBlock x:Name="VirtualDriverSummary" Style="{StaticResource MutedCaption}"
-                               Margin="0,2,0,16"
-                               Text="Only signed, production-ready driver packages can be installed. To remove an installed device, use Windows Device Manager."/>
-                </StackPanel>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>

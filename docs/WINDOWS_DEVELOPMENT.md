@@ -50,7 +50,15 @@ The second selects one 192 kHz and one 48 kHz output if present. Neither is part
 .\scripts\build-windows.ps1 -PublishPortable
 ```
 
-Produces `dist/AuralWeave-win-x64` and `dist/AuralWeave-Windows-x64-Preview.zip` with the native DLL and required notices. No driver installation or automatic copying into Products/test folders. This is a preview, not a public release.
+Produces `dist/AuralWeave-win-x64` and `dist/AuralWeave-v<version>-Windows-x64.zip`. The packaged `RELEASE_NOTES.md` combines `docs/releases/v<version>.md` with the [VB-CABLE guide](VB_CABLE.md).
+
+For each GitHub Release, upload the versioned ZIP and use the generated `dist/AuralWeave-win-x64/RELEASE_NOTES.md` as the release body. With an existing tag:
+
+```powershell
+$tag = 'v0.3.1'
+gh release create $tag ".\dist\AuralWeave-${tag}-Windows-x64.zip" `
+    --verify-tag --notes-file .\dist\AuralWeave-win-x64\RELEASE_NOTES.md
+```
 
 ## Safety and rights
 

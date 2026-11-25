@@ -21,7 +21,6 @@ try {
     $projects = @(
         'src/AuralWeave.Core/AuralWeave.Core.csproj',
         'src/AuralWeave.Desktop/AuralWeave.Desktop.csproj',
-        'src/AuralWeave.Broker/AuralWeave.Broker.csproj',
         'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj',
         'tests/AuralWeave.Core.Tests/AuralWeave.Core.Tests.csproj'
     )
@@ -30,7 +29,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Build failed: $project" }
     }
 
-    foreach ($project in @('src\AuralWeave.Desktop', 'src\AuralWeave.Diagnostics', 'src\AuralWeave.Broker')) {
+    foreach ($project in @('src\AuralWeave.Desktop', 'src\AuralWeave.Diagnostics')) {
         $target = Join-Path $root ($project + '\bin\' + $Configuration + '\net8.0-windows\AuralWeave.Native.dll')
         Copy-Item -LiteralPath $dll -Destination $target -Force
     }
@@ -39,29 +38,6 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Managed route configuration tests failed' }
 
     if ($RunDeviceDiagnostics) {
-        # The kernel interface is not installed; verify the managed packet
-        # codec and exact PCM16/PCM32 sample conversions against a deterministic
-        # test backend before any signed-driver runtime test is allowed.
-        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-kernel-pcm-client
-        if ($LASTEXITCODE -ne 0) { throw 'User-mode kernel PCM protocol test failed' }
-        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-kernel-pcm-worker
-        if ($LASTEXITCODE -ne 0) { throw 'Virtual PCM worker/coordinator lifecycle test failed' }
-        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-virtual-bus-recovery
-        if ($LASTEXITCODE -ne 0) { throw 'Multi-process PCM crash recovery test failed' }
-        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-local-broker
-        if ($LASTEXITCODE -ne 0) { throw 'Same-user Named Pipe mock broker test failed' }
-        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-local-broker-restart
-        if ($LASTEXITCODE -ne 0) { throw 'Mock broker crash/restart recovery test failed' }
-        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-local-broker-ownership
-        if ($LASTEXITCODE -ne 0) { throw 'Mock broker PCM owner process verification failed' }
-        # The installer helper is checked in READ-ONLY mode. Never stage the
-        # unsigned WDK SYS or developer helper into the Portable product.
-        & (Join-Path $root 'scripts\build-virtual-driver-setup.ps1')
-        if ($LASTEXITCODE -ne 0) { throw 'Read-only Driver Setup preflight tests failed' }
-        & (Join-Path $root 'scripts\test-multiple-portable-instances.ps1') -SkipBuild
-        if ($LASTEXITCODE -ne 0) { throw 'Cross-folder Virtual Driver audio-sharing test failed' }
-        & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj' -- --test-virtual-driver-discovery
-        if ($LASTEXITCODE -ne 0) { throw 'Virtual Driver installation-readiness and PnP inventory tests failed' }
         & dotnet run --no-build -c $Configuration --project 'src/AuralWeave.Diagnostics/AuralWeave.Diagnostics.csproj'
         if ($LASTEXITCODE -ne 0) { throw 'Native device diagnostics failed' }
     }
@@ -92,12 +68,15 @@ try {
         Get-ChildItem -LiteralPath $target -File -Filter '*.pdb' |
             Remove-Item -Force
 
-                        $csprojXml = [xml](Get-Content -LiteralPath (Join-Path $root 'src\AuralWeave.Desktop\AuralWeave.Desktop.csproj') -Raw)
+        $csprojXml = [xml](Get-Content -LiteralPath (Join-Path $root 'src\AuralWeave.Desktop\AuralWeave.Desktop.csproj') -Raw)
         $version = [string]$csprojXml.Project.PropertyGroup.Version
         if ($version -notmatch '^\d+\.\d+\.\d+(-[a-z0-9.]+)?$') {
             throw "Invalid application version: $version"
         }
-        Copy-Item -LiteralPath (Join-Path $root "docs\releases\v$version.md") -Destination (Join-Path $target 'RELEASE_NOTES.md') -Force
+        $versionNotes = Get-Content -LiteralPath (Join-Path $root "docs\releases\v$version.md") -Raw -Encoding UTF8
+        $routingGuide = Get-Content -LiteralPath (Join-Path $root 'docs\VB_CABLE.md') -Raw -Encoding UTF8
+        $releaseNotes = $versionNotes.TrimEnd() + "`r`n`r`n" + $routingGuide.TrimEnd()
+        Set-Content -LiteralPath (Join-Path $target 'RELEASE_NOTES.md') -Value $releaseNotes -Encoding UTF8
         $licenseFolder = Join-Path $target 'licenses'
         New-Item -ItemType Directory -Force -Path $licenseFolder | Out-Null
         Copy-Item -LiteralPath (Join-Path $root 'third_party\rnnoise\COPYING') -Destination (Join-Path $licenseFolder 'RNNoise-v0.1.1-BSD-3-Clause.txt') -Force

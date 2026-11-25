@@ -15,6 +15,8 @@ Route:
 
 `endpointId` refers to a real OS-enumerated persistent endpoint identity (where available), **not** display name. UI display names can repeat or change.
 
+Windows capture and playback endpoints can belong to physical devices or virtual cables. For application-to-application routes see [VB-CABLE](VB_CABLE.md).
+
 ## Output dropdown rules
 
 - Candidate set = currently discovered compatible output endpoints MINUS endpoints already selected in this Route.
