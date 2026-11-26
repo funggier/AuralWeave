@@ -6,7 +6,7 @@ AuralWeave can load installed 64-bit VST2 (.dll) and VST3 (.vst3) audio effects 
    - **VST Plugin (Custom Location)** starts with an empty path. Enter a folder and click **Scan**, or click **Browse…** to choose and scan it. The scan includes that folder and its subfolders.
    - **VST Plugin (Common Files)** scans the standard locations below when added. Click **Re-scan** after installing or updating plugins.
 2. Pick a format from the results (for example, **Crystalline · VST2** or **Crystalline · VST3**) and click **Load Plugin**.
-3. Click **Open editor** to adjust the effect. Click **Reload Plugin** to create a fresh instance of the selected effect, or select a different effect and click the same button to replace it. The previous effect keeps running if the replacement cannot load.
+3. Click **Open editor** to adjust the effect. The window's title bar follows the Studio theme. The effect's controls and artwork come from the plugin. Click **Reload Plugin** to create a fresh instance of the selected effect, or select a different effect and click the same button to replace it. The previous effect keeps running if the replacement cannot load.
 4. Start the audio route. Each enabled effect receives the input's sample rate. The processed signal goes to all configured Sound Output devices.
 
 ### Common Files scan locations

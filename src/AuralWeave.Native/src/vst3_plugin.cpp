@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "auralweave/vst_plugin.hpp"
+#include "vst_editor_window.hpp"
 #include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
@@ -194,9 +195,8 @@ public:
     Editor& operator=(const Editor&) = delete;
 
     void show(IEditController& controller, HWND owner, const std::wstring& title) {
-        if (window_) {
-            ShowWindow(window_, SW_RESTORE);
-            SetForegroundWindow(window_);
+        if (window_.window()) {
+            window_.show();
             return;
         }
 
@@ -206,47 +206,28 @@ public:
             throw std::runtime_error("This VST3 effect has no Windows editor");
         }
 
-        constexpr auto class_name = L"AuralWeaveVst3Editor";
-        const auto instance = GetModuleHandleW(nullptr);
-        WNDCLASSW info{};
-        info.lpfnWndProc = window_proc;
-        info.hInstance = instance;
-        info.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
-        info.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
-        info.lpszClassName = class_name;
-        if (!RegisterClassW(&info) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
-            view_.reset();
-            throw std::runtime_error("Cannot register the VST3 editor window");
-        }
+        try {
+            window_.create(owner, L"AuralWeaveVst3Editor", title.c_str(), editor_message, this);
+            view_->setFrame(this);
+            if (view_->attached(window_.content(), kPlatformTypeHWND) != kResultOk)
+                throw std::runtime_error("Could not attach the VST3 editor");
 
-        window_ = CreateWindowExW(0, class_name, title.c_str(), WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
-                                  CW_USEDEFAULT, CW_USEDEFAULT, 700, 500,
-                                  owner, nullptr, instance, this);
-        if (!window_) {
-            view_.reset();
-            throw std::runtime_error("Cannot create the VST3 editor window");
-        }
-        view_->setFrame(this);
-        if (view_->attached(window_, kPlatformTypeHWND) != kResultOk) {
+            attached_ = true;
+            ViewRect rect{};
+            if (view_->getSize(&rect) == kResultOk) resizeView(view_.get(), &rect);
+            window_.show();
+        } catch (...) {
             close();
-            throw std::runtime_error("Could not attach the VST3 editor");
+            throw;
         }
-        attached_ = true;
-        ViewRect rect{};
-        if (view_->getSize(&rect) == kResultOk) resizeView(view_.get(), &rect);
-        ShowWindow(window_, SW_SHOWNORMAL);
     }
 
     tresult PLUGIN_API resizeView(IPlugView* view, ViewRect* rect) override {
-        if (!rect || view != view_.get() || !window_) return kInvalidArgument;
+        if (!rect || view != view_.get() || !window_.window()) return kInvalidArgument;
         const auto w = rect->getWidth();
         const auto h = rect->getHeight();
         if (w < 1 || w > 8192 || h < 1 || h > 8192) return kInvalidArgument;
-        RECT frame{0, 0, w, h};
-        AdjustWindowRectExForDpi(&frame, static_cast<DWORD>(GetWindowLongPtrW(window_, GWL_STYLE)),
-                                 FALSE, 0, GetDpiForWindow(window_));
-        SetWindowPos(window_, nullptr, 0, 0, frame.right - frame.left, frame.bottom - frame.top,
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        window_.resize(w, h);
         return view_->onSize(rect);
     }
 
@@ -257,28 +238,20 @@ public:
             view_->setFrame(nullptr);
             view_.reset();
         }
-        if (window_) {
-            const auto window = window_;
-            window_ = nullptr;
-            DestroyWindow(window);
-        }
+        window_.destroy();
     }
 
 private:
-    static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM param, LPARAM data) {
-        if (message == WM_NCCREATE) {
-            const auto* args = reinterpret_cast<const CREATESTRUCTW*>(data);
-            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(args->lpCreateParams));
-        } else if (message == WM_CLOSE) {
-            auto* editor = reinterpret_cast<Editor*>(GetWindowLongPtrW(window, GWLP_USERDATA));
-            if (editor) editor->close();
+    static LRESULT editor_message(void* context, HWND window, UINT message, WPARAM param, LPARAM data) noexcept {
+        if (message == WM_CLOSE) {
+            static_cast<Editor*>(context)->close();
             return 0;
         }
         return DefWindowProcW(window, message, param, data);
     }
 
     Ref<IPlugView> view_;
-    HWND window_{};
+    VstEditorWindow window_;
     bool attached_{};
 };
 

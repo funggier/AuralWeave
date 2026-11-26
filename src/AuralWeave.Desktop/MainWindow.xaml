@@ -60,12 +60,8 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Image Width="48" Height="48" Source="Assets/AuralWeave-Monochrome.png" RenderOptions.BitmapScalingMode="HighQuality"
                            Margin="0,0,14,0" Stretch="Uniform"/>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="AuralWeave" FontSize="24" FontWeight="SemiBold"/>
-                        <TextBlock Text="NATIVE AUDIO ROUTING" FontSize="11"
-                                   Foreground="{DynamicResource SecondaryText}"
-                                   />
-                    </StackPanel>
+                    <TextBlock Text="NATIVE AUDIO ROUTING" FontSize="16"
+                               Foreground="{DynamicResource SecondaryText}" VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="SKIN" Foreground="{DynamicResource SecondaryText}"
@@ -101,8 +97,9 @@
                                Text="Ready — no route running"
                                Foreground="{DynamicResource Accent}"/>
                 </StackPanel>
-                <TextBlock Grid.Column="1" x:Name="FrameCountLabel" Text="0 frames"
-                           Foreground="{DynamicResource SecondaryText}"/>
+                <TextBlock Grid.Column="1" x:Name="CaptureRateLabel" Text="0 frames/s"
+                           Foreground="{DynamicResource SecondaryText}"
+                           ToolTip="Audio frames captured per second"/>
             </Grid>
         </Border>
 
@@ -200,10 +197,18 @@
                                            Style="{StaticResource MutedCaption}" FontSize="11"
                                            Margin="0,8,0,0"/>
                             </StackPanel>
-                        </Border>                        <StackPanel x:Name="FiltersPanel" Margin="0,0,0,12"/>
+                        </Border>
+                        <StackPanel x:Name="FiltersPanel" Margin="0,0,0,12"/>
                         <Button x:Name="AddFilterButton" Style="{StaticResource AddFilterButton}"
-                                Content="+" Click="AddFilterClicked"
-                                ToolTip="Add an empty filter slot"/>
+                                Click="AddFilterClicked" AutomationProperties.Name="Add filter"
+                                ToolTip="Add an empty filter slot">
+                            <Grid Width="18" Height="18" IsHitTestVisible="False" SnapsToDevicePixels="True">
+                                <Border Height="2" VerticalAlignment="Center"
+                                        Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                <Border Width="2" HorizontalAlignment="Center"
+                                        Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                            </Grid>
+                        </Button>
                         <TextBlock x:Name="FilterHelpText" Style="{StaticResource MutedCaption}"
                                    Text="No filters selected — audio goes straight from input to output."
                                    Margin="0,12,0,0" TextAlignment="Center"/>

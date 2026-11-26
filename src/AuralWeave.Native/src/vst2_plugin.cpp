@@ -5,6 +5,7 @@
 #include "auralweave/vst2_plugin.hpp"
 #include "auralweave/audio_engine_api.h"
 #include "vst2_abi.hpp"
+#include "vst_editor_window.hpp"
 
 #include <algorithm>
 #include <array>
@@ -35,6 +36,7 @@ struct Vst2Plugin::Impl {
     std::atomic<int> rate{48000};
     std::atomic<std::uint64_t> position{};
     std::atomic<HWND> editor{};
+    VstEditorWindow editor_window;
     int input_count{}, output_count{};
     bool active{}, editor_open{}, editor_available{};
     std::vector<float> input, output;
@@ -227,46 +229,37 @@ struct Vst2Plugin::Impl {
         }
     }
 
-    static void resize(HWND window, int width, int height) noexcept {
-        if (width <= 0 || width > 4096 || height <= 0 || height > 4096) return;
-        RECT frame{0, 0, width, height};
-        AdjustWindowRectExForDpi(&frame, static_cast<DWORD>(GetWindowLongPtrW(window, GWL_STYLE)),
-                                 FALSE, 0, GetDpiForWindow(window));
-        SetWindowPos(window, nullptr, 0, 0, frame.right - frame.left, frame.bottom - frame.top,
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    }
-
-    void fit_editor(HWND window) {
+    void fit_editor() {
         vst2::EditorRect* rect{};
         dispatch(vst2::edit_rectangle, 0, &rect);
-        if (rect) resize(window, rect->right - rect->left, rect->bottom - rect->top);
+        if (!rect) return;
+        const auto width = rect->right - rect->left;
+        const auto height = rect->bottom - rect->top;
+        if (width > 0 && width <= 4096 && height > 0 && height <= 4096)
+            editor_window.resize(width, height);
     }
 
-    static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM param, LPARAM data) noexcept {
-        auto* plugin = reinterpret_cast<Impl*>(GetWindowLongPtrW(window, GWLP_USERDATA));
-        if (message == WM_NCCREATE) {
-            const auto* args = reinterpret_cast<const CREATESTRUCTW*>(data);
-            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(args->lpCreateParams));
-        } else if (plugin) {
-            try {
-                switch (message) {
-                    case WM_CLOSE: {
-                        std::lock_guard guard(plugin->control);
-                        plugin->destroy_editor();
-                        return 0;
-                    }
-                    case WM_TIMER: {
-                        std::unique_lock guard(plugin->control, std::try_to_lock);
-                        if (guard && plugin->editor_open) plugin->dispatch(vst2::edit_idle);
-                        return 0;
-                    }
-                    case resize_editor_message:
-                        resize(window, static_cast<int>(param), static_cast<int>(data));
-                        return 0;
+    static LRESULT editor_message(void* context, HWND window, UINT message, WPARAM param, LPARAM data) noexcept {
+        auto& plugin = *static_cast<Impl*>(context);
+        try {
+            switch (message) {
+                case WM_CLOSE: {
+                    std::lock_guard guard(plugin.control);
+                    plugin.destroy_editor();
+                    return 0;
                 }
-            } catch (...) {
-                return 0;
+                case WM_TIMER: {
+                    std::unique_lock guard(plugin.control, std::try_to_lock);
+                    if (guard && plugin.editor_open) plugin.dispatch(vst2::edit_idle);
+                    return 0;
+                }
+                case resize_editor_message:
+                    // The callback checks the size before posting to the editor thread.
+                    plugin.editor_window.resize(static_cast<int>(param), static_cast<int>(data));
+                    return 0;
             }
+        } catch (...) {
+            return 0;
         }
         return DefWindowProcW(window, message, param, data);
     }
@@ -274,34 +267,21 @@ struct Vst2Plugin::Impl {
     void show_editor(HWND owner) {
         std::lock_guard guard(control);
         if (!effect || !editor_available) throw std::runtime_error("This plugin has no editor");
-        if (const auto existing = editor.load()) {
-            ShowWindow(existing, SW_RESTORE);
-            SetForegroundWindow(existing);
+        if (editor_window.window()) {
+            editor_window.show();
             return;
         }
-        const auto instance = GetModuleHandleW(nullptr);
-        WNDCLASSW window_class{};
-        window_class.lpfnWndProc = window_proc;
-        window_class.hInstance = instance;
-        window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
-        window_class.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
-        window_class.lpszClassName = editor_class;
-        if (!RegisterClassW(&window_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-            throw std::runtime_error("Cannot register the plugin editor window");
 
-        constexpr DWORD style = WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN;
-        const auto window = CreateWindowExW(0, editor_class, title.c_str(), style,
-                                            CW_USEDEFAULT, CW_USEDEFAULT, 700, 500,
-                                            owner, nullptr, instance, this);
-        if (!window) throw std::runtime_error("Cannot create the plugin editor window");
+        editor_window.create(owner, editor_class, title.c_str(), editor_message, this);
+        const auto window = editor_window.window();
         editor.store(window);
         try {
-            fit_editor(window);
+            fit_editor();
             editor_open = true;
-            dispatch(vst2::edit_open, 0, window);
-            fit_editor(window);
+            dispatch(vst2::edit_open, 0, editor_window.content());
+            fit_editor();
             SetTimer(window, 1, 33, nullptr);
-            ShowWindow(window, SW_SHOWNORMAL);
+            editor_window.show();
         } catch (...) {
             destroy_editor();
             throw;
@@ -316,8 +296,7 @@ struct Vst2Plugin::Impl {
             editor_open = false;
             try { dispatch(vst2::edit_close); } catch (...) {}
         }
-        SetWindowLongPtrW(window, GWLP_USERDATA, 0);
-        DestroyWindow(window);
+        editor_window.destroy();
     }
 
     void shutdown() noexcept {

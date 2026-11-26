@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Media;
 using AuralWeave.Audio.Windows;
 using AuralWeave.Core;
 using Microsoft.Win32;
@@ -142,7 +143,11 @@ public partial class MainWindow
             var editor = new Button { Content = "Open editor", IsEnabled = plugin.HasEditor };
             editor.Click += (_, _) =>
             {
-                try { plugin.ShowEditor(new WindowInteropHelper(this).Handle); }
+                try
+                {
+                    ApplyVstEditorPalette();
+                    plugin.ShowEditor(new WindowInteropHelper(this).Handle);
+                }
                 catch (Exception ex) { Status("Plugin editor: " + ex.Message, true); }
             };
             DockPanel.SetDock(editor, Dock.Right);
@@ -157,6 +162,18 @@ public partial class MainWindow
                 : card.CommonFiles ? "No 64-bit VST effects found."
                 : "Choose a folder and scan for 64-bit VST plugins."));
         }
+    }
+
+    private void ApplyVstEditorPalette()
+    {
+        uint ColorRef(string key)
+        {
+            var color = ((SolidColorBrush)FindResource(key)).Color;
+            return (uint)(color.R | (color.G << 8) | (color.B << 16));
+        }
+
+        NativeVstPlugin.SetEditorPalette(ColorRef("HeaderBackground"), ColorRef("PrimaryText"),
+            ColorRef("PanelStroke"), ColorRef("ItemHover"), ColorRef("ItemSelected"));
     }
 
     private async Task ScanVstPluginsAsync(Guid id, VstCard card, bool announceResult = true)

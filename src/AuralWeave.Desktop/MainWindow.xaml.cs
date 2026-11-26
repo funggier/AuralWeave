@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -43,6 +44,8 @@ public partial class MainWindow : Window
     private IReadOnlyList<AudioEndpoint> _captureDevices = [];
     private IReadOnlyList<AudioEndpoint> _renderDevices = [];
     private NativeWasapiAudioRoute? _route;
+    private long _captureRateMeasuredAt;
+    private long _captureRateFrames;
     private string _outputStatus = "";
     private bool _refreshingOutputs;
     private bool _refreshingFilters;
@@ -116,7 +119,12 @@ public partial class MainWindow : Window
         if (_loadingSkin || SkinCombo is null) return;
         var skin = SkinCombo.SelectedIndex == 1
             ? SkinManager.GraphiteSkin : SkinManager.DefaultSkin;
-        try { SkinManager.Apply(skin, true); }
+        try
+        {
+            SkinManager.Apply(skin, true);
+            if (_vstCards.Values.Any(card => card.Plugin is not null))
+                ApplyVstEditorPalette();
+        }
         catch (Exception ex) { Status("Skin could not be changed: " + ex.Message, true); }
     }
 
@@ -670,6 +678,8 @@ public partial class MainWindow : Window
             PublishFilterChain(candidate);
             candidate.Start(input.Id, _outputs);
             _route = candidate;
+            _captureRateMeasuredAt = Stopwatch.GetTimestamp();
+            _captureRateFrames = candidate.CapturedFrames;
             _outputStatus = string.Join("  ·  ", Enumerable.Range(1, _outputs.Count)
                 .Select(i => $"Output {i}: Native WASAPI"));
             StartButton.Content = "STOP";
@@ -702,7 +712,7 @@ public partial class MainWindow : Window
             RefreshButton.IsEnabled = true;
             InputCombo.IsEnabled = true;
             InputLevel.Value = 0;
-            FrameCountLabel.Text = "0 frames";
+            CaptureRateLabel.Text = "0 frames/s";
             OutputStatusLabel.Text = "";
             RefreshOutputRows();
             Status("Route stopped.");
@@ -714,7 +724,16 @@ public partial class MainWindow : Window
         var route = _route;
         if (route is null) return;
         InputLevel.Value = route.InputPeak * 100;
-        FrameCountLabel.Text = $"{route.CapturedFrames:N0} frames";
+        var now = Stopwatch.GetTimestamp();
+        var elapsed = Stopwatch.GetElapsedTime(_captureRateMeasuredAt, now).TotalSeconds;
+        if (elapsed >= 1.0)
+        {
+            var captured = route.CapturedFrames;
+            var framesPerSecond = Math.Max(0, captured - _captureRateFrames) / elapsed;
+            CaptureRateLabel.Text = $"{framesPerSecond:N0} frames/s";
+            _captureRateMeasuredAt = now;
+            _captureRateFrames = captured;
+        }
         var overrun = route.DroppedRenderFrames;
         var underrun = route.UnderrunRenderFrames;
         var running = route.IsRunning;

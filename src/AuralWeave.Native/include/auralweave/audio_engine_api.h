@@ -51,6 +51,9 @@ AW_API void aw_vst2_close(void* handle) noexcept;
 AW_API int aw_vst2_configure(void* handle, int sample_rate, wchar_t* error, std::size_t size) noexcept;
 AW_API int aw_vst2_has_editor(void* handle) noexcept;
 AW_API int aw_vst2_show_editor(void* handle, void* owner, wchar_t* error, std::size_t size) noexcept;
+// Editor UI thread only. Colors use Win32 COLORREF byte order (0x00BBGGRR).
+AW_API void aw_vst_set_editor_palette(std::uint32_t background, std::uint32_t text, std::uint32_t border,
+                                      std::uint32_t hover, std::uint32_t pressed) noexcept;
 // 0 = DSP bypass; 1 = built-in RNNoise v0.1.1 standard model.
 AW_API int aw_set_noise_mode(void* handle, int mode) noexcept;
 AW_API int aw_set_effects(void* handle, const float* gains, const int* enabled, int count) noexcept;

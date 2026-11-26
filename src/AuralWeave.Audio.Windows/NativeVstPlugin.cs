@@ -44,6 +44,9 @@ public sealed class NativeVstPlugin : IDisposable
             throw Failure(error, "Could not set the plugin sample rate.");
     }
 
+    [DllImport(Library, EntryPoint = "aw_vst_set_editor_palette", CallingConvention = CallingConvention.Cdecl)]
+    public static extern void SetEditorPalette(uint background, uint text, uint border, uint hover, uint pressed);
+
     public void ShowEditor(IntPtr owner)
     {
         var error = new StringBuilder(ErrorCapacity);
