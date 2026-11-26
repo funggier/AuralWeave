@@ -4,7 +4,9 @@
 
 Preset storage: `presets/filters/*.awfilter` relative to the executable directory (the portable folder may be relocated). No user profile or registry dependency is added for this feature.
 
-New files use `SchemaVersion=2` with `Name` and an ordered `Filters` array. Each entry stores `Kind`, `Enabled` and `Parameter` (semitones for Pitch Shift). EQ has an optional `Equalizer` object and Compressor an optional `Compressor` object. If the object is absent, the filter uses its defaults. Existing schema 1 presets remain readable.
+The files contain `Name` and an ordered `Filters` array. Presets with **EQ (5 Band)** or **EQ (7 Band)** use `SchemaVersion=3` and store optional `BandGainsDb` values from low to high frequency. Presets with the earlier filters continue to use schema 2. The `equalizer` entry and its `Equalizer` object still represent **EQ (3 Band)**. Schema 1 and 2 presets remain readable.
+
+When loading or importing a v0.4.0 preset, the app skips the retired Pitch Shift stage and reports it in the status line. The other filters keep their settings and order. Loading a preset leaves its file on disk as it was.
 
 **Never included:** Sound Input choice, audio endpoint IDs, Sound Output choices, output gains/mute, Windows hardware identification, or route session state.
 

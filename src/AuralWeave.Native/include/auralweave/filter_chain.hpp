@@ -13,14 +13,14 @@ namespace auralweave {
 // Blank/unselected slots are OMITTED from the native graph.
 enum class FilterKind : int {
     gain = 1, rnnoise = 2, noise_gate = 3, limiter = 4, equalizer = 5,
-    compressor = 6, pitch_shift = 7
+    compressor = 6, equalizer_5_band = 8, equalizer_7_band = 9
 };
 
 struct FilterSpec {
     FilterKind kind{};
     float parameter{};
     bool enabled{true};
-    std::array<float, 4> additional{};
+    std::array<float, 6> additional{};
 };
 
 /// Construct this immutable-topology DSP graph off the real-time worker.
@@ -38,9 +38,8 @@ private:
         explicit Stage(FilterSpec spec) : spec(spec) {}
         FilterSpec spec;
         std::unique_ptr<RnnoiseProcessor> noise;
-        std::unique_ptr<ThreeBandEqualizer> equalizer;
+        std::unique_ptr<Equalizer> equalizer;
         std::unique_ptr<Compressor> compressor;
-        std::unique_ptr<PitchShifter> pitch;
         float envelope{1.0F};
         float smooth_gain{1.0F};
         bool previously_enabled{};

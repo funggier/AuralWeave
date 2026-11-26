@@ -1,19 +1,26 @@
 #include "auralweave/voice_filters.hpp"
-#include "signalsmith-stretch.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 
 namespace auralweave {
 
-ThreeBandEqualizer::ThreeBandEqualizer(std::uint32_t sample_rate, float low_db,
-                                       float mid_db, float high_db) {
-    bands_[0].configure(BandKind::low_shelf, 160.0, sample_rate, low_db);
-    bands_[1].configure(BandKind::peak, 1000.0, sample_rate, mid_db);
-    bands_[2].configure(BandKind::high_shelf, 3500.0, sample_rate, high_db);
+Equalizer::Equalizer(std::uint32_t sample_rate, std::span<const double> frequencies,
+                     std::span<const float> gains)
+    : band_count_(frequencies.size()) {
+    for (std::size_t band = 0; band < band_count_; ++band) {
+        const auto frequency = frequencies[band];
+        // A band beyond the source's Nyquist frequency cannot be realized.
+        if (frequency >= sample_rate / 2.0) continue;
+
+        BandKind kind = BandKind::peak;
+        if (band == 0) kind = BandKind::low_shelf;
+        else if (band == band_count_ - 1) kind = BandKind::high_shelf;
+        bands_[band].configure(kind, frequency, sample_rate, gains[band]);
+    }
 }
 
-void ThreeBandEqualizer::Band::configure(BandKind kind, double frequency,
+void Equalizer::Band::configure(BandKind kind, double frequency,
                                         double rate, double db) noexcept {
     if (db == 0.0) return;
     active = true;
@@ -60,7 +67,7 @@ void ThreeBandEqualizer::Band::configure(BandKind kind, double frequency,
     a2 /= a0;
 }
 
-void ThreeBandEqualizer::Band::process(float* samples, std::size_t frames,
+void Equalizer::Band::process(float* samples, std::size_t frames,
                                       std::uint16_t channels) noexcept {
     if (!active) return;
     for (std::size_t i = 0; i < frames * channels; i += channels) {
@@ -79,9 +86,10 @@ void ThreeBandEqualizer::Band::process(float* samples, std::size_t frames,
     }
 }
 
-void ThreeBandEqualizer::process(float* samples, std::size_t frames,
+void Equalizer::process(float* samples, std::size_t frames,
                                 std::uint16_t channels) noexcept {
-    for (auto& band : bands_) band.process(samples, frames, channels);
+    for (std::size_t band = 0; band < band_count_; ++band)
+        bands_[band].process(samples, frames, channels);
 }
 
 Compressor::Compressor(std::uint32_t sample_rate, float threshold_db, float ratio,
@@ -104,46 +112,6 @@ void Compressor::process(float* samples, std::size_t frames, std::uint16_t chann
         const float applied_gain = gain_ * makeup_;
         for (std::size_t ch = 0; ch < channels; ++ch)
             samples[i + ch] *= applied_gain;
-    }
-}
-
-struct PitchShifter::State {
-    static constexpr int chunk_frames = 1024;
-    signalsmith::stretch::SignalsmithStretch<float> stretch;
-    std::uint16_t channels;
-    std::array<std::array<float, chunk_frames>, 2> input{};
-    std::array<std::array<float, chunk_frames>, 2> output{};
-
-    State(std::uint32_t sample_rate, std::uint16_t channel_count, float semitones)
-        : channels(channel_count) {
-        // 32 ms analysis window and 8 ms hop. Split FFT work over callbacks.
-        stretch.configure(channels, static_cast<int>(sample_rate * 32 / 1000),
-                          static_cast<int>(sample_rate * 8 / 1000), true);
-        stretch.setTransposeSemitones(semitones);
-        stretch.setFormantFactor(1.0F, true);
-    }
-};
-
-PitchShifter::PitchShifter(std::uint32_t sample_rate, std::uint16_t channels, float semitones)
-    : state_(std::make_unique<State>(sample_rate, channels, semitones)) {}
-
-PitchShifter::~PitchShifter() = default;
-
-void PitchShifter::process(float* samples, std::size_t frames) noexcept {
-    auto& state = *state_;
-    while (frames) {
-        const auto block = static_cast<int>(std::min<std::size_t>(frames, State::chunk_frames));
-        for (int frame = 0; frame < block; ++frame)
-            for (int ch = 0; ch < state.channels; ++ch)
-                state.input[ch][frame] = samples[frame * state.channels + ch];
-
-        state.stretch.process(state.input, block, state.output, block);
-
-        for (int frame = 0; frame < block; ++frame)
-            for (int ch = 0; ch < state.channels; ++ch)
-                samples[frame * state.channels + ch] = state.output[ch][frame];
-        samples += block * state.channels;
-        frames -= block;
     }
 }
 

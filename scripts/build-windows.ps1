@@ -81,8 +81,6 @@ try {
         New-Item -ItemType Directory -Force -Path $licenseFolder | Out-Null
         Copy-Item -LiteralPath (Join-Path $root 'third_party\rnnoise\COPYING') -Destination (Join-Path $licenseFolder 'RNNoise-v0.1.1-BSD-3-Clause.txt') -Force
 
-        Copy-Item -LiteralPath (Join-Path $root 'third_party\signalsmith-stretch\LICENSE.txt') -Destination (Join-Path $licenseFolder 'Signalsmith-Stretch-MIT.txt') -Force
-        Copy-Item -LiteralPath (Join-Path $root 'third_party\signalsmith-linear\LICENSE.txt') -Destination (Join-Path $licenseFolder 'Signalsmith-Linear-MIT.txt') -Force
 
         $archive = Join-Path $root ("dist\AuralWeave-v$version-Windows-x64.zip")
         Compress-Archive -Path (Join-Path $target '*') -DestinationPath $archive -CompressionLevel Optimal -Force

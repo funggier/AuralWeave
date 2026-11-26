@@ -21,16 +21,17 @@ Sound Input -> Filter 01 -> Filter 02 -> ... -> Filter N -> Multi-Output Distrib
 | RNNoise Standard | fixed model | Xiph v0.1.1 at 48 kHz, 480-sample frames, per-stage state |
 | Noise Gate | threshold -45 dB (range -80 to 0 dB) | basic envelope gate; 5 ms attack, 80 ms release |
 | Limiter | ceiling -1 dBFS (range -24 to 0 dBFS) | zero-lookahead peak ceiling, 100 ms recovery |
-| EQ | 160 Hz low shelf, 1 kHz mid bell, 3.5 kHz high shelf. Each starts at 0 dB and adjusts from −12 to +12 dB | Three biquad bands with separate state per channel |
+| EQ (3 Band) | 160 Hz, 1 kHz, 3.5 kHz | Three biquad bands |
+| EQ (5 Band) | 100 Hz, 300 Hz, 1 kHz, 3 kHz, 8 kHz | Five biquad bands |
+| EQ (7 Band) | 80 Hz, 160 Hz, 400 Hz, 1 kHz, 2.5 kHz, 5 kHz, 10 kHz | Seven biquad bands |
 | Compressor | −18 dBFS threshold, 3:1 ratio, 10 ms attack, 100 ms release, 0 dB makeup gain | Stereo-linked peak detector with attack and release smoothing |
-| Pitch Shift | 0 semitones by default, adjustable from −12 to +12 in 0.1-semitone steps | Transposes without changing duration, using Signalsmith Stretch with formant compensation |
 
-Flat EQ and Pitch Shift at 0 semitones are exact audio bypasses. EQ and Compressor process each incoming sample without lookahead. An active Pitch Shift uses a 32 ms analysis window and an 8 ms hop, so it adds buffering to live monitoring. Increase or decrease pitch with the semitone control. Pitch correction to a song's key and AI-based timbre conversion are separate features.
+Each EQ starts flat at 0 dB and adjusts from −12 to +12 dB per band. The lowest and highest bands are shelves and the others are bell filters. All variants keep separate state per stereo channel and process audio without lookahead. Bands at or above half the input sample rate are bypassed. Flat EQ passes samples through exactly.
 
 ## Processing architecture
 
 - WPF manages the list of `FilterStage` records with UUIDs and presents controls.
-- `AuralWeave.Audio.Windows` validates the list and sends ordered kinds/parameters/enabled flags through the versioned C ABI function `aw_set_filter_chain_v2`. The original scalar entry point is retained for existing native callers.
+- `AuralWeave.Audio.Windows` validates the list and sends ordered kinds/parameters/enabled flags through the versioned C ABI function `aw_set_filter_chain_v3`. The earlier entry points remain available for supported filter kinds.
 - The Native C++ route prepares the new `FilterChain` outside the packet-processing callback, then atomically publishes a shared graph pointer. Capture packets process the selected graph in order.
 - Audio frames always pass through Native WASAPI, with output fan-out to selected device endpoints.
 - For RNNoise frames and device mix-rate conversion the native code continues using its bounded resampling adapters.

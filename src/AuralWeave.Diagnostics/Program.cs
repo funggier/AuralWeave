@@ -101,8 +101,9 @@ try
         var voice = new FilterStage[]
         {
             new(Guid.NewGuid(), FilterKind.Equalizer, Equalizer: new(-1f, 2f, 0f)),
-            new(Guid.NewGuid(), FilterKind.Compressor, Compressor: CompressorSettings.Default),
-            new(Guid.NewGuid(), FilterKind.PitchShift, Parameter: 3f)
+            new(Guid.NewGuid(), FilterKind.Equalizer5Band, BandGainsDb: [2f, -1f, 3f, -2f, 1f]),
+            new(Guid.NewGuid(), FilterKind.Equalizer7Band, BandGainsDb: [-1f, 2f, -3f, 4f, -3f, 2f, -1f]),
+            new(Guid.NewGuid(), FilterKind.Compressor, Compressor: CompressorSettings.Default)
         };
         route.ReplaceFilterChain(voice);
         route.Start(input.Id, sinks);
@@ -129,9 +130,10 @@ try
         var processed = route.CapturedFrames;
         var errorDuring = route.LastError;
         route.ReplaceFilterChain([
-            voice[2] with { Parameter = -2f },
+            voice[2] with { BandGainsDb = [1f, 2f, -1f, 0f, 0f, 2f, 6f] },
             voice[0],
             voice[1] with { Enabled = false },
+            voice[3],
             new FilterStage(Guid.NewGuid(), FilterKind.Limiter, true, -2f)
         ]);
         await Task.Delay(700);

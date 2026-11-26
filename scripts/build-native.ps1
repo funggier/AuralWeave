@@ -20,15 +20,6 @@ if (!(Test-Path -LiteralPath (Join-Path $third 'COPYING'))) {
     throw 'Pinned RNNoise v0.1.1 source and COPYING file are mandatory; do not auto-download during builds.'
 }
 
-$stretch = Join-Path $root 'third_party\signalsmith-stretch'
-$linear = Join-Path $root 'third_party\signalsmith-linear'
-foreach ($pitchSource in @(
-    (Join-Path $stretch 'signalsmith-stretch.h'), (Join-Path $stretch 'LICENSE.txt'),
-    (Join-Path $linear 'signalsmith-linear\stft.h'), (Join-Path $linear 'signalsmith-linear\fft.h'),
-    (Join-Path $linear 'LICENSE.txt'))) {
-    if (!(Test-Path -LiteralPath $pitchSource)) { throw "Missing pinned Pitch Shift dependency: $pitchSource" }
-}
-
 $out = Join-Path $root 'build\native'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
@@ -39,7 +30,7 @@ $compileRnnoise = 'cl /nologo /O2 /TC /D_USE_MATH_DEFINES /I"' + $rnSrc +
     '" /I"' + $rnInc + '" /c ' + $rnFiles
 
 $common = '/nologo /std:c++20 /EHsc /O2 /W4 /WX /utf-8 /I"' + $include +
-    '" /I"' + $rnInc + '" /external:W0 /external:I"' + $stretch + '" /external:I"' + $linear + '" '
+    '" /I"' + $rnInc + '" '
 $graph = '"' + (Join-Path $src 'src\route_graph.cpp') + '" '
 $resampler = '"' + (Join-Path $src 'src\audio_resampler.cpp') + '" '
 $noise = '"' + (Join-Path $src 'src\rnnoise_processor.cpp') + '" '

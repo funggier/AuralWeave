@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace AuralWeave.Core;
 
 /// <summary>Audio filter kinds in their native processing order (C ABI values).</summary>
@@ -10,7 +12,9 @@ public enum FilterKind
     Limiter = 4,
     Equalizer = 5,
     Compressor = 6,
-    PitchShift = 7
+    PitchShift = 7, // Reserved for reading v0.4.0 presets.
+    Equalizer5Band = 8,
+    Equalizer7Band = 9
 }
 
 public sealed record EqualizerSettings(float LowDb, float MidDb, float HighDb)
@@ -30,8 +34,16 @@ public sealed record FilterStage(
     bool Enabled = true,
     float Parameter = 0f,
     EqualizerSettings? Equalizer = null,
-    CompressorSettings? Compressor = null)
+    CompressorSettings? Compressor = null,
+    ImmutableArray<float>? BandGainsDb = null)
 {
+    public static int ExtendedEqualizerBandCount(FilterKind kind) => kind switch
+    {
+        FilterKind.Equalizer5Band => 5,
+        FilterKind.Equalizer7Band => 7,
+        _ => 0
+    };
+
     public static float DefaultParameter(FilterKind kind) => kind switch
     {
         FilterKind.Gain => 1f,
@@ -52,9 +64,11 @@ public static class FilterStageRules
         {
             if (!ids.Add(stage.Id)) throw new ArgumentException("Duplicate filter instance ID.");
             if (++count > 64) throw new ArgumentException("At most 64 filters are supported.");
+            var bandCount = FilterStage.ExtendedEqualizerBandCount(stage.Kind);
             if (!Enum.IsDefined(stage.Kind) || !float.IsFinite(stage.Parameter) ||
                 (stage.Equalizer is not null && stage.Kind is not FilterKind.Equalizer) ||
-                (stage.Compressor is not null && stage.Kind is not FilterKind.Compressor))
+                (stage.Compressor is not null && stage.Kind is not FilterKind.Compressor) ||
+                (stage.BandGainsDb is not null && bandCount == 0))
                 throw new ArgumentException("Invalid filter configuration.");
 
             var eq = stage.Equalizer ?? EqualizerSettings.Flat;
@@ -70,13 +84,16 @@ public static class FilterStageRules
                     eq.LowDb is >= -12f and <= 12f &&
                     eq.MidDb is >= -12f and <= 12f &&
                     eq.HighDb is >= -12f and <= 12f,
+                FilterKind.Equalizer5Band or FilterKind.Equalizer7Band => stage.Parameter == 0f &&
+                    (stage.BandGainsDb is not { } bands ||
+                     (!bands.IsDefault && bands.Length == bandCount &&
+                      bands.All(db => db is >= -12f and <= 12f))),
                 FilterKind.Compressor => stage.Parameter == 0f &&
                     compressor.ThresholdDb is >= -60f and <= 0f &&
                     compressor.Ratio is >= 1f and <= 20f &&
                     compressor.AttackMs is >= 1f and <= 100f &&
                     compressor.ReleaseMs is >= 10f and <= 1000f &&
                     compressor.MakeupDb is >= 0f and <= 24f,
-                FilterKind.PitchShift => stage.Parameter is >= -12f and <= 12f,
                 _ => false
             };
             if (!valid) throw new ArgumentOutOfRangeException(

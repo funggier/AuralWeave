@@ -30,8 +30,13 @@ AW_API int aw_set_filter_chain(void* handle, const int* kinds, const float* para
 // v2 layout: five consecutive floats per stage, unused fields zero.
 // Equalizer=5: low/mid/high gain (dB). Compressor=6: threshold (dBFS),
 // ratio, attack (ms), release (ms), makeup gain (dB).
-// Pitch Shift=7: semitones. All scalar effects use the first float.
+// Kind 7 is reserved. All scalar effects use the first float.
 AW_API int aw_set_filter_chain_v2(void* handle, const int* kinds, const float* parameters,
+                                  const int* enabled, int count) noexcept;
+// v3 layout: seven consecutive floats per stage. Extends v2 with
+// EQ (5 Band)=8 and EQ (7 Band)=9, both packed lowest to highest frequency.
+// Existing kinds use the same leading values as before. Unused fields are zero.
+AW_API int aw_set_filter_chain_v3(void* handle, const int* kinds, const float* parameters,
                                   const int* enabled, int count) noexcept;
 // 0 = DSP bypass; 1 = built-in RNNoise v0.1.1 standard model.
 AW_API int aw_set_noise_mode(void* handle, int mode) noexcept;

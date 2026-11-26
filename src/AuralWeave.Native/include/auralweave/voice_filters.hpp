@@ -3,13 +3,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
+#include <span>
 
 namespace auralweave {
 
-class ThreeBandEqualizer final {
+class Equalizer final {
 public:
-    ThreeBandEqualizer(std::uint32_t sample_rate, float low_db, float mid_db, float high_db);
+    Equalizer(std::uint32_t sample_rate, std::span<const double> frequencies,
+              std::span<const float> gains);
     void process(float* samples, std::size_t frames, std::uint16_t channels) noexcept;
 
 private:
@@ -23,7 +24,8 @@ private:
         void configure(BandKind kind, double frequency, double rate, double db) noexcept;
         void process(float* samples, std::size_t frames, std::uint16_t channels) noexcept;
     };
-    std::array<Band, 3> bands_{};
+    std::array<Band, 7> bands_{};
+    std::size_t band_count_{};
 };
 
 class Compressor final {
@@ -35,17 +37,6 @@ public:
 private:
     float threshold_, exponent_, attack_, release_, makeup_;
     float gain_{1.0F};
-};
-
-class PitchShifter final {
-public:
-    PitchShifter(std::uint32_t sample_rate, std::uint16_t channels, float semitones);
-    ~PitchShifter();
-    void process(float* samples, std::size_t frames) noexcept;
-
-private:
-    struct State;
-    std::unique_ptr<State> state_;
 };
 
 } // namespace auralweave

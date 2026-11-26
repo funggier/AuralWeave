@@ -77,7 +77,7 @@ public partial class MainWindow
         }
     }
 
-    private void LoadPresetIntoStudio(FilterPresetDocument preset)
+    private void LoadPresetIntoStudio(FilterPresetDocument preset, string action = "Loaded")
     {
         var restored = FilterPresetStore.Restore(preset);
         // Update native DSP first. Any invalid preset leaves the existing route
@@ -90,7 +90,9 @@ public partial class MainWindow
         _collapseAllNext = true;
         PresetNameBox.Text = preset.Name;
         RefreshFilterRows();
-        Status($"Loaded '{preset.Name}' — {restored.Count} filter(s); audio devices unchanged.");
+        var skipped = restored.Count < preset.Filters.Count
+            ? " Pitch Shift was skipped." : string.Empty;
+        Status($"{action} '{preset.Name}' · {restored.Count} filter(s).{skipped}");
     }
 
     private void ExportPresetClicked(object sender, RoutedEventArgs e)
@@ -140,10 +142,9 @@ public partial class MainWindow
                 return;
             // Validate and apply before saving. An invalid preset cannot
             // corrupt the existing live route or local preset collection.
-            LoadPresetIntoStudio(preset);
+            LoadPresetIntoStudio(preset, action: "Imported");
             _presetStore.Save(preset, overwrite);
             RefreshPresetList(preset.Name);
-            Status($"Imported '{preset.Name}' into portable Filter presets.");
         }
         catch (Exception ex)
         {

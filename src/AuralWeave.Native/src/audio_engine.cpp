@@ -219,17 +219,17 @@ public:
     std::uint64_t overruns() const noexcept { return overruns_.load(); }
     std::uint64_t underruns() const noexcept { return underruns_.load(); }
     bool set_filter_chain(const int* kinds, const float* parameters,
-                          const int* enabled, int count, bool extended) {
+                          const int* enabled, int count, int stride, auralweave::FilterKind last_kind) {
         if (count < 0 || count > 64 || (count > 0 &&
             (!kinds || !parameters || !enabled))) return false;
         std::vector<auralweave::FilterSpec> specs;
         specs.reserve(static_cast<std::size_t>(count));
         for (int i = 0; i < count; ++i) {
             const auto kind = static_cast<auralweave::FilterKind>(kinds[i]);
-            if (!extended && kind > auralweave::FilterKind::limiter) return false;
-            const auto* values = parameters + i * (extended ? 5 : 1);
+            if (kind > last_kind) return false;
+            const auto* values = parameters + i * stride;
             auralweave::FilterSpec spec{kind, values[0], enabled[i] != 0};
-            if (extended) std::copy_n(values + 1, spec.additional.size(), spec.additional.begin());
+            std::copy_n(values + 1, stride - 1, spec.additional.begin());
             if (!auralweave::valid_filter_spec(spec)) return false;
             specs.push_back(spec);
         }
@@ -621,14 +621,21 @@ AW_API int aw_set_filter_chain(void* handle, const int* kinds,
                                 int count) noexcept {
     if (!handle) return 0;
     try { return static_cast<NativeRoute*>(handle)->set_filter_chain(
-        kinds, parameters, enabled, count, false) ? 1 : 0; }
+        kinds, parameters, enabled, count, 1, auralweave::FilterKind::limiter) ? 1 : 0; }
     catch (...) { return 0; }
 }
 AW_API int aw_set_filter_chain_v2(void* handle, const int* kinds, const float* parameters,
                                   const int* enabled, int count) noexcept {
     if (!handle) return 0;
     try { return static_cast<NativeRoute*>(handle)->set_filter_chain(
-        kinds, parameters, enabled, count, true) ? 1 : 0; }
+        kinds, parameters, enabled, count, 5, auralweave::FilterKind::compressor) ? 1 : 0; }
+    catch (...) { return 0; }
+}
+AW_API int aw_set_filter_chain_v3(void* handle, const int* kinds, const float* parameters,
+                                  const int* enabled, int count) noexcept {
+    if (!handle) return 0;
+    try { return static_cast<NativeRoute*>(handle)->set_filter_chain(
+        kinds, parameters, enabled, count, 7, auralweave::FilterKind::equalizer_7_band) ? 1 : 0; }
     catch (...) { return 0; }
 }
 AW_API int aw_set_noise_mode(void* handle, int mode) noexcept {

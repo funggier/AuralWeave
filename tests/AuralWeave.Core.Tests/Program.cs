@@ -148,8 +148,7 @@ try
         new FilterStage(Guid.NewGuid(), FilterKind.Limiter, true, -3f),
         new FilterStage(Guid.NewGuid(), FilterKind.Equalizer, Equalizer: new(2f, -3f, 4f)),
         new FilterStage(Guid.NewGuid(), FilterKind.Compressor, false,
-            Compressor: new(-21f, 3.5f, 15f, 150f, 2f)),
-        new FilterStage(Guid.NewGuid(), FilterKind.PitchShift, true, 2.5f)
+            Compressor: new(-21f, 3.5f, 15f, 150f, 2f))
     };
     var preset = presetStore.Create("Voice Natural", presetFilters);
     var saved = presetStore.Save(preset);
@@ -175,6 +174,42 @@ try
     FilterPresetStore.WriteFile(importedPath, preset);
     Verify(FilterPresetStore.ReadFile(importedPath).Filters.Count == presetFilters.Length,
         "Import/Export share the same strict file format");
+
+    var legacyPath = Path.Combine(presetTestFolder, "v2.awfilter");
+    File.WriteAllText(legacyPath, """
+        {"SchemaVersion":2,"Name":"Old EQ","Filters":[
+          {"Kind":"equalizer","Enabled":true,"Parameter":0,"Equalizer":{"LowDb":2,"MidDb":-3,"HighDb":4}},
+          {"Kind":"pitchShift","Enabled":true,"Parameter":2.5},
+          {"Kind":"gain","Enabled":false,"Parameter":0.75}
+        ]}
+        """);
+    var legacy = FilterPresetStore.Restore(FilterPresetStore.ReadFile(legacyPath));
+    Verify(legacy is [{ Kind: FilterKind.Equalizer, Equalizer: { LowDb: 2f, MidDb: -3f, HighDb: 4f } },
+                      { Kind: FilterKind.Gain, Enabled: false, Parameter: .75f }],
+        "schema v2 preserves the three-band EQ and skips the retired Pitch Shift");
+
+    var newEq = new FilterStage[]
+    {
+        new(Guid.NewGuid(), FilterKind.Equalizer5Band, BandGainsDb: [1f, -2f, 3f, -4f, 5f]),
+        new(Guid.NewGuid(), FilterKind.Equalizer7Band, false, BandGainsDb: [-1f, 2f, -3f, 4f, -5f, 6f, 7f])
+    };
+    var eqDoc = presetStore.Create("Extended EQ", newEq);
+    var eqFile = presetStore.Save(eqDoc);
+    var eqRestored = FilterPresetStore.Restore(FilterPresetStore.ReadFile(eqFile.FilePath));
+    Verify(eqDoc.SchemaVersion == 3 && eqRestored.Count == newEq.Length && eqRestored.Zip(newEq).All(x =>
+        x.First.Kind == x.Second.Kind && x.First.Id != x.Second.Id && x.First.Enabled == x.Second.Enabled &&
+        x.First.BandGainsDb!.Value.SequenceEqual(x.Second.BandGainsDb!.Value)),
+        "schema v3 preserves independent five- and seven-band settings");
+    Verify(preset.SchemaVersion == 2, "presets using existing filters still write schema v2");
+    try
+    {
+        presetStore.Create("Incorrect bands", [newEq[0] with { BandGainsDb = [1f, 2f] }]);
+        throw new Exception("Wrong EQ band count unexpectedly accepted");
+    }
+    catch (ArgumentOutOfRangeException)
+    {
+        Verify(true, "preset validation rejects an incorrect EQ band count");
+    }
 
     var oldPath = Path.Combine(presetTestFolder, "v1.awfilter");
     File.WriteAllText(oldPath, """
@@ -207,7 +242,7 @@ try
     try
     {
         File.WriteAllText(Path.Combine(presetTestFolder, "tampered.awfilter"),
-            jsonText.Replace($"\"SchemaVersion\": {FilterPresetStore.CurrentSchemaVersion}", "\"SchemaVersion\": 999"));
+            jsonText.Replace($"\"SchemaVersion\": {preset.SchemaVersion}", "\"SchemaVersion\": 999"));
         FilterPresetStore.ReadFile(Path.Combine(presetTestFolder, "tampered.awfilter"));
         throw new Exception("Unsupported preset schema was accepted");
     }

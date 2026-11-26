@@ -43,11 +43,12 @@ static void check_voice_filters() {
     auto bypassed = input;
     FilterChain bypass(48000, 2, {
         {FilterKind::equalizer, 0.0F, true},
-        {FilterKind::pitch_shift, 0.0F, true},
-        {FilterKind::pitch_shift, 12.0F, false}
+        {FilterKind::equalizer_5_band, 0.0F, true},
+        {FilterKind::equalizer_7_band, 0.0F, true},
+        {FilterKind::equalizer_7_band, 12.0F, false, {4.0F}}
     });
     bypass.process(bypassed.data(), 2);
-    expect(bypassed == input, "flat EQ and zero or bypassed Pitch Shift preserve exact samples");
+    expect(bypassed == input, "flat and disabled EQ stages preserve exact samples");
 
     for (const auto [frequency, spec] : std::array{
          std::pair{40.0, FilterSpec{FilterKind::equalizer, 6.0F, true}},
@@ -79,23 +80,39 @@ static void check_voice_filters() {
                                         {std::numeric_limits<float>::quiet_NaN()}}),
            "native rejects invalid secondary filter parameters");
 
-    for (auto rate : {48000U, 192000U}) {
-        for (auto semitones : {-12.0F, 12.0F}) {
-            auto samples = tone(rate, 440.0);
-            FilterChain pitch(rate, 1, {{FilterKind::pitch_shift, semitones, true}});
-            std::size_t position = 0;
-            while (position < samples.size()) {
-                const auto count = std::min<std::size_t>(rate / 100 - position % 37, samples.size() - position);
-                pitch.process(samples.data() + position, count);
-                position += count;
+    const auto check_bands = [](FilterKind kind, std::span<const double> frequencies) {
+        for (auto rate : {48000U, 192000U}) {
+            for (std::size_t band = 0; band < frequencies.size(); ++band) {
+                const float gain = band % 2 == 0 ? 6.0F : -6.0F;
+                FilterSpec spec{kind, 0.0F, true};
+                if (band == 0) spec.parameter = gain;
+                else spec.additional[band - 1] = gain;
+                const bool shelf = band == 0 || band == frequencies.size() - 1;
+                const auto frequency = frequencies[band];
+                auto samples = tone(rate, frequency);
+                FilterChain eq(rate, 1, {spec});
+                eq.process(samples.data(), samples.size());
+                const auto expected = .1 * std::pow(10.0, gain / (shelf ? 40.0 : 20.0));
+                if (std::fabs(tone_level(samples, rate, frequency) - expected) >= .003)
+                    return false;
             }
-            const auto target = semitones > 0 ? 880.0 : 220.0;
-            const auto shifted_level = tone_level(samples, rate, target);
-            expect(std::all_of(samples.begin(), samples.end(), [](float v) { return std::isfinite(v); }) &&
-                   shifted_level > 0.01 && shifted_level > 5.0 * tone_level(samples, rate, 440.0),
-                   "Pitch Shift transposes a tone by one octave across uneven route packets");
         }
-    }
+        return true;
+    };
+    const std::array five_band{100.0, 300.0, 1000.0, 3000.0, 8000.0};
+    const std::array seven_band{80.0, 160.0, 400.0, 1000.0, 2500.0, 5000.0, 10000.0};
+    expect(check_bands(FilterKind::equalizer_5_band, five_band),
+           "all five EQ bands achieve the requested response at 48 and 192 kHz");
+    expect(check_bands(FilterKind::equalizer_7_band, seven_band),
+           "all seven EQ bands achieve the requested response at 48 and 192 kHz");
+    FilterChain narrowband(8000, 1, {{FilterKind::equalizer_7_band, 0.0F, true,
+                                    {0, 0, 0, 0, 12, -12}}});
+    auto narrow_tone = tone(8000, 1000.0);
+    const auto unchanged = narrow_tone;
+    narrowband.process(narrow_tone.data(), narrow_tone.size());
+    expect(narrow_tone == unchanged, "unavailable bands at low sample rates are bypassed");
+    expect(!valid_filter_spec({FilterKind::equalizer_7_band, 0.0F, true, {0, 0, 0, 0, 0, 13}}),
+           "native EQ rejects an invalid seventh band gain");
 }
 
 int wmain(int argc, wchar_t* argv[]) {

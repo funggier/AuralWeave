@@ -1,4 +1,4 @@
-using System.Text;
+using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -9,10 +9,12 @@ public sealed record FilterPresetStage(FilterKind Kind, bool Enabled, float Para
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     EqualizerSettings? Equalizer = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    CompressorSettings? Compressor = null)
+    CompressorSettings? Compressor = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ImmutableArray<float>? BandGainsDb = null)
 {
     public FilterStage Restore() =>
-        new(Guid.NewGuid(), Kind, Enabled, Parameter, Equalizer, Compressor);
+        new(Guid.NewGuid(), Kind, Enabled, Parameter, Equalizer, Compressor, BandGainsDb);
 }
 public sealed record FilterPresetDocument(int SchemaVersion, string Name,
     List<FilterPresetStage> Filters);
@@ -24,7 +26,8 @@ public sealed record FilterPresetItem(string Name, string FilePath)
 
 public sealed class FilterPresetStore
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
+    private const int VoiceFiltersSchemaVersion = 2;
     private const int MaxPresetBytes = 128 * 1024;
     public const string Extension = ".awfilter";
     private static readonly JsonSerializerOptions Options = MakeOptions();
@@ -76,15 +79,18 @@ public sealed class FilterPresetStore
         var cleanName = ValidateName(name);
         var stages = filters.ToArray();
         FilterStageRules.Validate(stages);
-        return new FilterPresetDocument(CurrentSchemaVersion, cleanName,
+        var schema = stages.Any(x => FilterStage.ExtendedEqualizerBandCount(x.Kind) != 0)
+            ? CurrentSchemaVersion : VoiceFiltersSchemaVersion;
+        return new FilterPresetDocument(schema, cleanName,
             stages.Select(x => new FilterPresetStage(
-                x.Kind, x.Enabled, x.Parameter, x.Equalizer, x.Compressor)).ToList());
+                x.Kind, x.Enabled, x.Parameter, x.Equalizer, x.Compressor, x.BandGainsDb)).ToList());
     }
 
     public static List<FilterStage> Restore(FilterPresetDocument preset)
     {
         Validate(preset);
-        return preset.Filters.Select(x => x.Restore()).ToList();
+        return preset.Filters.Where(stage => stage.Kind != FilterKind.PitchShift)
+            .Select(stage => stage.Restore()).ToList();
     }
 
     public FilterPresetItem Save(FilterPresetDocument preset, bool overwrite = false)
@@ -137,7 +143,7 @@ public sealed class FilterPresetStore
 
     public static void Validate(FilterPresetDocument? preset)
     {
-        if (preset is null || preset.SchemaVersion is not (1 or CurrentSchemaVersion) ||
+        if (preset is null || preset.SchemaVersion is not (1 or VoiceFiltersSchemaVersion or CurrentSchemaVersion) ||
             preset.Filters is null)
             throw new InvalidDataException("Unsupported or malformed filter preset format.");
         ValidateName(preset.Name);
@@ -150,8 +156,17 @@ public sealed class FilterPresetStore
             if (preset.SchemaVersion == 1 &&
                 (stage.Kind > FilterKind.Limiter || stage.Equalizer is not null || stage.Compressor is not null))
                 throw new InvalidDataException("Preset uses filter settings introduced in schema 2.");
+            if (preset.SchemaVersion < CurrentSchemaVersion &&
+                (FilterStage.ExtendedEqualizerBandCount(stage.Kind) != 0 || stage.BandGainsDb is not null))
+                throw new InvalidDataException("Preset uses EQ settings introduced in schema 3.");
+            if (stage.Kind == FilterKind.PitchShift &&
+                (preset.SchemaVersion != VoiceFiltersSchemaVersion ||
+                 stage.Parameter is not (>= -12f and <= 12f) ||
+                 stage.Equalizer is not null || stage.Compressor is not null))
+                throw new InvalidDataException("Invalid legacy Pitch Shift entry.");
         }
-        FilterStageRules.Validate(preset.Filters.Select(stage => stage.Restore()));
+        FilterStageRules.Validate(preset.Filters.Where(stage => stage.Kind != FilterKind.PitchShift)
+            .Select(stage => stage.Restore()));
     }
 
     private static string ValidateName(string? name)

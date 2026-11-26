@@ -1,5 +1,13 @@
 # AuralWeave implementation status
 
+## Studio v0.4.1 — EQ (3 Band), EQ (5 Band), EQ (7 Band)
+
+- The three EQ layouts share the same native biquad implementation. All bands start flat and have independent ±12 dB controls.
+- Pitch Shift and its dependencies were removed. Loading a v0.4.0 preset skips only that stage and keeps the remaining filters and their settings. Presets with five- or seven-band EQ use schema 3. The three-band EQ retains its schema 2 format.
+- Windows 10 22H2 x64 Release build and all 38 Core tests passed. Native tests checked every new band at 48 and 192 kHz, flat bypass and bypass above the input's Nyquist frequency.
+- UI Automation checked all three dropdown options and 15 sliders in the extracted Portable ZIP, saved a mixed EQ preset, and restored the three-band settings from a legacy preset containing Pitch Shift.
+- Muted WASAPI routing from 192 kHz Line In to two outputs ran all three EQ types for 15 seconds after warmup with zero additional overrun or underrun frames. Live reorder, bypass and stop passed.
+
 ## Studio v0.4.0 — EQ, Compressor and Pitch Shift
 
 - The EXE icon uses the owner's 256 × 256 ICO. The two Studio logo images use the same artwork, decoded to PNG and scaled by WPF.

@@ -13,10 +13,11 @@
 | OUTPUT-03 | Remove one selected output | Device returns to candidate list |
 | OUTPUT-04 | Try selecting duplicate via row edit | Reject duplicate without corrupting routing |
 | OUTPUT-05 | Same output in two separate routes | Allowed by model; runtime reports device contention if unsupported |
-| FX-01 | Add EQ → Pitch → EQ | Both EQ instances persist independently and process in order |
-| FX-02 | Bypass second EQ | First EQ and Pitch still process |
+| FX-01 | Add EQ (3 Band) → Compressor → EQ (7 Band) | Both EQ instances persist independently and process in order |
+| FX-02 | Bypass second EQ | First EQ and Compressor still process |
 | FX-03 | Reorder effect instances | Config and ID remain bound to each instance |
-| FX-04 | Save/load preset with repeated effect type | Exact order/parameters/IDs preserved |
+| FX-04 | Save/load preset with repeated effect type | Order, parameters and bypass state preserved with fresh slot IDs |
+| FX-05 | Load a schema 2 preset containing EQ and Pitch Shift | EQ (3 Band) retains gains and the retired Pitch Shift stage is skipped |
 | NOISE-01 | Noise Bypass with enabled EQ | EQ still processes |
 | NOISE-02 | RNNoise 48 kHz input | Suppression engages with valid frame adaptation |
 | NOISE-03 | Unsupported input rate | Resampling/adapter or clear explicit rejection |

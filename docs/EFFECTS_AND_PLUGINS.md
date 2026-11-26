@@ -19,11 +19,11 @@ The diagram above describes the original proposal. In the current Studio, RNNois
 - Delete an instance without deleting its type/module from the installation.
 - Presets save filter order, parameters and bypass states. Loading generates new instance IDs.
 
-Example: `EQ(A) → Pitch Shift(B) → EQ(C) → EQ(D)` is valid. EQ(A), EQ(C), EQ(D) must never share mutable parameter state merely because the type matches.
+Example: `EQ(A) → Compressor(B) → EQ(C) → EQ(D)` is valid. EQ(A), EQ(C), EQ(D) must never share mutable parameter state merely because the type matches.
 
 ## Voice processing
 
-- **Pitch Shift** raises or lowers the incoming voice by a fixed interval without changing its duration. The built-in filter uses formant compensation to help retain the character of the source voice.
+- **Pitch Shift** raises or lowers the incoming voice by a fixed interval without changing its duration. The v0.4.0 implementation was retired in v0.4.1.
 - **Formant shifting** moves resonances associated with vocal timbre. Separate formant controls are one option for a future voice changer.
 - **Pitch correction** detects the note and moves it towards a target note in a chosen key or scale. AutoTune is one example. [AutoTune documentation](https://help.antarestech.com/hc/en-us/articles/42855736822932-AutoTune-FAQ)
 - **AI voice conversion** uses a model to change vocal timbre, for example RVC. [RVC project](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI)

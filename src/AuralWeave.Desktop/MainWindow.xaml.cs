@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,9 +26,10 @@ public partial class MainWindow : Window
         new(FilterKind.RnnoiseStandard, "RNNoise Standard"),
         new(FilterKind.NoiseGate, "Noise Gate"),
         new(FilterKind.Limiter, "Limiter"),
-        new(FilterKind.Equalizer, "EQ"),
-        new(FilterKind.Compressor, "Compressor"),
-        new(FilterKind.PitchShift, "Pitch Shift")
+        new(FilterKind.Equalizer, "EQ (3 Band)"),
+        new(FilterKind.Equalizer5Band, "EQ (5 Band)"),
+        new(FilterKind.Equalizer7Band, "EQ (7 Band)"),
+        new(FilterKind.Compressor, "Compressor")
     ];
 
     private readonly List<FilterStage> _filters = [];
@@ -493,6 +495,21 @@ public partial class MainWindow : Window
                     (stage, value) => stage with
                     { Equalizer = (stage.Equalizer ?? EqualizerSettings.Flat) with { HighDb = value } });
                 break;
+            case FilterKind.Equalizer5Band:
+            case FilterKind.Equalizer7Band:
+                string[] labels = filter.Kind == FilterKind.Equalizer5Band
+                    ? ["Low shelf · 100 Hz", "300 Hz", "1 kHz", "3 kHz", "High shelf · 8 kHz"]
+                    : ["Low shelf · 80 Hz", "160 Hz", "400 Hz", "1 kHz", "2.5 kHz", "5 kHz", "High shelf · 10 kHz"];
+                var flat = ImmutableArray.CreateRange(new float[labels.Length]);
+                var gains = filter.BandGainsDb ?? flat;
+                for (var i = 0; i < labels.Length; ++i)
+                {
+                    var band = i;
+                    Slider(labels[band], gains[band], -12, 12, 0.1, "dB",
+                        (stage, value) => stage with
+                        { BandGainsDb = (stage.BandGainsDb ?? flat).SetItem(band, value) });
+                }
+                break;
             case FilterKind.Compressor:
                 var comp = filter.Compressor ?? CompressorSettings.Default;
                 Slider("Threshold", comp.ThresholdDb, -60, 0, 0.5, "dBFS",
@@ -510,11 +527,6 @@ public partial class MainWindow : Window
                 Slider("Makeup gain", comp.MakeupDb, 0, 24, 0.1, "dB",
                     (stage, value) => stage with
                     { Compressor = (stage.Compressor ?? CompressorSettings.Default) with { MakeupDb = value } });
-                break;
-            case FilterKind.PitchShift:
-                Slider("Pitch", filter.Parameter, -12, 12, 0.1, "st",
-                    (stage, value) => stage with { Parameter = value });
-                panel.Children.Add(MutedText("0 st bypasses pitch processing. Active shifting adds buffering."));
                 break;
         }
     }
