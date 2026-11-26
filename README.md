@@ -7,7 +7,7 @@ AuralWeave เป็นโปรแกรม Portable สำหรับจั�
 - รับเสียงจากไมโครโฟน, Line In, USB audio หรือ playback loopback
 - เรียงและเพิ่ม Gain, RNNoise Standard, Noise Gate, Limiter, Compressor และ EQ แบบ 3, 5 หรือ 7 ย่าน ซ้ำได้
 - ส่งเสียงพร้อมกันหลายเอาต์พุต พร้อมปรับ Gain และ Mute แยกกัน
-- เพิ่มการ์ด VST Plugin สำหรับเอฟเฟกต์ VST2 (.dll) แบบ 64 บิตจากโฟลเดอร์ที่เลือกเอง [คู่มือ VST Plugin](docs/VST_PLUGINS.md)
+- เพิ่มการ์ด VST Plugin สำหรับเอฟเฟกต์ VST2 (.dll) และ VST3 (.vst3) แบบ 64 บิต เลือกฟอร์แมตได้ในรายการ [คู่มือ VST Plugin](docs/VST_PLUGINS.md)
 - บันทึกและนำเข้า Filter Presets แบบ Portable
 
 [ดาวน์โหลด Windows x64 Portable จาก GitHub Releases](https://github.com/funggier/AuralWeave/releases)

@@ -1,7 +1,7 @@
 #pragma once
 #include "auralweave/rnnoise_processor.hpp"
 #include "auralweave/voice_filters.hpp"
-#include "auralweave/vst2_plugin.hpp"
+#include "auralweave/vst_plugin.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -22,7 +22,7 @@ struct FilterSpec {
     float parameter{};
     bool enabled{true};
     std::array<float, 6> additional{};
-    Vst2Handle plugin{};
+    VstPluginHandle plugin{};
 };
 
 /// Construct this immutable-topology DSP graph off the real-time worker.
@@ -42,6 +42,9 @@ private:
         std::unique_ptr<RnnoiseProcessor> noise;
         std::unique_ptr<Equalizer> equalizer;
         std::unique_ptr<Compressor> compressor;
+        float threshold{};
+        float attack{};
+        float release{};
         float envelope{1.0F};
         float smooth_gain{1.0F};
         bool previously_enabled{};

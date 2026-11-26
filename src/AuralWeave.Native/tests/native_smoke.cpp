@@ -2,6 +2,7 @@
 #include "auralweave/audio_resampler.hpp"
 #include "auralweave/rnnoise_processor.hpp"
 #include "auralweave/filter_chain.hpp"
+#include "auralweave/vst2_plugin.hpp"
 
 #include <algorithm>
 #include <array>
@@ -119,7 +120,9 @@ static void check_voice_filters() {
 // Opt-in signal check for a reverb VST2 effect installed on this machine.
 // Uses synthetic PCM without starting any Windows audio devices.
 static void check_vst2_reverb(const wchar_t* path) {
-    auto effect = Vst2Plugin::load(path, 48000);
+    const auto file = std::wstring_view(path);
+    const bool vst3 = file.ends_with(L".vst3");
+    VstPluginHandle effect = vst3 ? load_vst3(path, 48000) : Vst2Plugin::load(path, 48000);
     const FilterSpec spec{FilterKind::vst2, 0.0F, true, {}, effect};
     for (const auto rate : {48000U, 192000U}) {
         effect->configure(static_cast<int>(rate));
@@ -145,7 +148,7 @@ static void check_vst2_reverb(const wchar_t* path) {
                 if (block >= 23) tail_energy += static_cast<double>(sample) * sample;
             }
         }
-        std::cout << "VST2 " << rate << " Hz: tail energy " << tail_energy
+        std::cout << (vst3 ? "VST3 " : "VST2 ") << rate << " Hz: tail energy " << tail_energy
                   << ", maximum time per 10 ms packet " << worst_ms << " ms\n";
         expect(tail_energy > .00001, "VST2 produces a reverb tail after the source is silent");
     }
@@ -159,7 +162,7 @@ static void check_vst2_reverb(const wchar_t* path) {
 
 int wmain(int argc, wchar_t* argv[]) {
     try {
-        if (argc == 3 && std::wstring_view(argv[1]) == L"--vst2-reverb") {
+        if (argc == 3 && std::wstring_view(argv[1]) == L"--vst-reverb") {
             check_vst2_reverb(argv[2]);
             return 0;
         }
@@ -246,10 +249,25 @@ int wmain(int argc, wchar_t* argv[]) {
                std::fabs(up_output[1] - .5F) < .00001F,
                "mono input maps to stereo output");
 
+        StreamResampler matching(8000, 1, 8000, 1, 20);
+        std::vector<float> spread(170);
+        for (std::size_t i = 0; i < spread.size(); ++i)
+            spread[i] = static_cast<float>(i) / 100.0F - 1.1F;
+        matching.push(spread.data(), 150);
+        std::vector<float> first(130);
+        expect(matching.pop(first.data(), 130) == 130 && first.front() == -1.0F,
+               "matching PCM sends every frame immediately with clipping");
+        matching.push(spread.data() + 150, 20);
+        std::vector<float> second(42);
+        expect(matching.pop(second.data(), 42) == 40 &&
+               std::equal(second.begin(), second.begin() + 40, spread.begin() + 130) &&
+               second[40] == 0.0F && second[41] == 0.0F,
+               "matching PCM preserves frame order through ring wrap and zero-fills underrun");
+
         StreamResampler bounded(48000, 2, 48000, 2, 20);
         std::vector<float> flood(4800 * 2, .2F);
         bounded.push(flood.data(), 4800);
-        expect(bounded.overrun_frames() > 0 && bounded.buffered_frames() <= 960,
+        expect(bounded.overrun_frames() == 3840 && bounded.buffered_frames() == 960,
                "resampler ring is bounded and reports overrun");
         std::vector<float> large_read(2000 * 2);
         bounded.pop(large_read.data(), 2000);

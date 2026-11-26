@@ -1,5 +1,14 @@
 # AuralWeave implementation status
 
+## Studio v0.6.0 — VST formats, themed path, and audio buffering
+
+- The VST folder box and other text fields use the shared WPF palette in Monochrome Dark and Graphite. Scanning refreshes the corresponding VST card.
+- The plugin browser discovers x64 VST2 DLLs and x64 VST3 modules in the selected folder and the standard Windows VST3 directory. It displays both formats when installed and keeps the exact selected module in the preset. VST3 uses the pinned MIT interface headers and supports mono/stereo main buses.
+- Matching rate and channel count uses direct PCM buffering. Ring reads copy at most two contiguous spans, and the Noise Gate and Limiter coefficients are computed when building the filter graph.
+- On the Windows 10 test PC, the median synthetic stereo PCM ring test at 192 kHz was 11.873 → 2.809 microseconds per 10 ms packet for matching rates and 2.671 → 1.519 microseconds for 192-to-48 kHz. These measurements cover ring processing, not the entire audio path.
+- The Portable UI test selected both Crystalline formats from the same scan, switched to VST3 on a muted live route, verified both native editors, and restored a preset using the exact VST3 module. Both WPF palettes were checked for field and text colors.
+- Native tests detected comparable Crystalline reverb tails through VST2 and VST3 at 48 and 192 kHz. Separate 192 kHz Windows WASAPI tests captured 768,000 frames per format after warmup without additional overrun or underrun frames. The 15-second mixed-output soak had zero additional overruns or underruns after warmup.
+
 ## Studio v0.5.2 — Slider wheel hit areas
 
 - Transparent template borders extend wheel input 5 DIPs above and below the existing slider box without adding layout space.

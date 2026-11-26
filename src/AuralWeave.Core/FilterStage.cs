@@ -33,7 +33,9 @@ public sealed record VstPluginReference(string Path, string Sha256)
 {
     public bool IsValid() =>
         !string.IsNullOrWhiteSpace(Path) && Path.Length <= 32767 &&
-        !Path.Any(char.IsControl) && Path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+        !Path.Any(char.IsControl) &&
+        (Path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+         Path.EndsWith(".vst3", StringComparison.OrdinalIgnoreCase)) &&
         Sha256 is { Length: 64 } && Sha256.All(Uri.IsHexDigit);
 }
 

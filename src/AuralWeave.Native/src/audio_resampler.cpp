@@ -1,7 +1,6 @@
 #include "auralweave/audio_resampler.hpp"
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <stdexcept>
 
 namespace auralweave {
@@ -30,7 +29,6 @@ void StreamResampler::reset() noexcept {
     next_position_ = 0.0;
     previous_left_ = 0.0F;
     previous_right_ = 0.0F;
-    has_previous_ = false;
 }
 float StreamResampler::sample(const float* data, std::size_t frames,
                               std::int64_t offset, unsigned channel) const noexcept {
@@ -44,11 +42,12 @@ float StreamResampler::sample(const float* data, std::size_t frames,
 
 void StreamResampler::write_frame(float left, float right) noexcept {
     if (length_ == capacity_) {
-        head_ = (head_ + 1) % capacity_;
+        if (++head_ == capacity_) head_ = 0;
         --length_;
         ++overruns_;
     }
-    const auto at = (head_ + length_) % capacity_;
+    auto at = head_ + length_;
+    if (at >= capacity_) at -= capacity_;
     if (output_channels_ == 1)
         ring_[at] = std::clamp((left + right) * 0.5F, -1.0F, 1.0F);
     else {
@@ -58,8 +57,32 @@ void StreamResampler::write_frame(float left, float right) noexcept {
     ++length_;
 }
 
+void StreamResampler::push_matching_pcm(const float* data, std::size_t frames) noexcept {
+    if (frames > capacity_) {
+        const auto skipped = frames - capacity_;
+        data += skipped * output_channels_;
+        overruns_ += skipped;
+        frames = capacity_;
+    }
+    const auto dropped = length_ - std::min(length_, capacity_ - frames);
+    head_ = (head_ + dropped) % capacity_;
+    length_ -= dropped;
+    overruns_ += dropped;
+
+    const auto tail = (head_ + length_) % capacity_;
+    const auto first_samples = std::min(frames, capacity_ - tail) * output_channels_;
+    const auto clamp_sample = [](float sample) { return std::clamp(sample, -1.0F, 1.0F); };
+    std::transform(data, data + first_samples, ring_.data() + tail * output_channels_, clamp_sample);
+    std::transform(data + first_samples, data + frames * output_channels_, ring_.data(), clamp_sample);
+    length_ += frames;
+}
+
 void StreamResampler::push(const float* data, std::size_t frames) noexcept {
     if (!data || !frames) return;
+    if (source_rate_ == output_rate_ && source_channels_ == output_channels_) {
+        push_matching_pcm(data, frames);
+        return;
+    }
     const auto begin = static_cast<std::int64_t>(incoming_);
     const auto end = begin + static_cast<std::int64_t>(frames);
     const auto step = static_cast<double>(source_rate_) / static_cast<double>(output_rate_);
@@ -84,19 +107,15 @@ void StreamResampler::push(const float* data, std::size_t frames) noexcept {
     previous_left_ = data[(frames - 1) * source_channels_];
     previous_right_ = source_channels_ == 2
         ? data[(frames - 1) * source_channels_ + 1] : previous_left_;
-    has_previous_ = true;
     incoming_ += frames;
 }
 
 std::size_t StreamResampler::pop(float* destination, std::size_t frames) noexcept {
     if (!destination || !frames) return 0;
     const auto take = std::min(frames, length_);
-    for (std::size_t i = 0; i < take; ++i) {
-        const auto at = (head_ + i) % capacity_;
-        for (std::size_t channel = 0; channel < output_channels_; ++channel)
-            destination[i * output_channels_ + channel] =
-                ring_[at * output_channels_ + channel];
-    }
+    const auto first = std::min(take, capacity_ - head_);
+    std::copy_n(ring_.data() + head_ * output_channels_, first * output_channels_, destination);
+    std::copy_n(ring_.data(), (take - first) * output_channels_, destination + first * output_channels_);
     std::fill(destination + take * output_channels_,
               destination + frames * output_channels_, 0.0F);
     head_ = (head_ + take) % capacity_;

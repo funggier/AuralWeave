@@ -80,6 +80,15 @@ FilterChain::FilterChain(std::uint32_t sample_rate, std::uint16_t channels,
                     stage.compressor = std::make_unique<Compressor>(
                         sample_rate, spec.parameter, second, third, fourth, fifth);
                 break;
+            case FilterKind::noise_gate:
+                stage.threshold = std::pow(10.0F, spec.parameter / 20.0F);
+                stage.attack = std::exp(-1.0F / (sample_rate_ * 0.005F));
+                stage.release = std::exp(-1.0F / (sample_rate_ * 0.080F));
+                break;
+            case FilterKind::limiter:
+                stage.threshold = std::pow(10.0F, spec.parameter / 20.0F);
+                stage.release = std::exp(-1.0F / (sample_rate_ * 0.100F));
+                break;
             case FilterKind::vst2:
                 if (spec.plugin->sample_rate() != static_cast<int>(sample_rate))
                     throw std::runtime_error("VST plugin sample rate changed. Refresh the input and restart.");
@@ -108,15 +117,12 @@ void FilterChain::process(float* samples, std::size_t frames) noexcept {
                 break;
             case FilterKind::noise_gate: {
                 // Envelope gate, fixed 5ms attack and 80ms release.
-                const float threshold = std::pow(10.0F, parameter / 20.0F);
-                const float attack = std::exp(-1.0F / (sample_rate_ * 0.005F));
-                const float release = std::exp(-1.0F / (sample_rate_ * 0.080F));
                 for (std::size_t i = 0; i < frames; ++i) {
                     float peak = 0.0F;
                     for (std::size_t ch = 0; ch < channels_; ++ch)
                         peak = std::max(peak, std::fabs(samples[i * channels_ + ch]));
-                    const float target = peak >= threshold ? 1.0F : 0.0F;
-                    const float coef = target > stage.envelope ? attack : release;
+                    const float target = peak >= stage.threshold ? 1.0F : 0.0F;
+                    const float coef = target > stage.envelope ? stage.attack : stage.release;
                     stage.envelope = target + coef * (stage.envelope - target);
                     for (std::size_t ch = 0; ch < channels_; ++ch)
                         samples[i * channels_ + ch] *= stage.envelope;
@@ -126,15 +132,14 @@ void FilterChain::process(float* samples, std::size_t frames) noexcept {
             case FilterKind::limiter: {
                 // Zero-lookahead peak ceiling limiter. Immediate peak protection
                 // and 100ms gain recovery; can color fast transients.
-                const float ceiling = std::pow(10.0F, parameter / 20.0F);
-                const float release = std::exp(-1.0F / (sample_rate_ * 0.100F));
+                const float ceiling = stage.threshold;
                 for (std::size_t i = 0; i < frames; ++i) {
                     float peak = 0.0F;
                     for (std::size_t ch = 0; ch < channels_; ++ch)
                         peak = std::max(peak, std::fabs(samples[i * channels_ + ch]));
                     const float required = peak > ceiling ? ceiling / peak : 1.0F;
                     stage.smooth_gain = required < stage.smooth_gain ? required :
-                        (1.0F + release * (stage.smooth_gain - 1.0F));
+                        (1.0F + stage.release * (stage.smooth_gain - 1.0F));
                     for (std::size_t ch = 0; ch < channels_; ++ch) {
                         float& value = samples[i * channels_ + ch];
                         value = std::clamp(value * stage.smooth_gain, -ceiling, ceiling);

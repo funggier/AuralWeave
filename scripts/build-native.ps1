@@ -29,14 +29,16 @@ $rnObjs = ($rnNames | ForEach-Object { '"' + (Join-Path $out ($_ + '.obj')) + '"
 $compileRnnoise = 'cl /nologo /O2 /TC /D_USE_MATH_DEFINES /I"' + $rnSrc +
     '" /I"' + $rnInc + '" /c ' + $rnFiles
 
+$vstSdk = Join-Path $root 'third_party\vst3'
 $common = '/nologo /std:c++20 /EHsc /O2 /W4 /WX /utf-8 /I"' + $include +
-    '" /I"' + $rnInc + '" '
+    '" /I"' + $rnInc + '" /external:W0 /external:I"' + $vstSdk + '" '
 $graph = '"' + (Join-Path $src 'src\route_graph.cpp') + '" '
 $resampler = '"' + (Join-Path $src 'src\audio_resampler.cpp') + '" '
 $noise = '"' + (Join-Path $src 'src\rnnoise_processor.cpp') + '" '
 $filterChain = '"' + (Join-Path $src 'src\filter_chain.cpp') + '" '
 $voiceFilters = '"' + (Join-Path $src 'src\voice_filters.cpp') + '" '
 $vst2 = '"' + (Join-Path $src 'src\vst2_plugin.cpp') + '" '
+$vst3 = '"' + (Join-Path $src 'src\vst3_plugin.cpp') + '" '
 $catalog = '"' + (Join-Path $src 'src\device_catalog.cpp') + '" '
 $catalogApi = '"' + (Join-Path $src 'src\device_catalog_api.cpp') + '" '
 $tests = '"' + (Join-Path $src 'tests\native_smoke.cpp') + '" '
@@ -44,9 +46,9 @@ $engine = '"' + (Join-Path $src 'src\audio_engine.cpp') + '" '
 $exe = Join-Path $out 'AuralWeaveNativeSmoke.exe'
 $dll = Join-Path $out 'AuralWeave.Native.dll'
 
-$compileTests = 'cl ' + $common + $graph + $resampler + $noise + $filterChain + $voiceFilters + $vst2 + $catalog +
+$compileTests = 'cl ' + $common + $graph + $resampler + $noise + $filterChain + $voiceFilters + $vst2 + $vst3 + $catalog +
     $tests + $rnObjs + ' /link ole32.lib propsys.lib user32.lib /OUT:"' + $exe + '"'
-$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler + $noise + $filterChain + $voiceFilters + $vst2 +
+$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler + $noise + $filterChain + $voiceFilters + $vst2 + $vst3 +
     $catalog + $catalogApi + $rnObjs + ' /link ole32.lib propsys.lib user32.lib uuid.lib /OUT:"' + $dll + '"'
 
 Push-Location $out

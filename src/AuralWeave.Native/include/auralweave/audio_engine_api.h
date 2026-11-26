@@ -40,11 +40,13 @@ AW_API int aw_set_filter_chain_v2(void* handle, const int* kinds, const float* p
 AW_API int aw_set_filter_chain_v3(void* handle, const int* kinds, const float* parameters,
                                   const int* enabled, int count) noexcept;
 // v4 keeps the v3 layout, with one extra handle per stage. Kind 10
-// requires an aw_vst2_load handle; non-VST entries have null handles.
+// accepts handles from either VST loader. Non-VST entries have null handles.
 AW_API int aw_set_filter_chain_v4(void* handle, const int* kinds, const float* parameters,
                                   const int* enabled, void* const* plugins, int count) noexcept;
 
 AW_API void* aw_vst2_load(const wchar_t* path, int sample_rate, wchar_t* error, std::size_t size) noexcept;
+AW_API void* aw_vst3_load(const wchar_t* path, int sample_rate, wchar_t* error, std::size_t size) noexcept;
+// These lifecycle functions also accept VST3 handles.
 AW_API void aw_vst2_close(void* handle) noexcept;
 AW_API int aw_vst2_configure(void* handle, int sample_rate, wchar_t* error, std::size_t size) noexcept;
 AW_API int aw_vst2_has_editor(void* handle) noexcept;

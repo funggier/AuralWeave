@@ -30,6 +30,7 @@ private:
     [[nodiscard]] float sample(const float* data, std::size_t frames,
                                std::int64_t offset, unsigned channel) const noexcept;
     void write_frame(float left, float right) noexcept;
+    void push_matching_pcm(const float* data, std::size_t frames) noexcept;
 
     std::uint32_t source_rate_{};
     std::uint32_t output_rate_{};
@@ -45,7 +46,6 @@ private:
     double next_position_{};
     float previous_left_{};
     float previous_right_{};
-    bool has_previous_{};
 };
 
 } // namespace auralweave

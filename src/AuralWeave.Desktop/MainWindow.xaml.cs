@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private IReadOnlyList<AudioEndpoint> _captureDevices = [];
     private IReadOnlyList<AudioEndpoint> _renderDevices = [];
     private NativeWasapiAudioRoute? _route;
+    private string _outputStatus = "";
     private bool _refreshingOutputs;
     private bool _refreshingFilters;
     private bool _loadingSkin = true;
@@ -644,6 +645,8 @@ public partial class MainWindow : Window
             PublishFilterChain(candidate);
             candidate.Start(input.Id, _outputs);
             _route = candidate;
+            _outputStatus = string.Join("  ·  ", Enumerable.Range(1, _outputs.Count)
+                .Select(i => $"Output {i}: Native WASAPI"));
             StartButton.Content = "STOP";
             StartButton.SetResourceReference(Control.BackgroundProperty, "StopButtonBrush");
             StartButton.SetResourceReference(Control.ForegroundProperty, "PrimaryText");
@@ -689,15 +692,14 @@ public partial class MainWindow : Window
         FrameCountLabel.Text = $"{route.CapturedFrames:N0} frames";
         var overrun = route.DroppedRenderFrames;
         var underrun = route.UnderrunRenderFrames;
-        var metrics = route.GetOutputTelemetry();
+        var running = route.IsRunning;
         OutputStatusLabel.Text =
             (overrun > 0 ? $"Buffer overruns: {overrun:N0}  ·  " : "") +
             (underrun > 0 ? $"Buffer underruns: {underrun:N0}  ·  " : "") +
-            string.Join("  ·  ", metrics.Select((x, i) =>
-                $"Output {i + 1}: Native WASAPI" + (x.Error is null ? "" : $" ERROR {x.Error}")));
-        var error = route.LastError;
-        if (!route.IsRunning)
+            _outputStatus;
+        if (!running)
         {
+            var error = route.LastError;
             StopCurrentRoute();
             if (!string.IsNullOrWhiteSpace(error))
                 Status("Audio stopped: " + error, true);

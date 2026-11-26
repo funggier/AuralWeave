@@ -233,7 +233,7 @@ public:
             std::copy_n(values + 1, stride - 1, spec.additional.begin());
             if (kind == auralweave::FilterKind::vst2) {
                 if (!plugins || !plugins[i]) return false;
-                spec.plugin = *static_cast<const auralweave::Vst2Handle*>(plugins[i]);
+                spec.plugin = *static_cast<const auralweave::VstPluginHandle*>(plugins[i]);
             }
             if (!auralweave::valid_filter_spec(spec)) return false;
             specs.push_back(spec);

@@ -15,9 +15,10 @@ public partial class MainWindow
     private sealed class VstCard
     {
         public string Folder { get; set; } = "";
-        public IReadOnlyList<Vst2Candidate> Choices { get; set; } = [];
-        public NativeVst2Plugin? Plugin { get; set; }
+        public IReadOnlyList<VstPluginCandidate> Choices { get; set; } = [];
+        public NativeVstPlugin? Plugin { get; set; }
         public bool Scanning { get; set; }
+        public Panel? SettingsPanel { get; set; }
     }
 
     private readonly Dictionary<Guid, VstCard> _vstCards = [];
@@ -28,10 +29,11 @@ public partial class MainWindow
         if (!_vstCards.TryGetValue(id, out var card))
             _vstCards[id] = card = new VstCard();
 
+        card.SettingsPanel = panel;
         var pathRow = new DockPanel { Margin = new Thickness(8, 10, 8, 4) };
         var folder = new TextBox { Text = card.Folder, IsEnabled = !card.Scanning };
         AutomationProperties.SetName(folder, "VST plugins folder");
-        folder.ToolTip = "Folder containing the installed 64-bit VST2 DLLs";
+        folder.ToolTip = "Folder containing the installed 64-bit VST2 and VST3 effects";
 
         var scan = new Button { Content = card.Scanning ? "Scanning..." : "Scan", IsEnabled = !card.Scanning };
         scan.Click += async (_, _) => await ScanVstFolderAsync(id, card);
@@ -53,7 +55,7 @@ public partial class MainWindow
         var hint = new TextBlock
         {
             Text = "Choose VST plugins folder...",
-            Margin = new Thickness(10, 0, 4, 0),
+            Margin = new Thickness(12, 0, 4, 0),
             VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -74,19 +76,19 @@ public partial class MainWindow
         var picker = new ComboBox
         {
             ItemsSource = card.Choices,
-            DisplayMemberPath = nameof(Vst2Candidate.Name),
+            DisplayMemberPath = nameof(VstPluginCandidate.DisplayName),
             IsEnabled = card.Choices.Count != 0 && !card.Scanning,
             SelectedItem = card.Choices.FirstOrDefault(choice =>
                 string.Equals(choice.Path, card.Plugin?.Path, StringComparison.OrdinalIgnoreCase))
                 ?? (card.Choices.Count == 1 ? card.Choices[0] : null)
         };
         AutomationProperties.SetName(picker, "VST plugin");
-        var load = new Button { Content = "Load plugin", IsEnabled = !card.Scanning && picker.SelectedItem is Vst2Candidate,
+        var load = new Button { Content = "Load plugin", IsEnabled = !card.Scanning && picker.SelectedItem is VstPluginCandidate,
                                 Margin = new Thickness(6, 0, 0, 0) };
-        picker.SelectionChanged += (_, _) => load.IsEnabled = picker.SelectedItem is Vst2Candidate;
+        picker.SelectionChanged += (_, _) => load.IsEnabled = picker.SelectedItem is VstPluginCandidate;
         load.Click += (_, _) =>
         {
-            if (picker.SelectedItem is Vst2Candidate choice) LoadVstPlugin(id, card, choice);
+            if (picker.SelectedItem is VstPluginCandidate choice) LoadVstPlugin(id, card, choice);
         };
         DockPanel.SetDock(load, Dock.Right);
         pickRow.Children.Add(load);
@@ -104,13 +106,13 @@ public partial class MainWindow
             };
             DockPanel.SetDock(editor, Dock.Right);
             active.Children.Add(editor);
-            active.Children.Add(MutedText(Path.GetFileNameWithoutExtension(plugin.Path)));
+            active.Children.Add(MutedText($"{Path.GetFileNameWithoutExtension(plugin.Path)} · {plugin.Format}"));
             panel.Children.Add(active);
         }
         else
         {
             panel.Children.Add(MutedText(card.Choices.Count == 0
-                ? "Choose a folder and scan for 64-bit VST2 plugins."
+                ? "Choose a folder and scan for 64-bit VST plugins."
                 : "Select an effect and click Load plugin."));
         }
     }
@@ -125,16 +127,16 @@ public partial class MainWindow
             return;
         }
         card.Scanning = true;
-        RefreshFilterRows();
+        RefreshVstSettings(id, card);
         try
         {
             var fullPath = Path.GetFullPath(folder, AppContext.BaseDirectory);
-            card.Choices = await Task.Run(() => Vst2PluginCatalog.Scan(fullPath));
+            card.Choices = await Task.Run(() => VstPluginCatalog.Scan(fullPath, includeStandardVst3: true));
             if (!_vstCards.TryGetValue(id, out var current) || current != card) return;
 
             card.Folder = fullPath;
-            Status(card.Choices.Count == 0 ? "No 64-bit VST2 DLLs found."
-                : $"Found {card.Choices.Count} VST2 plugin(s).");
+            Status(card.Choices.Count == 0 ? "No 64-bit VST2 and VST3 effects found."
+                : $"Found {card.Choices.Count} VST plugin(s).");
         }
         catch (Exception ex)
         {
@@ -144,8 +146,15 @@ public partial class MainWindow
         {
             card.Scanning = false;
             if (_vstCards.TryGetValue(id, out var current) && current == card)
-                RefreshFilterRows();
+                RefreshVstSettings(id, card);
         }
+    }
+
+    private void RefreshVstSettings(Guid id, VstCard card)
+    {
+        if (card.SettingsPanel is not { } panel) return;
+        panel.Children.Clear();
+        BuildVstSettings(panel, id);
     }
 
     private int VstSampleRate()
@@ -154,21 +163,21 @@ public partial class MainWindow
         return rate > 0 ? rate : 48000;
     }
 
-    private void LoadVstPlugin(Guid id, VstCard card, Vst2Candidate choice)
+    private void LoadVstPlugin(Guid id, VstCard card, VstPluginCandidate choice)
     {
         if (string.Equals(card.Plugin?.Path, choice.Path, StringComparison.OrdinalIgnoreCase)) return;
 
         var index = _filters.FindIndex(x => x.Id == id);
         if (index < 0) return;
 
-        NativeVst2Plugin? candidate = null;
+        NativeVstPlugin? candidate = null;
         var previous = card.Plugin;
         VstPluginReference reference;
         try
         {
             using var dll = File.OpenRead(choice.Path);
             reference = VstPluginRegistry.ReferenceFor(choice.Path, Convert.ToHexString(SHA256.HashData(dll)));
-            candidate = new NativeVst2Plugin(choice.Path, VstSampleRate());
+            candidate = new NativeVstPlugin(choice.Path, VstSampleRate());
             card.Plugin = candidate;
             if (_route is { } route) PublishFilterChain(route);
         }
@@ -182,8 +191,8 @@ public partial class MainWindow
 
         previous?.Dispose();
         _filters[index] = _filters[index] with { VstPlugin = reference };
-        RefreshFilterRows();
-        var message = $"Loaded VST2 plugin '{choice.Name}'.";
+        RefreshVstSettings(id, card);
+        var message = $"Loaded {choice.Format} plugin '{choice.Name}'.";
         try { _vstRegistry.Remember(reference); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -202,14 +211,13 @@ public partial class MainWindow
             var stage = filters[i];
             if (stage.VstPlugin is not { } reference) continue;
             var path = VstPluginRegistry.Resolve(reference);
-            if (path is null || !Vst2PluginCatalog.IsVst2Plugin(path))
+            if (path is null || VstPluginCatalog.Inspect(path) is not { } choice)
             {
                 filters[i] = stage with { VstPlugin = null };
                 continue;
             }
 
-            var choice = new Vst2Candidate(Path.GetFileNameWithoutExtension(path), path);
-            var card = new VstCard { Folder = Path.GetDirectoryName(path)!, Choices = [choice] };
+            var card = new VstCard { Folder = VstPluginCatalog.FolderFor(choice), Choices = [choice] };
             if (_vstRegistry.IsKnown(reference))
             {
                 try
@@ -219,7 +227,7 @@ public partial class MainWindow
                     using var dll = File.OpenRead(path);
                     var hash = Convert.ToHexString(SHA256.HashData(dll));
                     if (string.Equals(hash, reference.Sha256, StringComparison.OrdinalIgnoreCase))
-                        card.Plugin = new NativeVst2Plugin(path, rate);
+                        card.Plugin = new NativeVstPlugin(path, rate);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
                 {
@@ -232,7 +240,7 @@ public partial class MainWindow
         return cards;
     }
 
-    private static Dictionary<Guid, NativeVst2Plugin> LoadedVstPlugins(Dictionary<Guid, VstCard> cards) =>
+    private static Dictionary<Guid, NativeVstPlugin> LoadedVstPlugins(Dictionary<Guid, VstCard> cards) =>
         cards.Where(pair => pair.Value.Plugin is not null)
              .ToDictionary(pair => pair.Key, pair => pair.Value.Plugin!);
 
@@ -241,7 +249,7 @@ public partial class MainWindow
 
     private void PrepareVstPlugins(AudioEndpoint input)
     {
-        var plugins = _vstCards.Values.Select(x => x.Plugin).OfType<NativeVst2Plugin>().ToArray();
+        var plugins = _vstCards.Values.Select(x => x.Plugin).OfType<NativeVstPlugin>().ToArray();
         if (plugins.Length == 0) return;
         // Initialize on this STA before the route blocks waiting for its WASAPI worker.
         var rate = NativeAudioDeviceCatalog.CaptureDevices()

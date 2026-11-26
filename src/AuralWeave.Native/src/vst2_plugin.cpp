@@ -374,14 +374,22 @@ void vst_error(wchar_t* error, std::size_t size, const char* text) noexcept {
 
 AW_API void* aw_vst2_load(const wchar_t* path, int sample_rate,
                           wchar_t* error, std::size_t size) noexcept {
-    try { return new auralweave::Vst2Handle(auralweave::Vst2Plugin::load(path, sample_rate)); }
+    try { return new auralweave::VstPluginHandle(auralweave::Vst2Plugin::load(path, sample_rate)); }
     catch (const std::exception& e) { vst_error(error, size, e.what()); }
     catch (...) { vst_error(error, size, "VST2 plugin initialization failed"); }
     return nullptr;
 }
 
+AW_API void* aw_vst3_load(const wchar_t* path, int sample_rate,
+                         wchar_t* error, std::size_t size) noexcept {
+    try { return new auralweave::VstPluginHandle(auralweave::load_vst3(path, sample_rate)); }
+    catch (const std::exception& e) { vst_error(error, size, e.what()); }
+    catch (...) { vst_error(error, size, "VST3 module initialization failed"); }
+    return nullptr;
+}
+
 AW_API void aw_vst2_close(void* handle) noexcept {
-    const std::unique_ptr<auralweave::Vst2Handle> plugin(static_cast<auralweave::Vst2Handle*>(handle));
+    const std::unique_ptr<auralweave::VstPluginHandle> plugin(static_cast<auralweave::VstPluginHandle*>(handle));
     if (plugin) (*plugin)->close();
 }
 
@@ -389,7 +397,7 @@ AW_API int aw_vst2_configure(void* handle, int sample_rate,
                             wchar_t* error, std::size_t size) noexcept {
     if (!handle) return 0;
     try {
-        (*static_cast<auralweave::Vst2Handle*>(handle))->configure(sample_rate);
+        (*static_cast<auralweave::VstPluginHandle*>(handle))->configure(sample_rate);
         return 1;
     } catch (const std::exception& e) { vst_error(error, size, e.what()); }
     catch (...) { vst_error(error, size, "Could not configure VST2 plugin"); }
@@ -397,14 +405,14 @@ AW_API int aw_vst2_configure(void* handle, int sample_rate,
 }
 
 AW_API int aw_vst2_has_editor(void* handle) noexcept {
-    return handle && (*static_cast<auralweave::Vst2Handle*>(handle))->has_editor() ? 1 : 0;
+    return handle && (*static_cast<auralweave::VstPluginHandle*>(handle))->has_editor() ? 1 : 0;
 }
 
 AW_API int aw_vst2_show_editor(void* handle, void* owner,
                               wchar_t* error, std::size_t size) noexcept {
     if (!handle) return 0;
     try {
-        (*static_cast<auralweave::Vst2Handle*>(handle))->show_editor(owner);
+        (*static_cast<auralweave::VstPluginHandle*>(handle))->show_editor(owner);
         return 1;
     } catch (const std::exception& e) { vst_error(error, size, e.what()); }
     catch (...) { vst_error(error, size, "Could not show VST2 plugin editor"); }

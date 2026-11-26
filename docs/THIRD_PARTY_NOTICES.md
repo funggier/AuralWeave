@@ -18,6 +18,8 @@ commit `6cbfd53eb348a8d394e0757b4025c6ded34eb2b6`.
 
 **RustAudio/vst-rs** — MIT-licensed reference for the VST2 ABI layout and operation numbers used by AuralWeave's C++ host. Reference commit `ab74a5682df4fc08e1f78a28fac12aad1ff5fe0b`. The original license is stored in `third_party/vst-rs/LICENSE` and included in the Portable ZIP as `licenses/vst-rs-MIT.txt`. [Upstream project](https://github.com/RustAudio/vst-rs/tree/ab74a5682df4fc08e1f78a28fac12aad1ff5fe0b)
 
+**Steinberg VST3 Plug-In Interfaces** — MIT. Selected unmodified headers from tag `v3.8.0_build_66`, commit `31d6eeba6daaa3e2a8bfbe3e7a90ca0b7fbfbc1c` are in `third_party/vst3/pluginterfaces`. License: `third_party/vst3/LICENSE.txt`, copied to `licenses/Steinberg-VST3-MIT.txt` in the Windows ZIP. [Upstream project](https://github.com/steinbergmedia/vst3_pluginterfaces/tree/v3.8.0_build_66)
+
 Installed third-party effects, including BABY Audio Crystalline, are supplied by their publishers.
 
 **Windows Core Audio, .NET 8/WPF** — Microsoft platform/runtime components;

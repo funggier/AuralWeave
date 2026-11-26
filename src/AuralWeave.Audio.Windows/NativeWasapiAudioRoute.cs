@@ -56,7 +56,7 @@ public sealed class NativeWasapiAudioRoute : IDisposable
     public int InputSampleRate => NativeInputSampleRate(_handle);
 
     public void ReplaceFilterChain(IEnumerable<FilterStage> stages,
-        IReadOnlyDictionary<Guid, NativeVst2Plugin>? plugins = null)
+        IReadOnlyDictionary<Guid, NativeVstPlugin>? plugins = null)
     {
         ThrowIfDisposed();
         var all = stages.ToArray();

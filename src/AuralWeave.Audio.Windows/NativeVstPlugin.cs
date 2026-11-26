@@ -4,13 +4,14 @@ using System.Text;
 namespace AuralWeave.Audio.Windows;
 
 /// <summary>An effect instance owned and disposed by the desktop UI thread.</summary>
-public sealed class NativeVst2Plugin : IDisposable
+public sealed class NativeVstPlugin : IDisposable
 {
     private const string Library = "AuralWeave.Native.dll";
     private const int ErrorCapacity = 512;
     private IntPtr _handle;
 
     public string Path { get; }
+    public VstPluginFormat Format { get; }
     public bool HasEditor => NativeHasEditor(Handle) != 0;
 
     internal IntPtr Handle
@@ -22,16 +23,18 @@ public sealed class NativeVst2Plugin : IDisposable
         }
     }
 
-    public NativeVst2Plugin(string path, int sampleRate)
+    public NativeVstPlugin(string path, int sampleRate)
     {
         Path = System.IO.Path.GetFullPath(path);
-        if (!Vst2PluginCatalog.IsVst2Plugin(Path))
-            throw new InvalidDataException("Select a 64-bit VST2 effect DLL with a VSTPluginMain export.");
+        Format = VstPluginCatalog.Inspect(Path)?.Format ??
+            throw new InvalidDataException("Select a 64-bit VST2 or VST3 effect.");
 
         var error = new StringBuilder(ErrorCapacity);
-        _handle = NativeLoad(Path, sampleRate, error, (nuint)error.Capacity);
+        _handle = Format == VstPluginFormat.VST3
+            ? NativeLoadVst3(Path, sampleRate, error, (nuint)error.Capacity)
+            : NativeLoadVst2(Path, sampleRate, error, (nuint)error.Capacity);
         if (_handle == IntPtr.Zero)
-            throw Failure(error, "Could not load the VST2 effect.");
+            throw Failure(error, $"Could not load the {Format} effect.");
     }
 
     public void Configure(int sampleRate)
@@ -60,7 +63,11 @@ public sealed class NativeVst2Plugin : IDisposable
 
     [DllImport(Library, EntryPoint = "aw_vst2_load", CallingConvention = CallingConvention.Cdecl,
         CharSet = CharSet.Unicode, ExactSpelling = true)]
-    private static extern IntPtr NativeLoad(string path, int sampleRate, StringBuilder error, nuint size);
+    private static extern IntPtr NativeLoadVst2(string path, int sampleRate, StringBuilder error, nuint size);
+
+    [DllImport(Library, EntryPoint = "aw_vst3_load", CallingConvention = CallingConvention.Cdecl,
+        CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern IntPtr NativeLoadVst3(string path, int sampleRate, StringBuilder error, nuint size);
 
     [DllImport(Library, EntryPoint = "aw_vst2_close", CallingConvention = CallingConvention.Cdecl)]
     private static extern void NativeClose(IntPtr handle);

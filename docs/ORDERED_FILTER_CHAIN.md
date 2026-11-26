@@ -28,7 +28,7 @@ Sound Input -> Filter 01 -> Filter 02 -> ... -> Filter N -> Multi-Output Distrib
 
 Each EQ starts flat at 0 dB and adjusts from −12 to +12 dB per band. The lowest and highest bands are shelves and the others are bell filters. All variants keep separate state per stereo channel and process audio without lookahead. Bands at or above half the input sample rate are bypassed. Flat EQ passes samples through exactly.
 
-A [VST Plugin card](VST_PLUGINS.md) applies an installed 64-bit VST2 effect in the chain. An empty VST card bypasses processing. Loaded instances retain their plugin settings while reordering or editing other cards.
+A [VST Plugin card](VST_PLUGINS.md) applies an installed 64-bit VST2 or VST3 effect in the chain. An empty VST card bypasses processing. Loaded instances retain their plugin settings while reordering or editing other cards.
 
 ## Processing architecture
 

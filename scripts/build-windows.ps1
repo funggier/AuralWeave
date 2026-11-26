@@ -84,6 +84,8 @@ try {
 
         Copy-Item -LiteralPath (Join-Path $root 'third_party\vst-rs\LICENSE') -Destination (Join-Path $licenseFolder 'vst-rs-MIT.txt') -Force
 
+        Copy-Item -LiteralPath (Join-Path $root 'third_party\vst3\LICENSE.txt') -Destination (Join-Path $licenseFolder 'Steinberg-VST3-MIT.txt') -Force
+
         $archive = Join-Path $root ("dist\AuralWeave-v$version-Windows-x64.zip")
         Compress-Archive -Path (Join-Path $target '*') -DestinationPath $archive -CompressionLevel Optimal -Force
         if (!(Test-Path -LiteralPath $archive)) { throw 'Portable ZIP was not created' }

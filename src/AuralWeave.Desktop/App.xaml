@@ -29,6 +29,40 @@
                 <Setter Property="Margin" Value="0,0,0,14"/>
             </Style>
 
+            <Style TargetType="TextBox">
+                <Setter Property="MinHeight" Value="36"/>
+                <Setter Property="Padding" Value="11,5"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                <Setter Property="Background" Value="{DynamicResource FieldBackground}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource FieldStroke}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CaretBrush" Value="{DynamicResource PrimaryText}"/>
+                <Setter Property="SelectionBrush" Value="{DynamicResource ItemSelected}"/>
+                <Setter Property="SelectionTextBrush" Value="{DynamicResource PrimaryText}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border x:Name="FieldSurface" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}" CornerRadius="6">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                    <Setter TargetName="FieldSurface" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="FieldSurface" Property="Opacity" Value="0.55"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style TargetType="ComboBoxItem">
                 <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
                 <Setter Property="Background" Value="{DynamicResource FieldBackground}"/>
