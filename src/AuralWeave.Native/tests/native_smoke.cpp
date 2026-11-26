@@ -7,6 +7,8 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
+#include <numbers>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -16,6 +18,84 @@ using namespace auralweave;
 static void expect(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
     std::cout << "PASS: " << message << "\n";
+}
+
+static double tone_level(const std::vector<float>& signal, unsigned rate, double frequency) {
+    double real = 0.0, imaginary = 0.0;
+    const auto start = signal.size() / 2;
+    for (std::size_t i = start; i < signal.size(); ++i) {
+        const auto angle = 2.0 * std::numbers::pi * frequency * i / rate;
+        real += signal[i] * std::cos(angle);
+        imaginary += signal[i] * std::sin(angle);
+    }
+    return 2.0 * std::hypot(real, imaginary) / (signal.size() - start);
+}
+
+static std::vector<float> tone(unsigned rate, double frequency) {
+    std::vector<float> samples(rate / 2);
+    for (std::size_t i = 0; i < samples.size(); ++i)
+        samples[i] = 0.1F * static_cast<float>(std::sin(2.0 * std::numbers::pi * frequency * i / rate));
+    return samples;
+}
+
+static void check_voice_filters() {
+    const std::array<float, 4> input{.13F, -.27F, .8F, -.45F};
+    auto bypassed = input;
+    FilterChain bypass(48000, 2, {
+        {FilterKind::equalizer, 0.0F, true},
+        {FilterKind::pitch_shift, 0.0F, true},
+        {FilterKind::pitch_shift, 12.0F, false}
+    });
+    bypass.process(bypassed.data(), 2);
+    expect(bypassed == input, "flat EQ and zero or bypassed Pitch Shift preserve exact samples");
+
+    for (const auto [frequency, spec] : std::array{
+         std::pair{40.0, FilterSpec{FilterKind::equalizer, 6.0F, true}},
+         std::pair{1000.0, FilterSpec{FilterKind::equalizer, 0.0F, true, {-6.0F}}},
+         std::pair{14000.0, FilterSpec{FilterKind::equalizer, 0.0F, true, {0.0F, 6.0F}}}}) {
+        auto samples = tone(48000, frequency);
+        FilterChain equalizer(48000, 1, {spec});
+        equalizer.process(samples.data(), samples.size());
+        const auto expected = frequency == 1000.0 ? 0.05 : 0.2;
+        expect(std::fabs(tone_level(samples, 48000, frequency) - expected) < 0.005,
+               "EQ shelf/bell gain agrees with requested dB");
+    }
+
+    const FilterSpec comp{FilterKind::compressor, -20.0F, true, {4.0F, 5.0F, 80.0F, 6.0F}};
+    FilterChain compressor(48000, 2, {comp});
+    std::vector<float> peaks(48000, 0.5F);
+    for (std::size_t i = 1; i < peaks.size(); i += 2) peaks[i] = 0.05F;
+    compressor.process(peaks.data(), peaks.size() / 2);
+    const auto expected = 0.1 * std::pow(5.0, 0.25) * std::pow(10.0, 6.0 / 20.0);
+    expect(std::fabs(peaks[peaks.size() - 2] - expected) < 0.001 &&
+           std::fabs(peaks.back() * 10.0 - peaks[peaks.size() - 2]) < 0.001 &&
+           peaks.front() > peaks[peaks.size() - 2],
+           "Compressor applies attack, ratio and makeup gain with linked stereo");
+    std::fill(peaks.begin(), peaks.end(), 0.01F);
+    compressor.process(peaks.data(), peaks.size() / 2);
+    expect(peaks.back() > peaks.front() && peaks.back() > .019F, "Compressor releases gain on quiet input");
+    expect(!valid_filter_spec(FilterSpec{FilterKind::compressor, -20.0F, true, {0, 5, 80, 0}}) &&
+           !valid_filter_spec(FilterSpec{FilterKind::equalizer, 0.0F, true,
+                                        {std::numeric_limits<float>::quiet_NaN()}}),
+           "native rejects invalid secondary filter parameters");
+
+    for (auto rate : {48000U, 192000U}) {
+        for (auto semitones : {-12.0F, 12.0F}) {
+            auto samples = tone(rate, 440.0);
+            FilterChain pitch(rate, 1, {{FilterKind::pitch_shift, semitones, true}});
+            std::size_t position = 0;
+            while (position < samples.size()) {
+                const auto count = std::min<std::size_t>(rate / 100 - position % 37, samples.size() - position);
+                pitch.process(samples.data() + position, count);
+                position += count;
+            }
+            const auto target = semitones > 0 ? 880.0 : 220.0;
+            const auto shifted_level = tone_level(samples, rate, target);
+            expect(std::all_of(samples.begin(), samples.end(), [](float v) { return std::isfinite(v); }) &&
+                   shifted_level > 0.01 && shifted_level > 5.0 * tone_level(samples, rate, 440.0),
+                   "Pitch Shift transposes a tone by one octave across uneven route packets");
+        }
+    }
 }
 
 int wmain(int argc, wchar_t* argv[]) {
@@ -84,6 +164,8 @@ int wmain(int argc, wchar_t* argv[]) {
                std::all_of(noise_frame.begin(), noise_frame.end(),
                    [](float f){ return std::isfinite(f) && std::fabs(f) <= 1.0F; }),
                "RNNoise may repeat as separately owned ordered filter instances");
+        check_voice_filters();
+
         StreamResampler down(192000, 2, 48000, 2);
         std::vector<float> down_input(1920 * 2, .25F);
         down.push(down_input.data(), 1920);

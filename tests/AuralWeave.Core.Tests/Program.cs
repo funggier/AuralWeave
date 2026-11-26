@@ -145,7 +145,11 @@ try
         new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, .7f),
         new FilterStage(Guid.NewGuid(), FilterKind.RnnoiseStandard, false, 0f),
         new FilterStage(Guid.NewGuid(), FilterKind.RnnoiseStandard, true, 0f),
-        new FilterStage(Guid.NewGuid(), FilterKind.Limiter, true, -3f)
+        new FilterStage(Guid.NewGuid(), FilterKind.Limiter, true, -3f),
+        new FilterStage(Guid.NewGuid(), FilterKind.Equalizer, Equalizer: new(2f, -3f, 4f)),
+        new FilterStage(Guid.NewGuid(), FilterKind.Compressor, false,
+            Compressor: new(-21f, 3.5f, 15f, 150f, 2f)),
+        new FilterStage(Guid.NewGuid(), FilterKind.PitchShift, true, 2.5f)
     };
     var preset = presetStore.Create("Voice Natural", presetFilters);
     var saved = presetStore.Save(preset);
@@ -162,16 +166,35 @@ try
            restored.Select(x => x.Enabled).SequenceEqual(presetFilters.Select(x => x.Enabled)),
         "Filter presets retain order, repeated types and enabled states");
     Verify(restored.Zip(presetFilters).All(x =>
-                x.First.Id != x.Second.Id && x.First.Parameter == x.Second.Parameter),
+                x.First.Id != x.Second.Id && x.First with { Id = x.Second.Id } == x.Second),
         "Imported filters receive new instance IDs while preserving parameters");
     Verify(presetStore.List().Count == 1 && presetStore.List()[0].Name == "Voice Natural",
         "Saved presets are automatically discoverable");
 
     var importedPath = Path.Combine(presetTestFolder, "external.awfilter");
     FilterPresetStore.WriteFile(importedPath, preset);
-    Verify(FilterPresetStore.ReadFile(importedPath).Filters.Count == 4,
+    Verify(FilterPresetStore.ReadFile(importedPath).Filters.Count == presetFilters.Length,
         "Import/Export share the same strict file format");
 
+    var oldPath = Path.Combine(presetTestFolder, "v1.awfilter");
+    File.WriteAllText(oldPath, """
+        {"SchemaVersion":1,"Name":"Old Voice","Filters":[{"Kind":"gain","Enabled":true,"Parameter":0.75}]}
+        """);
+    var oldPreset = FilterPresetStore.Restore(FilterPresetStore.ReadFile(oldPath));
+    Verify(oldPreset is [{ Kind: FilterKind.Gain, Parameter: .75f, Equalizer: null, Compressor: null }],
+        "schema v1 preset loads without new settings");
+
+    var invalidCompressor = new FilterStage(Guid.NewGuid(), FilterKind.Compressor,
+        Compressor: CompressorSettings.Default with { Ratio = float.NaN });
+    try
+    {
+        presetStore.Create("Invalid", [invalidCompressor]);
+        throw new Exception("Invalid compressor ratio unexpectedly accepted");
+    }
+    catch (ArgumentOutOfRangeException)
+    {
+        Verify(true, "invalid compressor settings are rejected");
+    }
     try
     {
         FilterPresetStore.ReadFile(saved.FilePath + ".missing");
@@ -184,7 +207,7 @@ try
     try
     {
         File.WriteAllText(Path.Combine(presetTestFolder, "tampered.awfilter"),
-            jsonText.Replace("\"SchemaVersion\": 1", "\"SchemaVersion\": 999"));
+            jsonText.Replace($"\"SchemaVersion\": {FilterPresetStore.CurrentSchemaVersion}", "\"SchemaVersion\": 999"));
         FilterPresetStore.ReadFile(Path.Combine(presetTestFolder, "tampered.awfilter"));
         throw new Exception("Unsupported preset schema was accepted");
     }

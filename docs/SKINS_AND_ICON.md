@@ -5,9 +5,8 @@
 The current program icon is the project-owner-selected **white–gray dimensional AN ribbon** with no tile, border, arrows, or equalizer bars. The surrounding canvas is genuinely alpha transparent.
 
 Assets:
-- `src/AuralWeave.Desktop/Assets/AuralWeave-Monochrome.png` — transparent monochrome application art, optimized for WPF resource packaging.
-- `src/AuralWeave.Desktop/Assets/AuralWeave.ico` — generated multi-size Windows icon for EXE, window chrome, Taskbar and Explorer.
-- `scripts/make-icon.ps1` — rebuilds the .ico using the PNG and Windows System.Drawing. Sizes: 16, 24, 32, 48, 64, 128 and 256px.
+- `src/AuralWeave.Desktop/Assets/AuralWeave.ico` contains the owner-provided `dist/AuralWeave-AN-WhiteGray.ico` byte-for-byte. It provides a 256 × 256 transparent frame for the EXE and Windows shell.
+- `src/AuralWeave.Desktop/Assets/AuralWeave-Monochrome.png` is decoded from that same frame for high-quality scaling in the title bar and Studio header.
 
 ## Skins
 
@@ -24,7 +23,7 @@ Skins are currently built into the app. **Untrusted external XAML skins are not 
 
 ## Filters UI scope
 
-The current audio backend processes noise suppression (Bypass/RNNoise) before repeated Gain effects. Collapsing panels only changes visual state. Full modular reordering/repeating of arbitrary filters, including RNNoise, Noise Gate and Limiter, remains a separate native-DSP development milestone.
+Collapsing panels changes their visual state. All built-in filters can be reordered and repeated in the [native filter chain](ORDERED_FILTER_CHAIN.md).
 
 ## Custom Chrome and themed scrollbar (preview.3)
 

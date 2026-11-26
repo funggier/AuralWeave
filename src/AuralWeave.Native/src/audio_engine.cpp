@@ -184,9 +184,12 @@ public:
             effects_.clear();
             error_.clear();
         }
-        sample_rate_.store(0);
-        channels_.store(0);
-        ordered_chain_.store(nullptr);
+        {
+            std::lock_guard<std::mutex> guard(filter_mutex_);
+            sample_rate_.store(0);
+            channels_.store(0);
+            ordered_chain_.store(nullptr);
+        }
         frames_.store(0);
         overruns_.store(0);
         underruns_.store(0);
@@ -216,22 +219,23 @@ public:
     std::uint64_t overruns() const noexcept { return overruns_.load(); }
     std::uint64_t underruns() const noexcept { return underruns_.load(); }
     bool set_filter_chain(const int* kinds, const float* parameters,
-                          const int* enabled, int count) {
+                          const int* enabled, int count, bool extended) {
         if (count < 0 || count > 64 || (count > 0 &&
             (!kinds || !parameters || !enabled))) return false;
         std::vector<auralweave::FilterSpec> specs;
         specs.reserve(static_cast<std::size_t>(count));
         for (int i = 0; i < count; ++i) {
-            const auto spec = auralweave::FilterSpec{
-                static_cast<auralweave::FilterKind>(kinds[i]),
-                parameters[i], enabled[i] != 0
-            };
+            const auto kind = static_cast<auralweave::FilterKind>(kinds[i]);
+            if (!extended && kind > auralweave::FilterKind::limiter) return false;
+            const auto* values = parameters + i * (extended ? 5 : 1);
+            auralweave::FilterSpec spec{kind, values[0], enabled[i] != 0};
+            if (extended) std::copy_n(values + 1, spec.additional.size(), spec.additional.begin());
             if (!auralweave::valid_filter_spec(spec)) return false;
             specs.push_back(spec);
         }
         // Build off the render thread, then atomically publish an immutable
         // ordered graph. If not started yet, the stream builds it on start.
-        std::lock_guard<std::mutex> guard(mutex_);
+        std::lock_guard<std::mutex> guard(filter_mutex_);
         std::shared_ptr<auralweave::FilterChain> prepared;
         const auto sample_rate = sample_rate_.load();
         const auto channels = channels_.load();
@@ -284,6 +288,7 @@ private:
     Event stop_{true};
     std::thread worker_;
     std::mutex mutex_;
+    std::mutex filter_mutex_;
     std::wstring source_;
     std::wstring error_;
     std::vector<RenderSink> sinks_;
@@ -312,6 +317,7 @@ private:
         stop_.signal();
         if (worker_.joinable()) worker_.join();
         if (mark_stopped) {
+            std::lock_guard<std::mutex> guard(filter_mutex_);
             sample_rate_.store(0);
             channels_.store(0);
             ordered_chain_.store(nullptr);
@@ -395,7 +401,7 @@ private:
         checked(capture->GetMixFormat(&capture_mix.data), "Get capture mix format");
         const auto in_format = format_info(capture_mix.data);
         {
-            std::lock_guard<std::mutex> guard(mutex_);
+            std::lock_guard<std::mutex> guard(filter_mutex_);
             sample_rate_.store(in_format.rate);
             channels_.store(in_format.channels);
             if (ordered_chain_enabled_.load()) {
@@ -615,7 +621,14 @@ AW_API int aw_set_filter_chain(void* handle, const int* kinds,
                                 int count) noexcept {
     if (!handle) return 0;
     try { return static_cast<NativeRoute*>(handle)->set_filter_chain(
-        kinds, parameters, enabled, count) ? 1 : 0; }
+        kinds, parameters, enabled, count, false) ? 1 : 0; }
+    catch (...) { return 0; }
+}
+AW_API int aw_set_filter_chain_v2(void* handle, const int* kinds, const float* parameters,
+                                  const int* enabled, int count) noexcept {
+    if (!handle) return 0;
+    try { return static_cast<NativeRoute*>(handle)->set_filter_chain(
+        kinds, parameters, enabled, count, true) ? 1 : 0; }
     catch (...) { return 0; }
 }
 AW_API int aw_set_noise_mode(void* handle, int mode) noexcept {

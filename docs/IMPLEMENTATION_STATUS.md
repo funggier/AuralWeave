@@ -1,5 +1,14 @@
 # AuralWeave implementation status
 
+## Studio v0.4.0 — EQ, Compressor and Pitch Shift
+
+- The EXE icon uses the owner's 256 × 256 ICO. The two Studio logo images use the same artwork, decoded to PNG and scaled by WPF.
+- Native Filters include a 3-band EQ, a stereo-linked Compressor and Pitch Shift with formant compensation. Preset schema 2 stores the new settings and reads existing schema 1 files. The original scalar native API is retained alongside the extended API.
+- Windows 10 22H2 x64 Release build and all 34 Core tests passed. Native tests verified EQ gain by band, compressor gain and attack/release, and ±12-semitone tone transposition at 48 and 192 kHz across uneven packet sizes.
+- UI Automation launched the Portable ZIP from an extracted test folder, selected all three filter kinds, adjusted all nine sliders, and saved a portable preset with the new values.
+- The muted 192 kHz Line In route to 192 kHz headphones and 48 kHz display audio showed zero new overruns or underruns in 15 seconds after warmup. Live graph replacement, pitch direction change, reorder, bypass and stop passed. A separate muted run used both VB-CABLE endpoints with the Portable DLL and all three effects for 10 seconds after warmup, with zero new overrun or underrun frames.
+- Audible voice quality and end-to-end latency still require listening and measurement. See [filter details](ORDERED_FILTER_CHAIN.md) and the [Windows release notes](releases/v0.4.0.md).
+
 ## Portable Studio v0.3.1
 
 Windows 10 22H2 x64 is the primary test platform. The app routes through the Windows endpoints selected in Studio, including independently installed VB-CABLE devices. See the [VB-CABLE guide](VB_CABLE.md) for application-to-application routing.
@@ -33,7 +42,7 @@ The tester reported that Native C++ performed much better and that its latency w
 
 ## Important unfinished work
 
-- RNNoise v0.1.1 Standard and portable filter presets are available. Little/Custom models, EQ and voice-changing AI remain future work.
+- RNNoise v0.1.1 Standard and portable filter presets are available. Little/Custom models, correction to a musical key, and AI voice conversion remain future work.
 - The native linear resampler has no production-grade anti-alias filter.
 - Long-term independent device drift correction, hotplug, sink fault isolation and calibrated end-to-end latency measurement are pending.
 - Native mix formats currently require mono/stereo Float32 or PCM16; unsupported formats fail with a clear error.

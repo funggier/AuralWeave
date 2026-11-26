@@ -5,7 +5,15 @@ using System.Text.Json.Serialization;
 namespace AuralWeave.Core;
 
 /// <summary>Only filter state and order are persisted. Audio source/output IDs are never serialized.</summary>
-public sealed record FilterPresetStage(FilterKind Kind, bool Enabled, float Parameter);
+public sealed record FilterPresetStage(FilterKind Kind, bool Enabled, float Parameter,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    EqualizerSettings? Equalizer = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    CompressorSettings? Compressor = null)
+{
+    public FilterStage Restore() =>
+        new(Guid.NewGuid(), Kind, Enabled, Parameter, Equalizer, Compressor);
+}
 public sealed record FilterPresetDocument(int SchemaVersion, string Name,
     List<FilterPresetStage> Filters);
 
@@ -16,7 +24,7 @@ public sealed record FilterPresetItem(string Name, string FilePath)
 
 public sealed class FilterPresetStore
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     private const int MaxPresetBytes = 128 * 1024;
     public const string Extension = ".awfilter";
     private static readonly JsonSerializerOptions Options = MakeOptions();
@@ -70,16 +78,13 @@ public sealed class FilterPresetStore
         FilterStageRules.Validate(stages);
         return new FilterPresetDocument(CurrentSchemaVersion, cleanName,
             stages.Select(x => new FilterPresetStage(
-                x.Kind, x.Enabled, x.Parameter)).ToList());
+                x.Kind, x.Enabled, x.Parameter, x.Equalizer, x.Compressor)).ToList());
     }
 
     public static List<FilterStage> Restore(FilterPresetDocument preset)
     {
         Validate(preset);
-        var result = preset.Filters.Select(x => new FilterStage(
-            Guid.NewGuid(), x.Kind, x.Enabled, x.Parameter)).ToList();
-        FilterStageRules.Validate(result);
-        return result;
+        return preset.Filters.Select(x => x.Restore()).ToList();
     }
 
     public FilterPresetItem Save(FilterPresetDocument preset, bool overwrite = false)
@@ -132,7 +137,7 @@ public sealed class FilterPresetStore
 
     public static void Validate(FilterPresetDocument? preset)
     {
-        if (preset is null || preset.SchemaVersion != CurrentSchemaVersion ||
+        if (preset is null || preset.SchemaVersion is not (1 or CurrentSchemaVersion) ||
             preset.Filters is null)
             throw new InvalidDataException("Unsupported or malformed filter preset format.");
         ValidateName(preset.Name);
@@ -142,10 +147,11 @@ public sealed class FilterPresetStore
         {
             if (stage is null)
                 throw new InvalidDataException("Filter stage cannot be null.");
+            if (preset.SchemaVersion == 1 &&
+                (stage.Kind > FilterKind.Limiter || stage.Equalizer is not null || stage.Compressor is not null))
+                throw new InvalidDataException("Preset uses filter settings introduced in schema 2.");
         }
-        var stages = preset.Filters.Select(x => new FilterStage(
-            Guid.NewGuid(), x.Kind, x.Enabled, x.Parameter));
-        FilterStageRules.Validate(stages);
+        FilterStageRules.Validate(preset.Filters.Select(stage => stage.Restore()));
     }
 
     private static string ValidateName(string? name)

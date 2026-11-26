@@ -8,9 +8,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>AuralWeave</AssemblyName>
     <ApplicationIcon>Assets\AuralWeave.ico</ApplicationIcon>
-    <Version>0.3.1</Version>
-    <AssemblyVersion>0.3.1.0</AssemblyVersion>
-    <FileVersion>0.3.1.0</FileVersion>
+    <Version>0.4.0</Version>
+    <AssemblyVersion>0.4.0.0</AssemblyVersion>
+    <FileVersion>0.4.0.0</FileVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AuralWeave.Audio.Windows\AuralWeave.Audio.Windows.csproj" />

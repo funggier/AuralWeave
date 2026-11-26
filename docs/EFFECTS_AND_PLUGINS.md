@@ -8,7 +8,7 @@ Audio source → Noise slot [Bypass | RNNoise | future]
              → Output branches
 ```
 
-The noise-reduction dropdown contains **one active engine per route**; the effects list contains **zero or more ordered instances**, including multiple instances of the same type.
+The diagram above describes the original proposal. In the current Studio, RNNoise is an ordinary, repeatable filter in the [ordered native chain](ORDERED_FILTER_CHAIN.md).
 
 ## Effect instance rules
 
@@ -17,18 +17,16 @@ The noise-reduction dropdown contains **one active engine per route**; the effec
 - Each processor has independent parameters, on/off state, smoothing state and latency.
 - Order changes apply to instances, not effect types.
 - Delete an instance without deleting its type/module from the installation.
-- Save/load all instance IDs, their order, parameters and bypass states.
-- An unavailable plugin remains represented in a preset as Missing/Disabled rather than being silently deleted.
+- Presets save filter order, parameters and bypass states. Loading generates new instance IDs.
 
 Example: `EQ(A) → Pitch Shift(B) → EQ(C) → EQ(D)` is valid. EQ(A), EQ(C), EQ(D) must never share mutable parameter state merely because the type matches.
 
-## Potential processors
+## Voice processing
 
-- Noise: Bypass, RNNoise (initial); future WebRTC NS / other engines
-- Effects: EQ, pitch/formant, compressor, limiter, gate, voice changer
-- Advanced future effects: AI voice conversion and enhancement (model-dependent)
-
-These are product design candidates. This project initialization does **not** provide implementations of those effects.
+- **Pitch Shift** raises or lowers the incoming voice by a fixed interval without changing its duration. The built-in filter uses formant compensation to help retain the character of the source voice.
+- **Formant shifting** moves resonances associated with vocal timbre. Separate formant controls are one option for a future voice changer.
+- **Pitch correction** detects the note and moves it towards a target note in a chosen key or scale. AutoTune is one example. [AutoTune documentation](https://help.antarestech.com/hc/en-us/articles/42855736822932-AutoTune-FAQ)
+- **AI voice conversion** uses a model to change vocal timbre, for example RVC. [RVC project](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI)
 
 ## Runtime contract
 

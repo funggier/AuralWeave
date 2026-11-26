@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shell;
@@ -23,7 +24,10 @@ public partial class MainWindow : Window
         new(FilterKind.Gain, "Gain"),
         new(FilterKind.RnnoiseStandard, "RNNoise Standard"),
         new(FilterKind.NoiseGate, "Noise Gate"),
-        new(FilterKind.Limiter, "Limiter")
+        new(FilterKind.Limiter, "Limiter"),
+        new(FilterKind.Equalizer, "EQ"),
+        new(FilterKind.Compressor, "Compressor"),
+        new(FilterKind.PitchShift, "Pitch Shift")
     ];
 
     private readonly List<FilterStage> _filters = [];
@@ -297,19 +301,15 @@ public partial class MainWindow : Window
     }
 
     private void UpdateFilter(Guid id, FilterKind? kind = null, bool? enabled = null,
-                              float? parameter = null, bool refresh = false)
+                              bool refresh = false)
     {
         var i = _filters.FindIndex(x => x.Id == id);
         if (i < 0) return;
-        var item = _filters[i];
-        var finalKind = kind ?? item.Kind;
-        _filters[i] = item with
-        {
-            Kind = finalKind,
-            Parameter = kind.HasValue
-                ? FilterStage.DefaultParameter(finalKind) : parameter ?? item.Parameter,
-            Enabled = enabled ?? item.Enabled
-        };
+        var filter = _filters[i];
+        var isEnabled = enabled ?? filter.Enabled;
+        _filters[i] = kind is FilterKind selected && selected != filter.Kind
+            ? new FilterStage(id, selected, isEnabled, FilterStage.DefaultParameter(selected))
+            : filter with { Enabled = isEnabled };
         _filterDebounceTimer.Stop();
         if (refresh) RefreshFilterRows();
         ApplyFilters();
@@ -321,11 +321,11 @@ public partial class MainWindow : Window
         catch (Exception ex) { Status("Filter chain: " + ex.Message, true); }
     }
 
-    private void QueueFilterParameter(Guid id, float value)
+    private void QueueFilterSettings(Guid id, Func<FilterStage, FilterStage> change)
     {
         var i = _filters.FindIndex(x => x.Id == id);
         if (i < 0) return;
-        _filters[i] = _filters[i] with { Parameter = value };
+        _filters[i] = change(_filters[i]);
         // Keep slider dragging responsive without rebuilding an RNNoise graph
         // for every pixel of movement. DSP parameters commit after idle.
         if (_route is null) return;
@@ -439,64 +439,129 @@ public partial class MainWindow : Window
 
                 if (!collapsed)
                 {
-                    if (filter.Kind == FilterKind.None)
+                    var settings = new StackPanel();
+                    settings.SetBinding(IsEnabledProperty, new Binding(nameof(CheckBox.IsChecked))
                     {
-                        body.Children.Add(MutedText(
-                            "Choose a filter type above. This empty slot does not process audio."));
-                    }
-                    else if (filter.Kind == FilterKind.RnnoiseStandard)
-                    {
-                        body.Children.Add(MutedText(
-                            "RNNoise Standard · Xiph v0.1.1 · 48 kHz / 10 ms frames. " +
-                            "Each instance has its own processing state."));
-                    }
-                    else
-                    {
-                        (double min, double max, string label, string suffix) = filter.Kind switch
-                        {
-                            FilterKind.Gain => (0, 2, "Gain level", "x"),
-                            FilterKind.NoiseGate => (-80, 0, "Threshold · 5 ms attack / 80 ms release", "dB"),
-                            FilterKind.Limiter => (-24, 0, "Ceiling · zero-lookahead peak limiting", "dB"),
-                            _ => (0, 1, "Parameter", "")
-                        };
-                        var row = new Grid { Margin = new Thickness(8, 13, 8, 4) };
-                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(230) });
-                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
-                        row.Children.Add(new TextBlock
-                        {
-                            Text = label, VerticalAlignment = VerticalAlignment.Center
-                        });
-                        var slider = new Slider
-                        {
-                            Minimum = min, Maximum = max, Value = filter.Parameter,
-                            IsEnabled = filter.Enabled,
-                            VerticalAlignment = VerticalAlignment.Center,
-                            ToolTip = label
-                        };
-                        Grid.SetColumn(slider, 1);
-                        row.Children.Add(slider);
-                        var level = new TextBlock
-                        {
-                            Text = $"{filter.Parameter:0.00} {suffix}",
-                            TextAlignment = TextAlignment.Right,
-                            VerticalAlignment = VerticalAlignment.Center
-                        };
-                        Grid.SetColumn(level, 2);
-                        row.Children.Add(level);
-                        slider.ValueChanged += (_, _) =>
-                        {
-                            level.Text = $"{slider.Value:0.00} {suffix}";
-                            QueueFilterParameter(filter.Id, (float)slider.Value);
-                        };
-                        body.Children.Add(row);
-                    }
+                        Source = toggle
+                    });
+                    BuildFilterSettings(settings, filter);
+                    body.Children.Add(settings);
                 }
                 card.Child = body;
                 FiltersPanel.Children.Add(card);
             }
         }
         finally { _refreshingFilters = false; }
+    }
+
+    private void BuildFilterSettings(Panel panel, FilterStage filter)
+    {
+        void Slider(string label, float value, double min, double max, double step,
+                    string unit, Func<FilterStage, float, FilterStage> change) =>
+            panel.Children.Add(MakeFilterSlider(label, value, min, max, step, unit,
+                updated => QueueFilterSettings(filter.Id, stage => change(stage, updated))));
+
+        switch (filter.Kind)
+        {
+            case FilterKind.None:
+                panel.Children.Add(MutedText("Choose a filter type above."));
+                break;
+            case FilterKind.RnnoiseStandard:
+                panel.Children.Add(MutedText("RNNoise Standard · Xiph v0.1.1 · 48 kHz / 10 ms frames"));
+                break;
+            case FilterKind.Gain:
+                Slider("Gain level", filter.Parameter, 0, 2, 0.01, "x",
+                    (stage, value) => stage with { Parameter = value });
+                break;
+            case FilterKind.NoiseGate:
+                Slider("Threshold", filter.Parameter, -80, 0, 0.5, "dBFS",
+                    (stage, value) => stage with { Parameter = value });
+                break;
+            case FilterKind.Limiter:
+                Slider("Ceiling", filter.Parameter, -24, 0, 0.1, "dBFS",
+                    (stage, value) => stage with { Parameter = value });
+                break;
+            case FilterKind.Equalizer:
+                var eq = filter.Equalizer ?? EqualizerSettings.Flat;
+                Slider("Low shelf · 160 Hz", eq.LowDb, -12, 12, 0.1, "dB",
+                    (stage, value) => stage with
+                    { Equalizer = (stage.Equalizer ?? EqualizerSettings.Flat) with { LowDb = value } });
+                Slider("Mid bell · 1 kHz", eq.MidDb, -12, 12, 0.1, "dB",
+                    (stage, value) => stage with
+                    { Equalizer = (stage.Equalizer ?? EqualizerSettings.Flat) with { MidDb = value } });
+                Slider("High shelf · 3.5 kHz", eq.HighDb, -12, 12, 0.1, "dB",
+                    (stage, value) => stage with
+                    { Equalizer = (stage.Equalizer ?? EqualizerSettings.Flat) with { HighDb = value } });
+                break;
+            case FilterKind.Compressor:
+                var comp = filter.Compressor ?? CompressorSettings.Default;
+                Slider("Threshold", comp.ThresholdDb, -60, 0, 0.5, "dBFS",
+                    (stage, value) => stage with
+                    { Compressor = (stage.Compressor ?? CompressorSettings.Default) with { ThresholdDb = value } });
+                Slider("Ratio", comp.Ratio, 1, 20, 0.1, ":1",
+                    (stage, value) => stage with
+                    { Compressor = (stage.Compressor ?? CompressorSettings.Default) with { Ratio = value } });
+                Slider("Attack", comp.AttackMs, 1, 100, 1, "ms",
+                    (stage, value) => stage with
+                    { Compressor = (stage.Compressor ?? CompressorSettings.Default) with { AttackMs = value } });
+                Slider("Release", comp.ReleaseMs, 10, 1000, 5, "ms",
+                    (stage, value) => stage with
+                    { Compressor = (stage.Compressor ?? CompressorSettings.Default) with { ReleaseMs = value } });
+                Slider("Makeup gain", comp.MakeupDb, 0, 24, 0.1, "dB",
+                    (stage, value) => stage with
+                    { Compressor = (stage.Compressor ?? CompressorSettings.Default) with { MakeupDb = value } });
+                break;
+            case FilterKind.PitchShift:
+                Slider("Pitch", filter.Parameter, -12, 12, 0.1, "st",
+                    (stage, value) => stage with { Parameter = value });
+                panel.Children.Add(MutedText("0 st bypasses pitch processing. Active shifting adds buffering."));
+                break;
+        }
+    }
+
+    private static Grid MakeFilterSlider(string label, float value, double min, double max,
+                                         double step, string unit, Action<float> changed)
+    {
+        var row = new Grid { Margin = new Thickness(8, 8, 8, 4) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(166) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(86) });
+        row.Children.Add(new TextBlock
+        {
+            Text = label, VerticalAlignment = VerticalAlignment.Center
+        });
+
+        var slider = new Slider
+        {
+            Minimum = min,
+            Maximum = max,
+            TickFrequency = step,
+            SmallChange = step,
+            LargeChange = step * 10,
+            IsSnapToTickEnabled = true,
+            Value = value,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = label
+        };
+        System.Windows.Automation.AutomationProperties.SetName(slider, label);
+        Grid.SetColumn(slider, 1);
+        row.Children.Add(slider);
+
+        string Format(double amount) => unit == ":1" ? $"{amount:0.##}:1" : $"{amount:0.##} {unit}";
+        var level = new TextBlock
+        {
+            Text = Format(slider.Value),
+            TextAlignment = TextAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(level, 2);
+        row.Children.Add(level);
+        slider.ValueChanged += (_, e) =>
+        {
+            level.Text = Format(e.NewValue);
+            changed((float)e.NewValue);
+        };
+        return row;
     }
 
     private static TextBlock MutedText(string text)

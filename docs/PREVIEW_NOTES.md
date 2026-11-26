@@ -8,9 +8,11 @@
 4. Configure the ordered **Filters** and press **START**. Use **STOP** before changing selected endpoints.
 5. See `RELEASE_NOTES.md` for VB-CABLE setup and sending or receiving audio from other apps.
 
-Gain, RNNoise Standard, Noise Gate and Limiter can be repeated, reordered and bypassed independently. Filter Presets can be saved, loaded, imported and exported. The skin selection is stored in the Portable folder.
+Gain, RNNoise Standard, Noise Gate, Limiter, EQ, Compressor and Pitch Shift can be repeated, reordered and bypassed independently. Filter Presets can be saved, loaded, imported and exported. The skin selection is stored in the Portable folder.
 
 ## Known limitations
+
+- Pitch Shift adds processing delay when set above or below 0 semitones. Leave it at 0 or turn it off for the lowest monitoring delay.
 
 - WASAPI shared-mode mix formats are mono/stereo Float32 or PCM16. Unsupported formats produce an error.
 - Long-run device drift, hotplug recovery and quantified end-to-end latency remain under test.

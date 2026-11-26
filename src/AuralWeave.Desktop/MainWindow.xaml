@@ -29,7 +29,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0"
                             IsHitTestVisible="False">
-                    <Image Width="21" Height="21" Source="Assets/AuralWeave-Monochrome.png"
+                    <Image Width="21" Height="21" Source="Assets/AuralWeave-Monochrome.png" RenderOptions.BitmapScalingMode="HighQuality"
                            Margin="0,0,9,0"/>
                     <TextBlock Text="AuralWeave" FontWeight="SemiBold" FontSize="12"
                                Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
@@ -58,7 +58,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Image Width="48" Height="48" Source="Assets/AuralWeave-Monochrome.png"
+                    <Image Width="48" Height="48" Source="Assets/AuralWeave-Monochrome.png" RenderOptions.BitmapScalingMode="HighQuality"
                            Margin="0,0,14,0" Stretch="Uniform"/>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="AuralWeave" FontSize="24" FontWeight="SemiBold"/>

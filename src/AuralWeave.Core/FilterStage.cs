@@ -7,14 +7,30 @@ public enum FilterKind
     Gain = 1,
     RnnoiseStandard = 2,
     NoiseGate = 3,
-    Limiter = 4
+    Limiter = 4,
+    Equalizer = 5,
+    Compressor = 6,
+    PitchShift = 7
+}
+
+public sealed record EqualizerSettings(float LowDb, float MidDb, float HighDb)
+{
+    public static EqualizerSettings Flat { get; } = new(0f, 0f, 0f);
+}
+
+public sealed record CompressorSettings(
+    float ThresholdDb, float Ratio, float AttackMs, float ReleaseMs, float MakeupDb)
+{
+    public static CompressorSettings Default { get; } = new(-18f, 3f, 10f, 100f, 0f);
 }
 
 public sealed record FilterStage(
     Guid Id,
     FilterKind Kind = FilterKind.None,
     bool Enabled = true,
-    float Parameter = 0f)
+    float Parameter = 0f,
+    EqualizerSettings? Equalizer = null,
+    CompressorSettings? Compressor = null)
 {
     public static float DefaultParameter(FilterKind kind) => kind switch
     {
@@ -36,9 +52,13 @@ public static class FilterStageRules
         {
             if (!ids.Add(stage.Id)) throw new ArgumentException("Duplicate filter instance ID.");
             if (++count > 64) throw new ArgumentException("At most 64 filters are supported.");
-            if (!Enum.IsDefined(stage.Kind) || float.IsNaN(stage.Parameter) ||
-                float.IsInfinity(stage.Parameter))
+            if (!Enum.IsDefined(stage.Kind) || !float.IsFinite(stage.Parameter) ||
+                (stage.Equalizer is not null && stage.Kind is not FilterKind.Equalizer) ||
+                (stage.Compressor is not null && stage.Kind is not FilterKind.Compressor))
                 throw new ArgumentException("Invalid filter configuration.");
+
+            var eq = stage.Equalizer ?? EqualizerSettings.Flat;
+            var compressor = stage.Compressor ?? CompressorSettings.Default;
             var valid = stage.Kind switch
             {
                 FilterKind.None => true,
@@ -46,6 +66,17 @@ public static class FilterStageRules
                 FilterKind.RnnoiseStandard => stage.Parameter == 0f,
                 FilterKind.NoiseGate => stage.Parameter is >= -80f and <= 0f,
                 FilterKind.Limiter => stage.Parameter is >= -24f and <= 0f,
+                FilterKind.Equalizer => stage.Parameter == 0f &&
+                    eq.LowDb is >= -12f and <= 12f &&
+                    eq.MidDb is >= -12f and <= 12f &&
+                    eq.HighDb is >= -12f and <= 12f,
+                FilterKind.Compressor => stage.Parameter == 0f &&
+                    compressor.ThresholdDb is >= -60f and <= 0f &&
+                    compressor.Ratio is >= 1f and <= 20f &&
+                    compressor.AttackMs is >= 1f and <= 100f &&
+                    compressor.ReleaseMs is >= 10f and <= 1000f &&
+                    compressor.MakeupDb is >= 0f and <= 24f,
+                FilterKind.PitchShift => stage.Parameter is >= -12f and <= 12f,
                 _ => false
             };
             if (!valid) throw new ArgumentOutOfRangeException(

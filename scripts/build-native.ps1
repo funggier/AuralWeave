@@ -20,6 +20,15 @@ if (!(Test-Path -LiteralPath (Join-Path $third 'COPYING'))) {
     throw 'Pinned RNNoise v0.1.1 source and COPYING file are mandatory; do not auto-download during builds.'
 }
 
+$stretch = Join-Path $root 'third_party\signalsmith-stretch'
+$linear = Join-Path $root 'third_party\signalsmith-linear'
+foreach ($pitchSource in @(
+    (Join-Path $stretch 'signalsmith-stretch.h'), (Join-Path $stretch 'LICENSE.txt'),
+    (Join-Path $linear 'signalsmith-linear\stft.h'), (Join-Path $linear 'signalsmith-linear\fft.h'),
+    (Join-Path $linear 'LICENSE.txt'))) {
+    if (!(Test-Path -LiteralPath $pitchSource)) { throw "Missing pinned Pitch Shift dependency: $pitchSource" }
+}
+
 $out = Join-Path $root 'build\native'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
@@ -29,12 +38,13 @@ $rnObjs = ($rnNames | ForEach-Object { '"' + (Join-Path $out ($_ + '.obj')) + '"
 $compileRnnoise = 'cl /nologo /O2 /TC /D_USE_MATH_DEFINES /I"' + $rnSrc +
     '" /I"' + $rnInc + '" /c ' + $rnFiles
 
-$common = '/nologo /std:c++20 /EHsc /W4 /WX /utf-8 /I"' + $include +
-    '" /I"' + $rnInc + '" '
+$common = '/nologo /std:c++20 /EHsc /O2 /W4 /WX /utf-8 /I"' + $include +
+    '" /I"' + $rnInc + '" /external:W0 /external:I"' + $stretch + '" /external:I"' + $linear + '" '
 $graph = '"' + (Join-Path $src 'src\route_graph.cpp') + '" '
 $resampler = '"' + (Join-Path $src 'src\audio_resampler.cpp') + '" '
 $noise = '"' + (Join-Path $src 'src\rnnoise_processor.cpp') + '" '
 $filterChain = '"' + (Join-Path $src 'src\filter_chain.cpp') + '" '
+$voiceFilters = '"' + (Join-Path $src 'src\voice_filters.cpp') + '" '
 $catalog = '"' + (Join-Path $src 'src\device_catalog.cpp') + '" '
 $catalogApi = '"' + (Join-Path $src 'src\device_catalog_api.cpp') + '" '
 $tests = '"' + (Join-Path $src 'tests\native_smoke.cpp') + '" '
@@ -42,9 +52,9 @@ $engine = '"' + (Join-Path $src 'src\audio_engine.cpp') + '" '
 $exe = Join-Path $out 'AuralWeaveNativeSmoke.exe'
 $dll = Join-Path $out 'AuralWeave.Native.dll'
 
-$compileTests = 'cl ' + $common + $graph + $resampler + $noise + $filterChain + $catalog +
+$compileTests = 'cl ' + $common + $graph + $resampler + $noise + $filterChain + $voiceFilters + $catalog +
     $tests + $rnObjs + ' /link ole32.lib propsys.lib /OUT:"' + $exe + '"'
-$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler + $noise + $filterChain +
+$compileEngine = 'cl ' + $common + '/LD ' + $engine + $resampler + $noise + $filterChain + $voiceFilters +
     $catalog + $catalogApi + $rnObjs + ' /link ole32.lib propsys.lib uuid.lib /OUT:"' + $dll + '"'
 
 Push-Location $out

@@ -33,8 +33,8 @@ The repository now includes working prototypes; boxes below distinguish fully pr
 - [ ] Frame adapter and RNNoise quality tests
 - [x] Ordered Gain effect instances, repeated types and independent gain settings (prototype)
 - [ ] Enable/bypass/reorder/remove implemented for Gain; concurrent hot reconfiguration safety and DSP engine plugin ABI require hardening
-- [ ] Actual EQ as first configurable built-in effect
-- [ ] Preset save/load round-trips
+- [x] Configurable 3-band EQ, Compressor and semitone Pitch Shift
+- [x] Preset save/load round-trips with existing schema 1 presets supported
 
 ## Phase 4 — Multi-route polish
 

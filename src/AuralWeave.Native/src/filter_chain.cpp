@@ -6,12 +6,23 @@
 namespace auralweave {
 
 bool valid_filter_spec(const FilterSpec& spec) noexcept {
-    if (!std::isfinite(spec.parameter)) return false;
+    if (!std::isfinite(spec.parameter) ||
+        !std::all_of(spec.additional.begin(), spec.additional.end(),
+                     [](float value) { return std::isfinite(value); })) return false;
+    const auto& [second, third, fourth, fifth] = spec.additional;
     switch (spec.kind) {
         case FilterKind::gain: return spec.parameter >= 0.0F && spec.parameter <= 2.0F;
         case FilterKind::rnnoise: return spec.parameter == 0.0F;
         case FilterKind::noise_gate: return spec.parameter >= -80.0F && spec.parameter <= 0.0F;
         case FilterKind::limiter: return spec.parameter >= -24.0F && spec.parameter <= 0.0F;
+        case FilterKind::equalizer:
+            return std::fabs(spec.parameter) <= 12.0F &&
+                std::fabs(second) <= 12.0F && std::fabs(third) <= 12.0F;
+        case FilterKind::compressor:
+            return spec.parameter >= -60.0F && spec.parameter <= 0.0F &&
+                second >= 1.0F && second <= 20.0F && third >= 1.0F && third <= 100.0F &&
+                fourth >= 10.0F && fourth <= 1000.0F && fifth >= 0.0F && fifth <= 24.0F;
+        case FilterKind::pitch_shift: return std::fabs(spec.parameter) <= 12.0F;
         default: return false;
     }
 }
@@ -26,8 +37,30 @@ FilterChain::FilterChain(std::uint32_t sample_rate, std::uint16_t channels,
     for (const auto& spec : specs) {
         if (!valid_filter_spec(spec)) throw std::invalid_argument("Invalid filter configuration");
         stages_.emplace_back(spec);
-        if (spec.kind == FilterKind::rnnoise)
-            stages_.back().noise = std::make_unique<RnnoiseProcessor>(sample_rate, channels);
+        if (!spec.enabled) continue;
+
+        auto& stage = stages_.back();
+        const auto& [second, third, fourth, fifth] = spec.additional;
+        switch (spec.kind) {
+            case FilterKind::rnnoise:
+                stage.noise = std::make_unique<RnnoiseProcessor>(sample_rate, channels);
+                break;
+            case FilterKind::equalizer:
+                if (spec.parameter != 0.0F || second != 0.0F || third != 0.0F)
+                    stage.equalizer = std::make_unique<ThreeBandEqualizer>(
+                        sample_rate, spec.parameter, second, third);
+                break;
+            case FilterKind::compressor:
+                if (second != 1.0F || fifth != 0.0F)
+                    stage.compressor = std::make_unique<Compressor>(
+                        sample_rate, spec.parameter, second, third, fourth, fifth);
+                break;
+            case FilterKind::pitch_shift:
+                if (spec.parameter != 0.0F)
+                    stage.pitch = std::make_unique<PitchShifter>(sample_rate, channels, spec.parameter);
+                break;
+            default: break;
+        }
     }
 }
 
@@ -84,6 +117,15 @@ void FilterChain::process(float* samples, std::size_t frames) noexcept {
                 }
                 break;
             }
+            case FilterKind::equalizer:
+                if (stage.equalizer) stage.equalizer->process(samples, frames, channels_);
+                break;
+            case FilterKind::compressor:
+                if (stage.compressor) stage.compressor->process(samples, frames, channels_);
+                break;
+            case FilterKind::pitch_shift:
+                if (stage.pitch) stage.pitch->process(samples, frames);
+                break;
         }
         stage.previously_enabled = true;
     }

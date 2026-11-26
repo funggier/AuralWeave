@@ -5,7 +5,7 @@
 AuralWeave เป็นโปรแกรม Portable สำหรับจัดเส้นทางเสียงบน Windows เปิดมาแล้วเลือก **Sound Input → Filters → Sound Output** ได้ในหน้าจอเดียว ใช้ Native C++ และ WASAPI Shared Mode สำหรับอุปกรณ์จริงและอุปกรณ์เสมือนที่ Windows มองเห็น
 
 - รับเสียงจากไมโครโฟน, Line In, USB audio หรือ playback loopback
-- เรียงและเพิ่ม Gain, RNNoise Standard, Noise Gate และ Limiter ซ้ำได้
+- เรียงและเพิ่ม Gain, RNNoise Standard, Noise Gate, Limiter, EQ, Compressor และ Pitch Shift ซ้ำได้
 - ส่งเสียงพร้อมกันหลายเอาต์พุต พร้อมปรับ Gain และ Mute แยกกัน
 - บันทึกและนำเข้า Filter Presets แบบ Portable
 

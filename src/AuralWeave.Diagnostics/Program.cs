@@ -87,7 +87,7 @@ try
             throw new InvalidOperationException("RNNoise live switch diagnostic failed.");
         Console.WriteLine("PASS: Native RNNoise ↔ Bypass live switching, muted endpoints and Stop.");
     }
-    if (args.Contains("--smoke-filter-chain"))
+    if (args.Contains("--smoke-filter-chain") || args.Contains("--soak-voice-filters"))
     {
         var input = sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture && x.IsDefault)
             ?? sources.First(x => x.Kind == AudioEndpointKind.Capture);
@@ -98,11 +98,27 @@ try
             sinks.Add(new OutputRoute(Guid.NewGuid(), out2.Id, 1f, true));
         Console.WriteLine($"ORDERED FILTERS (muted): {input.DisplayName} → {sinks.Count} outputs");
         using var route = new NativeWasapiAudioRoute();
-        route.ReplaceFilterChain([]); // zero selected filters is true bypass
+        var voice = new FilterStage[]
+        {
+            new(Guid.NewGuid(), FilterKind.Equalizer, Equalizer: new(-1f, 2f, 0f)),
+            new(Guid.NewGuid(), FilterKind.Compressor, Compressor: CompressorSettings.Default),
+            new(Guid.NewGuid(), FilterKind.PitchShift, Parameter: 3f)
+        };
+        route.ReplaceFilterChain(voice);
         route.Start(input.Id, sinks);
-        await Task.Delay(600);
-        var noFilters = route.CapturedFrames;
+        await Task.Delay(1200);
+        var started = route.CapturedFrames;
+        var warmUnderrun = route.UnderrunRenderFrames;
+        var warmOverrun = route.DroppedRenderFrames;
+        if (args.Contains("--soak-voice-filters"))
+        {
+            await Task.Delay(15000);
+            Console.WriteLine($"Voice filters after warmup: {route.CapturedFrames - started} frames, " +
+                $"{route.DroppedRenderFrames - warmOverrun} overrun, " +
+                $"{route.UnderrunRenderFrames - warmUnderrun} underrun.");
+        }
         route.ReplaceFilterChain([
+            ..voice,
             new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, .8f),
             new FilterStage(Guid.NewGuid(), FilterKind.NoiseGate, true, -45f),
             new FilterStage(Guid.NewGuid(), FilterKind.RnnoiseStandard, true, 0f),
@@ -113,9 +129,10 @@ try
         var processed = route.CapturedFrames;
         var errorDuring = route.LastError;
         route.ReplaceFilterChain([
-            new FilterStage(Guid.NewGuid(), FilterKind.Limiter, true, -2f),
-            new FilterStage(Guid.NewGuid(), FilterKind.RnnoiseStandard, true, 0f),
-            new FilterStage(Guid.NewGuid(), FilterKind.Gain, true, .9f)
+            voice[2] with { Parameter = -2f },
+            voice[0],
+            voice[1] with { Enabled = false },
+            new FilterStage(Guid.NewGuid(), FilterKind.Limiter, true, -2f)
         ]);
         await Task.Delay(700);
         var reordered = route.CapturedFrames;
@@ -126,9 +143,9 @@ try
         var overruns = route.DroppedRenderFrames;
         var underruns = route.UnderrunRenderFrames;
         route.Stop();
-        Console.WriteLine($"Frames: {noFilters} → {processed} → {reordered} → {resumed}; " +
+        Console.WriteLine($"Frames: {started} → {processed} → {reordered} → {resumed}; " +
             $"overruns={overruns}; underruns={underruns}; error={error ?? errorDuring ?? "none"}");
-        if (!(noFilters > 0 && processed > noFilters && reordered > processed &&
+        if (!(started > 0 && processed > started && reordered > processed &&
               resumed > reordered && error is null && errorDuring is null))
             throw new InvalidOperationException("Ordered native filter chain smoke failed.");
         Console.WriteLine("PASS: Native ordered filter chain / reorder / bypass / Stop.");

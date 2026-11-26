@@ -4,7 +4,7 @@
 
 Preset storage: `presets/filters/*.awfilter` relative to the executable directory (the portable folder may be relocated). No user profile or registry dependency is added for this feature.
 
-The files contain `SchemaVersion=1`, `Name` and an ordered `Filters` array of `Kind`, `Enabled`, `Parameter`. The stored payload is intentionally restricted to filter state.
+New files use `SchemaVersion=2` with `Name` and an ordered `Filters` array. Each entry stores `Kind`, `Enabled` and `Parameter` (semitones for Pitch Shift). EQ has an optional `Equalizer` object and Compressor an optional `Compressor` object. If the object is absent, the filter uses its defaults. Existing schema 1 presets remain readable.
 
 **Never included:** Sound Input choice, audio endpoint IDs, Sound Output choices, output gains/mute, Windows hardware identification, or route session state.
 
@@ -21,4 +21,4 @@ Settings and sound devices remain independent from all preset operations.
 
 ## Future enhancements
 
-Preset rename/delete actions, optional grouping, and filter-specific parameter structures/version migration can be implemented without expanding the preset format to include sound devices.
+Preset rename/delete actions, optional grouping and preset descriptions can be implemented without expanding the preset format to include sound devices.

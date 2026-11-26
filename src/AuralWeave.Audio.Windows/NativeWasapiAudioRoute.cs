@@ -60,7 +60,33 @@ public sealed class NativeWasapiAudioRoute : IDisposable
         FilterStageRules.Validate(all);
         var active = all.Where(x => x.Kind != FilterKind.None).ToArray();
         var kinds = active.Select(x => (int)x.Kind).ToArray();
-        var parameters = active.Select(x => x.Parameter).ToArray();
+        // Five floats per stage, in the order documented by aw_set_filter_chain_v2.
+        var parameters = new float[active.Length * 5];
+        for (var i = 0; i < active.Length; ++i)
+        {
+            var stage = active[i];
+            var offset = i * 5;
+            switch (stage.Kind)
+            {
+                case FilterKind.Equalizer:
+                    var eq = stage.Equalizer ?? EqualizerSettings.Flat;
+                    parameters[offset] = eq.LowDb;
+                    parameters[offset + 1] = eq.MidDb;
+                    parameters[offset + 2] = eq.HighDb;
+                    break;
+                case FilterKind.Compressor:
+                    var compressor = stage.Compressor ?? CompressorSettings.Default;
+                    parameters[offset] = compressor.ThresholdDb;
+                    parameters[offset + 1] = compressor.Ratio;
+                    parameters[offset + 2] = compressor.AttackMs;
+                    parameters[offset + 3] = compressor.ReleaseMs;
+                    parameters[offset + 4] = compressor.MakeupDb;
+                    break;
+                default:
+                    parameters[offset] = stage.Parameter;
+                    break;
+            }
+        }
         var enabled = active.Select(x => x.Enabled ? 1 : 0).ToArray();
         if (NativeSetFilterChain(_handle, kinds, parameters, enabled, active.Length) != 1)
             throw new InvalidOperationException("Native backend rejected filter chain.");
@@ -186,7 +212,7 @@ public sealed class NativeWasapiAudioRoute : IDisposable
     [DllImport(Library, EntryPoint = "aw_input_peak", CallingConvention = CallingConvention.Cdecl)]
     private static extern float NativeInputPeak(IntPtr handle);
 
-    [DllImport(Library, EntryPoint = "aw_set_filter_chain", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(Library, EntryPoint = "aw_set_filter_chain_v2", CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeSetFilterChain(IntPtr handle,
         [In] int[] kinds, [In] float[] parameters, [In] int[] enabled, int count);
 
