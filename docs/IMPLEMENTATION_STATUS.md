@@ -4,8 +4,8 @@
 
 - Both VST formats share a native editor frame that reads its colors from the Studio palette. An open editor follows a skin change immediately. The plugin still receives its requested viewport dimensions.
 - The Add Filter button uses an 18-DIP centered plus and is 60 DIPs high. The logo header shows **NATIVE AUDIO ROUTING** at 16 DIPs.
-- The footer calculates capture frames per second from the native frame counter and elapsed time. It updates about once a second and shows zero after stopping.
-- Windows 10 22H2 x64 passed the native smoke suite, 44 managed tests, and a Portable UI run with Crystalline VST2 and VST3. Pixel checks confirmed the centered plus and both caption colors. Both editors kept their 1016×398 viewport and passed close, reopen, and reload. A muted live route reported about 192,000 frames/s before and after changing effects.
+- The footer calculates capture frames per second from the native frame counter and elapsed time. It uses the label `frames per sec`, updates about once a second, and shows zero after stopping.
+- Windows 10 22H2 x64 passed the native smoke suite, 44 managed tests, and a Portable UI run with Crystalline VST2 and VST3. Pixel checks confirmed the centered plus and both caption colors. Both editors kept their 1016×398 viewport and passed close, reopen, and reload. A muted live route reported about 192,000 frames per sec before and after changing effects.
 
 ## Studio v0.6.1 — VST discovery and reload
 

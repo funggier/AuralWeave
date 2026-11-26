@@ -97,7 +97,7 @@
                                Text="Ready — no route running"
                                Foreground="{DynamicResource Accent}"/>
                 </StackPanel>
-                <TextBlock Grid.Column="1" x:Name="CaptureRateLabel" Text="0 frames/s"
+                <TextBlock Grid.Column="1" x:Name="CaptureRateLabel" Text="0 frames per sec"
                            Foreground="{DynamicResource SecondaryText}"
                            ToolTip="Audio frames captured per second"/>
             </Grid>

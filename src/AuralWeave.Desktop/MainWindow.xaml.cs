@@ -712,7 +712,7 @@ public partial class MainWindow : Window
             RefreshButton.IsEnabled = true;
             InputCombo.IsEnabled = true;
             InputLevel.Value = 0;
-            CaptureRateLabel.Text = "0 frames/s";
+            CaptureRateLabel.Text = "0 frames per sec";
             OutputStatusLabel.Text = "";
             RefreshOutputRows();
             Status("Route stopped.");
@@ -730,7 +730,7 @@ public partial class MainWindow : Window
         {
             var captured = route.CapturedFrames;
             var framesPerSecond = Math.Max(0, captured - _captureRateFrames) / elapsed;
-            CaptureRateLabel.Text = $"{framesPerSecond:N0} frames/s";
+            CaptureRateLabel.Text = $"{framesPerSecond:N0} frames per sec";
             _captureRateMeasuredAt = now;
             _captureRateFrames = captured;
         }
