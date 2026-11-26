@@ -223,8 +223,26 @@ try
     var pluginPreset = presetStore.Create("VST path", [vstCard with { VstPlugin = dll }]);
     var pluginFile = presetStore.Save(pluginPreset);
     var pluginRestored = FilterPresetStore.Restore(FilterPresetStore.ReadFile(pluginFile.FilePath));
-    Verify(pluginPreset.SchemaVersion == 5 && pluginRestored.Single().VstPlugin == dll,
-        "schema 5 preserves VST file identity and location");
+    Verify(pluginPreset.SchemaVersion == 5 && pluginRestored.Single() is { VstCommonFiles: false } stage && stage.VstPlugin == dll,
+        "schema 5 restores the VST file identity as a Custom Location card");
+
+    var commonCard = vstCard with { VstCommonFiles = true };
+    var commonPreset = presetStore.Create("Common Files", [commonCard, commonCard with { Id = Guid.NewGuid(), VstPlugin = dll }]);
+    var commonFile = presetStore.Save(commonPreset);
+    var commonRestored = FilterPresetStore.Restore(FilterPresetStore.ReadFile(commonFile.FilePath));
+    Verify(commonPreset.SchemaVersion == 6 &&
+           commonRestored is [{ VstCommonFiles: true, VstPlugin: null }, { VstCommonFiles: true } loadedCommon] &&
+           loadedCommon.VstPlugin == dll,
+        "schema 6 preserves Common Files on empty and populated VST cards");
+    try
+    {
+        FilterPresetStore.Validate(commonPreset with { SchemaVersion = 5 });
+        throw new Exception("Common Files unexpectedly accepted in a schema 5 preset");
+    }
+    catch (InvalidDataException)
+    {
+        Verify(true, "schema 5 rejects a Common Files VST card");
+    }
     try
     {
         presetStore.Create("Invalid VST fingerprint", [vstCard with { VstPlugin = dll with { Sha256 = "missing" } }]);

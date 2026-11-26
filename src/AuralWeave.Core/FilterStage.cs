@@ -47,7 +47,8 @@ public sealed record FilterStage(
     EqualizerSettings? Equalizer = null,
     CompressorSettings? Compressor = null,
     ImmutableArray<float>? BandGainsDb = null,
-    VstPluginReference? VstPlugin = null)
+    VstPluginReference? VstPlugin = null,
+    bool VstCommonFiles = false)
 {
     public static int ExtendedEqualizerBandCount(FilterKind kind) => kind switch
     {
@@ -81,6 +82,7 @@ public static class FilterStageRules
                 (stage.Equalizer is not null && stage.Kind is not FilterKind.Equalizer) ||
                 (stage.Compressor is not null && stage.Kind is not FilterKind.Compressor) ||
                 (stage.BandGainsDb is not null && bandCount == 0) ||
+                (stage.VstCommonFiles && stage.Kind != FilterKind.Vst2) ||
                 (stage.VstPlugin is { } plugin && (stage.Kind != FilterKind.Vst2 || !plugin.IsValid())))
                 throw new ArgumentException("Invalid filter configuration.");
 

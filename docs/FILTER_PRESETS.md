@@ -10,7 +10,7 @@ When loading or importing a v0.4.0 preset, the app skips the retired Pitch Shift
 
 **Never included:** Sound Input choice, audio endpoint IDs, Sound Output choices, output gains/mute, Windows hardware identification, or route session state.
 
-Presets with a selected VST2 or VST3 plugin use schema 5. They store the module path and its SHA-256 file identity. Plugin files inside the portable folder use paths relative to the app. Outside Plugin files use full paths. This portable copy automatically reopens matching Plugin files it has previously loaded. If the file is missing, the VST card reopens empty. Schema 4 VST presets still load as empty VST cards. Plugin parameters are saved using the plugin's editor. [VST Plugin guide](VST_PLUGINS.md)
+Presets with **VST Plugin (Common Files)** use schema 6 and restore the card's scan mode, including empty cards. Schema 4 empty VST cards and schema 5 plugin references load as **VST Plugin (Custom Location)**. A selected VST2 or VST3 effect is stored as a module path and its SHA-256 file identity. Paths inside the portable folder are relative to the app. External paths are absolute. This portable copy automatically reopens unchanged plugin files it previously loaded. If the file is missing, the VST card opens empty. Save effect parameters in the plugin's own editor. [VST Plugin guide](VST_PLUGINS.md)
 
 ## Controls
 

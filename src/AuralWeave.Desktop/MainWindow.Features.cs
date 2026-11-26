@@ -105,8 +105,9 @@ public partial class MainWindow
         var missing = preset.Filters.Count(filter => filter.VstPlugin is not null) - restoredCards.Count;
         var pending = restoredCards.Values.Count(card => card.Plugin is null);
         var unavailable = missing > 0 ? $" {missing} VST plugin(s) unavailable." : "";
-        var manual = pending > 0 ? $" Click Load plugin on {pending} VST card(s)." : "";
+        var manual = pending > 0 ? $" Click Load Plugin on {pending} VST card(s)." : "";
         Status($"{action} '{preset.Name}' · {restored.Count} filter(s).{skipped}{unavailable}{manual}");
+        foreach (var stage in restored) StartCommonVstScan(stage);
     }
 
     private void ExportPresetClicked(object sender, RoutedEventArgs e)

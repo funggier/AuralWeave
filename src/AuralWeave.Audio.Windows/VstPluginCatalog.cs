@@ -11,24 +11,43 @@ public sealed record VstPluginCandidate(string Name, string Path, VstPluginForma
 
 public static class VstPluginCatalog
 {
-    public static IReadOnlyList<VstPluginCandidate> Scan(string folder, bool includeStandardVst3 = false)
+    public static IReadOnlyList<VstPluginCandidate> Scan(string folder)
     {
         var root = Path.GetFullPath(folder);
         if (!Directory.Exists(root))
             throw new DirectoryNotFoundException("The VST plugins folder does not exist.");
 
         var candidates = new Dictionary<string, VstPluginCandidate>(StringComparer.OrdinalIgnoreCase);
-        ScanTree(root, candidates, vst3Only: false);
-        if (includeStandardVst3)
-        {
-            var standard = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFiles), "VST3");
-            if (Directory.Exists(standard)) ScanTree(standard, candidates, vst3Only: true);
-        }
-        return candidates.Values.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(x => x.Format).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase).ToArray();
+        ScanTree(root, candidates);
+        return SortCandidates(candidates.Values);
     }
 
-    private static void ScanTree(string root, Dictionary<string, VstPluginCandidate> candidates, bool vst3Only)
+    public static IReadOnlyList<VstPluginCandidate> ScanCommonFiles()
+    {
+        var candidates = new Dictionary<string, VstPluginCandidate>(StringComparer.OrdinalIgnoreCase);
+        ScanStandardFolder(Environment.SpecialFolder.LocalApplicationData, @"Programs\Common\VST3", VstPluginFormat.VST3);
+        ScanStandardFolder(Environment.SpecialFolder.CommonProgramFiles, "VST3", VstPluginFormat.VST3);
+        ScanStandardFolder(Environment.SpecialFolder.CommonProgramFiles, "VST2", VstPluginFormat.VST2);
+        ScanStandardFolder(Environment.SpecialFolder.CommonProgramFiles, @"Steinberg\VST2", VstPluginFormat.VST2);
+        ScanStandardFolder(Environment.SpecialFolder.ProgramFiles, "VSTPlugins", VstPluginFormat.VST2);
+        ScanStandardFolder(Environment.SpecialFolder.ProgramFiles, @"Steinberg\VSTPlugins", VstPluginFormat.VST2);
+        return SortCandidates(candidates.Values);
+
+        void ScanStandardFolder(Environment.SpecialFolder parent, string subfolder, VstPluginFormat format)
+        {
+            var basePath = Environment.GetFolderPath(parent);
+            if (basePath.Length == 0) return;
+            var folder = Path.Combine(basePath, subfolder);
+            if (Directory.Exists(folder)) ScanTree(folder, candidates, format);
+        }
+    }
+
+    private static VstPluginCandidate[] SortCandidates(IEnumerable<VstPluginCandidate> candidates) =>
+        candidates.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(x => x.Format).ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase).ToArray();
+
+    private static void ScanTree(string root, Dictionary<string, VstPluginCandidate> candidates,
+                                 VstPluginFormat? format = null)
     {
         var options = new EnumerationOptions { IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
         var pending = new Stack<string>();
@@ -38,14 +57,15 @@ public static class VstPluginCatalog
             if (folder.EndsWith(".vst3", StringComparison.OrdinalIgnoreCase))
             {
                 var file = Path.Combine(folder, "Contents", "x86_64-win", Path.GetFileName(folder));
-                Add(file, Path.GetFileNameWithoutExtension(folder));
+                if (format is not VstPluginFormat.VST2)
+                    Add(file, Path.GetFileNameWithoutExtension(folder));
                 continue;
             }
 
             foreach (var file in Directory.EnumerateFiles(folder, "*", options))
             {
-                if (file.EndsWith(".vst3", StringComparison.OrdinalIgnoreCase) ||
-                    (!vst3Only && file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
+                if ((format is not VstPluginFormat.VST2 && file.EndsWith(".vst3", StringComparison.OrdinalIgnoreCase)) ||
+                    (format is not VstPluginFormat.VST3 && file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
                     Add(file, Path.ChangeExtension(Path.GetRelativePath(root, file), null));
             }
             foreach (var child in Directory.EnumerateDirectories(folder, "*", options)) pending.Push(child);

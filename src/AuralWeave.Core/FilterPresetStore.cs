@@ -13,10 +13,12 @@ public sealed record FilterPresetStage(FilterKind Kind, bool Enabled, float Para
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     ImmutableArray<float>? BandGainsDb = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    VstPluginReference? VstPlugin = null)
+    VstPluginReference? VstPlugin = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    bool VstCommonFiles = false)
 {
     public FilterStage Restore() =>
-        new(Guid.NewGuid(), Kind, Enabled, Parameter, Equalizer, Compressor, BandGainsDb, VstPlugin);
+        new(Guid.NewGuid(), Kind, Enabled, Parameter, Equalizer, Compressor, BandGainsDb, VstPlugin, VstCommonFiles);
 }
 public sealed record FilterPresetDocument(int SchemaVersion, string Name,
     List<FilterPresetStage> Filters);
@@ -28,7 +30,8 @@ public sealed record FilterPresetItem(string Name, string FilePath)
 
 public sealed class FilterPresetStore
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
+    private const int VstPluginReferenceSchemaVersion = 5;
     private const int VstCardsSchemaVersion = 4;
     private const int ExpandedEqSchemaVersion = 3;
     private const int VoiceFiltersSchemaVersion = 2;
@@ -83,13 +86,15 @@ public sealed class FilterPresetStore
         var cleanName = ValidateName(name);
         var stages = filters.ToArray();
         FilterStageRules.Validate(stages);
-        var schema = stages.Any(x => x.VstPlugin is not null) ? CurrentSchemaVersion
+        var schema = stages.Any(x => x.VstCommonFiles) ? CurrentSchemaVersion
+            : stages.Any(x => x.VstPlugin is not null) ? VstPluginReferenceSchemaVersion
             : stages.Any(x => x.Kind == FilterKind.Vst2) ? VstCardsSchemaVersion
             : stages.Any(x => FilterStage.ExtendedEqualizerBandCount(x.Kind) != 0)
                 ? ExpandedEqSchemaVersion : VoiceFiltersSchemaVersion;
         return new FilterPresetDocument(schema, cleanName,
             stages.Select(x => new FilterPresetStage(
-                x.Kind, x.Enabled, x.Parameter, x.Equalizer, x.Compressor, x.BandGainsDb, x.VstPlugin)).ToList());
+                x.Kind, x.Enabled, x.Parameter, x.Equalizer, x.Compressor, x.BandGainsDb,
+                x.VstPlugin, x.VstCommonFiles)).ToList());
     }
 
     public static List<FilterStage> Restore(FilterPresetDocument preset)
@@ -167,8 +172,11 @@ public sealed class FilterPresetStore
                 throw new InvalidDataException("Preset uses EQ settings introduced in schema 3.");
             if (preset.SchemaVersion < VstCardsSchemaVersion && stage.Kind == FilterKind.Vst2)
                 throw new InvalidDataException("Preset uses a VST Plugin card introduced in schema 4.");
-            if (preset.SchemaVersion < CurrentSchemaVersion && stage.VstPlugin is not null)
-                throw new InvalidDataException("Preset uses a VST2 DLL reference introduced in schema 5.");
+            if (preset.SchemaVersion < VstPluginReferenceSchemaVersion && stage.VstPlugin is not null)
+                throw new InvalidDataException("Preset uses a VST plugin reference introduced in schema 5.");
+            if (stage.VstCommonFiles &&
+                (preset.SchemaVersion < CurrentSchemaVersion || stage.Kind != FilterKind.Vst2))
+                throw new InvalidDataException("The Common Files source requires a VST card and preset schema 6.");
             if (stage.Kind == FilterKind.PitchShift &&
                 (preset.SchemaVersion != VoiceFiltersSchemaVersion ||
                  stage.Parameter is not (>= -12f and <= 12f) ||

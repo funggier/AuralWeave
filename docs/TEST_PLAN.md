@@ -18,6 +18,11 @@
 | FX-03 | Reorder effect instances | Config and ID remain bound to each instance |
 | FX-04 | Save/load preset with repeated effect type | Order, parameters and bypass state preserved with fresh slot IDs |
 | FX-05 | Load a schema 2 preset containing EQ and Pitch Shift | EQ (3 Band) retains gains and the retired Pitch Shift stage is skipped |
+| VST-01 | Scan Custom Location and add Common Files with separate VST2 and VST3 installations | Custom only shows its folder's effects. Common automatically lists supported formats from standard locations |
+| VST-02 | Re-scan Common Files during an active route | Refresh choices and retain the current plug-in and valid selection |
+| VST-03 | Reload the same effect and switch to another format while routing | A fresh instance opens and WASAPI keeps processing frames |
+| VST-04 | Delete a disposable effect file after scanning, then try to load it into an occupied card | Report the error and keep the existing effect running |
+| VST-05 | Save and load a Common Files preset with a trusted effect | Restore the exact module and the discovery source. Schema 4 and 5 cards use Custom Location |
 | NOISE-01 | Noise Bypass with enabled EQ | EQ still processes |
 | NOISE-02 | RNNoise 48 kHz input | Suppression engages with valid frame adaptation |
 | NOISE-03 | Unsupported input rate | Resampling/adapter or clear explicit rejection |

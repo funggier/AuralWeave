@@ -14,7 +14,7 @@ namespace AuralWeave.Desktop;
 
 public partial class MainWindow : Window
 {
-    private sealed record FilterOption(FilterKind Kind, string Label)
+    private sealed record FilterOption(FilterKind Kind, string Label, bool VstCommonFiles = false)
     {
         public override string ToString() => Label;
     }
@@ -30,7 +30,8 @@ public partial class MainWindow : Window
         new(FilterKind.Equalizer5Band, "EQ (5 Band)"),
         new(FilterKind.Equalizer7Band, "EQ (7 Band)"),
         new(FilterKind.Compressor, "Compressor"),
-        new(FilterKind.Vst2, "VST Plugin")
+        new(FilterKind.Vst2, "VST Plugin (Custom Location)"),
+        new(FilterKind.Vst2, "VST Plugin (Common Files)", VstCommonFiles: true)
     ];
 
     private readonly List<FilterStage> _filters = [];
@@ -306,22 +307,44 @@ public partial class MainWindow : Window
         RefreshFilterRows();
     }
 
-    private void UpdateFilter(Guid id, FilterKind? kind = null, bool? enabled = null,
-                              bool refresh = false)
+    private void UpdateFilter(Guid id, FilterOption? option = null, bool? enabled = null)
     {
         var i = _filters.FindIndex(x => x.Id == id);
         if (i < 0) return;
         var filter = _filters[i];
         var isEnabled = enabled ?? filter.Enabled;
-        _filters[i] = kind is FilterKind selected && selected != filter.Kind
-            ? new FilterStage(id, selected, isEnabled, FilterStage.DefaultParameter(selected))
-            : filter with { Enabled = isEnabled };
+        if (option is { } selected &&
+            (selected.Kind != filter.Kind || selected.VstCommonFiles != filter.VstCommonFiles))
+        {
+            if (selected.Kind == filter.Kind)
+            {
+                // Changing the discovery source keeps the current effect playing.
+                var card = GetVstCard(filter);
+                _vstCards[id] = new VstCard(selected.VstCommonFiles) { Plugin = card.Plugin };
+                _filters[i] = filter with
+                {
+                    VstCommonFiles = selected.VstCommonFiles,
+                    VstPlugin = card.Plugin is null ? null : filter.VstPlugin
+                };
+            }
+            else
+            {
+                _filters[i] = new FilterStage(id, selected.Kind, isEnabled,
+                    FilterStage.DefaultParameter(selected.Kind), VstCommonFiles: selected.VstCommonFiles);
+                _filterDebounceTimer.Stop();
+                ApplyFilters();
+                if (filter.Kind == FilterKind.Vst2) RemoveVstCard(id);
+            }
+            RefreshFilterRows();
+            StartCommonVstScan(_filters[i]);
+            return;
+        }
+
+        _filters[i] = filter with { Enabled = isEnabled };
         _filterDebounceTimer.Stop();
-        if (refresh) RefreshFilterRows();
         ApplyFilters();
-        if (filter.Kind == FilterKind.Vst2 && _filters[i].Kind != FilterKind.Vst2)
-            RemoveVstCard(id);
     }
+
 
     private void ApplyFilters()
     {
@@ -361,6 +384,7 @@ public partial class MainWindow : Window
     {
         if (_refreshingFilters) return;
         _refreshingFilters = true;
+        foreach (var card in _vstCards.Values) card.SettingsPanel = null;
         try
         {
             FiltersPanel.Children.Clear();
@@ -398,7 +422,8 @@ public partial class MainWindow : Window
                 {
                     ItemsSource = FilterOptions,
                     DisplayMemberPath = nameof(FilterOption.Label),
-                    SelectedItem = FilterOptions.First(x => x.Kind == filter.Kind),
+                    SelectedItem = FilterOptions.First(x =>
+                        x.Kind == filter.Kind && x.VstCommonFiles == filter.VstCommonFiles),
                     Margin = new Thickness(0, 0, 12, 0),
                     ToolTip = "Choose the processing type for this filter slot"
                 };
@@ -406,7 +431,7 @@ public partial class MainWindow : Window
                 choices.SelectionChanged += (_, _) =>
                 {
                     if (_refreshingFilters || choices.SelectedItem is not FilterOption choice) return;
-                    UpdateFilter(filter.Id, kind: choice.Kind, refresh: true);
+                    UpdateFilter(filter.Id, option: choice);
                 };
                 header.Children.Add(choices);
                 var toggle = new CheckBox
@@ -476,7 +501,7 @@ public partial class MainWindow : Window
                 panel.Children.Add(MutedText("Choose a filter type above."));
                 break;
             case FilterKind.Vst2:
-                BuildVstSettings(panel, filter.Id);
+                BuildVstSettings(panel, filter.Id, GetVstCard(filter));
                 break;
             case FilterKind.RnnoiseStandard:
                 panel.Children.Add(MutedText("RNNoise Standard · Xiph v0.1.1 · 48 kHz / 10 ms frames"));

@@ -1,5 +1,12 @@
 # AuralWeave implementation status
 
+## Studio v0.6.1 — VST discovery and reload
+
+- Custom Location scans the specified folder tree. Common Files automatically scans the shared and per-user Windows VST locations listed in the [VST guide](VST_PLUGINS.md). Re-scan refreshes the choices in the card.
+- Reload Plugin creates a fresh native instance of the chosen file. The active filter graph is updated before the previous instance is disposed. Changing the discovery source keeps the current effect and audio route active.
+- Preset schema 6 stores the Common Files choice even for an empty card. Schemas 4 and 5 restore as Custom Location. Both kinds of card use the same native stage and existing VST2/VST3 host paths.
+- Windows 10 22H2 x64 passed the native smoke tests, 44 managed checks, and a Portable UI test with Crystalline VST2 and VST3. The UI test verified source isolation, Graillon format discovery, both same-file reloads, format replacement, Re-scan, preset restoration, and continued capture on a muted WASAPI route. A selected file removed after scanning was rejected and the original effect stayed active.
+
 ## Studio v0.6.0 — VST formats, themed path, and audio buffering
 
 - The VST folder box and other text fields use the shared WPF palette in Monochrome Dark and Graphite. Scanning refreshes the corresponding VST card.

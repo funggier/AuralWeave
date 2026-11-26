@@ -12,9 +12,11 @@ namespace AuralWeave.Desktop;
 
 public partial class MainWindow
 {
-    private sealed class VstCard
+    private sealed class VstCard(bool commonFiles)
     {
+        public bool CommonFiles { get; } = commonFiles;
         public string Folder { get; set; } = "";
+        public string? SelectedPath { get; set; }
         public IReadOnlyList<VstPluginCandidate> Choices { get; set; } = [];
         public NativeVstPlugin? Plugin { get; set; }
         public bool Scanning { get; set; }
@@ -24,21 +26,43 @@ public partial class MainWindow
     private readonly Dictionary<Guid, VstCard> _vstCards = [];
     private readonly VstPluginRegistry _vstRegistry = new();
 
-    private void BuildVstSettings(Panel panel, Guid id)
-    {
-        if (!_vstCards.TryGetValue(id, out var card))
-            _vstCards[id] = card = new VstCard();
+    private Task<IReadOnlyList<VstPluginCandidate>>? _commonVstScan;
 
-        card.SettingsPanel = panel;
+    private VstCard GetVstCard(FilterStage stage)
+    {
+        if (!_vstCards.TryGetValue(stage.Id, out var card))
+            _vstCards[stage.Id] = card = new VstCard(stage.VstCommonFiles);
+        return card;
+    }
+
+    private void StartCommonVstScan(FilterStage stage)
+    {
+        if (stage.VstCommonFiles)
+            _ = ScanVstPluginsAsync(stage.Id, GetVstCard(stage), announceResult: false);
+    }
+
+    private void BuildVstScanRow(Panel panel, Guid id, VstCard card)
+    {
         var pathRow = new DockPanel { Margin = new Thickness(8, 10, 8, 4) };
+        var scan = new Button
+        {
+            Content = card.Scanning ? "Scanning..." : card.CommonFiles ? "Re-scan" : "Scan",
+            IsEnabled = !card.Scanning
+        };
+        scan.Click += async (_, _) => await ScanVstPluginsAsync(id, card);
+        DockPanel.SetDock(scan, Dock.Right);
+        pathRow.Children.Add(scan);
+        panel.Children.Add(pathRow);
+
+        if (card.CommonFiles)
+        {
+            pathRow.Children.Add(MutedText("Standard Windows VST folders"));
+            return;
+        }
+
         var folder = new TextBox { Text = card.Folder, IsEnabled = !card.Scanning };
         AutomationProperties.SetName(folder, "VST plugins folder");
         folder.ToolTip = "Folder containing the installed 64-bit VST2 and VST3 effects";
-
-        var scan = new Button { Content = card.Scanning ? "Scanning..." : "Scan", IsEnabled = !card.Scanning };
-        scan.Click += async (_, _) => await ScanVstFolderAsync(id, card);
-        DockPanel.SetDock(scan, Dock.Right);
-        pathRow.Children.Add(scan);
 
         var browse = new Button { Content = "Browse...", IsEnabled = !card.Scanning, Margin = new Thickness(6, 0, 6, 0) };
         browse.Click += async (_, _) =>
@@ -47,7 +71,7 @@ public partial class MainWindow
             if (Directory.Exists(card.Folder)) dialog.InitialDirectory = card.Folder;
             if (dialog.ShowDialog(this) != true) return;
             folder.Text = dialog.FolderName;
-            await ScanVstFolderAsync(id, card);
+            await ScanVstPluginsAsync(id, card);
         };
         DockPanel.SetDock(browse, Dock.Right);
         pathRow.Children.Add(browse);
@@ -70,7 +94,12 @@ public partial class MainWindow
         folderEntry.Children.Add(folder);
         folderEntry.Children.Add(hint);
         pathRow.Children.Add(folderEntry);
-        panel.Children.Add(pathRow);
+    }
+
+    private void BuildVstSettings(Panel panel, Guid id, VstCard card)
+    {
+        card.SettingsPanel = panel;
+        BuildVstScanRow(panel, id, card);
 
         var pickRow = new DockPanel { Margin = new Thickness(8, 4, 8, 4) };
         var picker = new ComboBox
@@ -79,16 +108,28 @@ public partial class MainWindow
             DisplayMemberPath = nameof(VstPluginCandidate.DisplayName),
             IsEnabled = card.Choices.Count != 0 && !card.Scanning,
             SelectedItem = card.Choices.FirstOrDefault(choice =>
-                string.Equals(choice.Path, card.Plugin?.Path, StringComparison.OrdinalIgnoreCase))
+                string.Equals(choice.Path, card.SelectedPath ?? card.Plugin?.Path, StringComparison.OrdinalIgnoreCase))
                 ?? (card.Choices.Count == 1 ? card.Choices[0] : null)
         };
         AutomationProperties.SetName(picker, "VST plugin");
-        var load = new Button { Content = "Load plugin", IsEnabled = !card.Scanning && picker.SelectedItem is VstPluginCandidate,
-                                Margin = new Thickness(6, 0, 0, 0) };
-        picker.SelectionChanged += (_, _) => load.IsEnabled = picker.SelectedItem is VstPluginCandidate;
+        var loaded = card.Plugin is { } current
+            ? new VstPluginCandidate(Path.GetFileNameWithoutExtension(current.Path), current.Path, current.Format)
+            : null;
+        var load = new Button
+        {
+            Content = card.Plugin is null ? "Load Plugin" : "Reload Plugin",
+            IsEnabled = !card.Scanning && (picker.SelectedItem is VstPluginCandidate || loaded is not null),
+            Margin = new Thickness(6, 0, 0, 0)
+        };
+        picker.SelectionChanged += (_, _) =>
+        {
+            card.SelectedPath = (picker.SelectedItem as VstPluginCandidate)?.Path;
+            load.IsEnabled = !card.Scanning && (card.SelectedPath is not null || loaded is not null);
+        };
         load.Click += (_, _) =>
         {
-            if (picker.SelectedItem is VstPluginCandidate choice) LoadVstPlugin(id, card, choice);
+            if ((picker.SelectedItem as VstPluginCandidate ?? loaded) is { } choice)
+                LoadVstPlugin(id, card, choice);
         };
         DockPanel.SetDock(load, Dock.Right);
         pickRow.Children.Add(load);
@@ -111,41 +152,55 @@ public partial class MainWindow
         }
         else
         {
-            panel.Children.Add(MutedText(card.Choices.Count == 0
-                ? "Choose a folder and scan for 64-bit VST plugins."
-                : "Select an effect and click Load plugin."));
+            panel.Children.Add(MutedText(card.Scanning ? "Looking for 64-bit VST effects..."
+                : card.Choices.Count != 0 ? "Select an effect and click Load Plugin."
+                : card.CommonFiles ? "No 64-bit VST effects found."
+                : "Choose a folder and scan for 64-bit VST plugins."));
         }
     }
 
-    private async Task ScanVstFolderAsync(Guid id, VstCard card)
+    private async Task ScanVstPluginsAsync(Guid id, VstCard card, bool announceResult = true)
     {
         if (card.Scanning) return;
         var folder = card.Folder.Trim();
-        if (folder.Length == 0)
+        if (!card.CommonFiles && folder.Length == 0)
         {
             Status("Enter a VST plugins folder.", true);
             return;
         }
+
         card.Scanning = true;
         RefreshVstSettings(id, card);
         try
         {
-            var fullPath = Path.GetFullPath(folder, AppContext.BaseDirectory);
-            card.Choices = await Task.Run(() => VstPluginCatalog.Scan(fullPath, includeStandardVst3: true));
-            if (!_vstCards.TryGetValue(id, out var current) || current != card) return;
+            if (card.CommonFiles)
+            {
+                // Multiple cards added or restored together can share the same disk scan.
+                if (_commonVstScan is null || _commonVstScan.IsCompleted)
+                    _commonVstScan = Task.Run(VstPluginCatalog.ScanCommonFiles);
+                card.Choices = await _commonVstScan;
+            }
+            else
+            {
+                var fullPath = Path.GetFullPath(folder, AppContext.BaseDirectory);
+                card.Choices = await Task.Run(() => VstPluginCatalog.Scan(fullPath));
+                card.Folder = fullPath;
+            }
 
-            card.Folder = fullPath;
-            Status(card.Choices.Count == 0 ? "No 64-bit VST2 and VST3 effects found."
-                : $"Found {card.Choices.Count} VST plugin(s).");
+            if (announceResult && _vstCards.GetValueOrDefault(id) == card)
+                Status(card.Choices.Count == 0 ? "No 64-bit VST effects found."
+                    : $"Found {card.Choices.Count} VST plugin(s).");
         }
         catch (Exception ex)
         {
-            Status("VST scan: " + ex.Message, true);
+            card.Choices = [];
+            if (_vstCards.GetValueOrDefault(id) == card)
+                Status("VST scan: " + ex.Message, true);
         }
         finally
         {
             card.Scanning = false;
-            if (_vstCards.TryGetValue(id, out var current) && current == card)
+            if (_vstCards.GetValueOrDefault(id) == card)
                 RefreshVstSettings(id, card);
         }
     }
@@ -154,7 +209,7 @@ public partial class MainWindow
     {
         if (card.SettingsPanel is not { } panel) return;
         panel.Children.Clear();
-        BuildVstSettings(panel, id);
+        BuildVstSettings(panel, id, card);
     }
 
     private int VstSampleRate()
@@ -165,8 +220,6 @@ public partial class MainWindow
 
     private void LoadVstPlugin(Guid id, VstCard card, VstPluginCandidate choice)
     {
-        if (string.Equals(card.Plugin?.Path, choice.Path, StringComparison.OrdinalIgnoreCase)) return;
-
         var index = _filters.FindIndex(x => x.Id == id);
         if (index < 0) return;
 
@@ -189,10 +242,13 @@ public partial class MainWindow
             return;
         }
 
+        var reloading = string.Equals(previous?.Path, choice.Path, StringComparison.OrdinalIgnoreCase);
         previous?.Dispose();
+        card.SelectedPath = choice.Path;
         _filters[index] = _filters[index] with { VstPlugin = reference };
         RefreshVstSettings(id, card);
-        var message = $"Loaded {choice.Format} plugin '{choice.Name}'.";
+        var action = reloading ? "Reloaded" : "Loaded";
+        var message = $"{action} {choice.Format} plugin '{choice.Name}'.";
         try { _vstRegistry.Remember(reference); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -217,7 +273,12 @@ public partial class MainWindow
                 continue;
             }
 
-            var card = new VstCard { Folder = VstPluginCatalog.FolderFor(choice), Choices = [choice] };
+            var card = new VstCard(stage.VstCommonFiles)
+            {
+                Folder = stage.VstCommonFiles ? "" : VstPluginCatalog.FolderFor(choice),
+                Choices = [choice],
+                SelectedPath = choice.Path
+            };
             if (_vstRegistry.IsKnown(reference))
             {
                 try
