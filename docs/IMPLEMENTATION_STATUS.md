@@ -1,5 +1,11 @@
 # AuralWeave implementation status
 
+## Studio v0.6.3 — VST editor title bar
+
+- VST editors use an owned popup without a Windows caption, leaving a single Studio-themed title bar. Editors open centered over Studio, within the monitor's work area when they fit.
+- The close button has its own inset and keeps the Studio palette during a press. The surrounding title area can drag the window. A drag starting on the button cancels the click, including when the pointer returns to the button before release.
+- The Windows 10 22H2 x64 Portable UI test checked both Crystalline formats for zero non-client caption height, a 15-DIP right inset, themed press colors, drag cancellation, and ordinary click-to-close. Plugin client dimensions, live routing during reload, and preset restoration passed.
+
 ## Studio v0.6.2 — Editor theme and Studio display
 
 - Both VST formats share a native editor frame that reads its colors from the Studio palette. An open editor follows a skin change immediately. The plugin still receives its requested viewport dimensions.
