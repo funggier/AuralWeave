@@ -217,9 +217,11 @@ public partial class MainWindow : Window
                 var slider = new Slider
                 {
                     Minimum = 0, Maximum = 2, Value = output.Gain,
+                    SmallChange = 0.01, LargeChange = 0.1,
                     VerticalAlignment = VerticalAlignment.Center,
                     ToolTip = "Output gain (0.00x - 2.00x)"
                 };
+                EnableSliderWheel(slider);
                 Grid.SetColumn(slider, 3);
                 row.Children.Add(slider);
                 var gainText = new TextBlock
@@ -563,6 +565,7 @@ public partial class MainWindow : Window
             ToolTip = label
         };
         System.Windows.Automation.AutomationProperties.SetName(slider, label);
+        EnableSliderWheel(slider);
         Grid.SetColumn(slider, 1);
         row.Children.Add(slider);
 
@@ -581,6 +584,24 @@ public partial class MainWindow : Window
             changed((float)e.NewValue);
         };
         return row;
+    }
+
+    private static void EnableSliderWheel(Slider slider)
+    {
+        var remainder = 0;
+        slider.MouseLeave += (_, _) => remainder = 0;
+        slider.PreviewMouseWheel += (_, e) =>
+        {
+            if (!slider.IsEnabled) return;
+            e.Handled = true;
+            remainder += e.Delta;
+            var steps = remainder / Mouse.MouseWheelDeltaForOneLine;
+            remainder %= Mouse.MouseWheelDeltaForOneLine;
+            if (steps == 0) return;
+
+            var value = Math.Round(slider.Value + steps * slider.SmallChange, 10);
+            slider.SetCurrentValue(Slider.ValueProperty, Math.Clamp(value, slider.Minimum, slider.Maximum));
+        };
     }
 
     private static TextBlock MutedText(string text)

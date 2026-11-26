@@ -80,10 +80,19 @@ public partial class MainWindow
     private void LoadPresetIntoStudio(FilterPresetDocument preset, string action = "Loaded")
     {
         var restored = FilterPresetStore.Restore(preset);
-        // Update native DSP first. Any invalid preset leaves the existing route
-        // and current UI filters untouched. Sound Input / Output never change.
-        _route?.ReplaceFilterChain(restored);
+        var restoredCards = RestoreVstCards(restored);
+        try
+        {
+            _route?.ReplaceFilterChain(restored, LoadedVstPlugins(restoredCards));
+        }
+        catch
+        {
+            foreach (var card in restoredCards.Values) card.Plugin?.Dispose();
+            throw;
+        }
+
         CloseVstCards();
+        foreach (var (id, card) in restoredCards) _vstCards.Add(id, card);
         _filterDebounceTimer.Stop();
         _filters.Clear();
         _filters.AddRange(restored);
@@ -93,9 +102,11 @@ public partial class MainWindow
         RefreshFilterRows();
         var skipped = restored.Count < preset.Filters.Count
             ? " Pitch Shift was skipped." : string.Empty;
-        var vst = restored.Any(filter => filter.Kind == FilterKind.Vst2)
-            ? " Select plugins for the VST cards." : string.Empty;
-        Status($"{action} '{preset.Name}' · {restored.Count} filter(s).{skipped}{vst}");
+        var missing = preset.Filters.Count(filter => filter.VstPlugin is not null) - restoredCards.Count;
+        var pending = restoredCards.Values.Count(card => card.Plugin is null);
+        var unavailable = missing > 0 ? $" {missing} VST plugin(s) unavailable." : "";
+        var manual = pending > 0 ? $" Click Load plugin on {pending} VST card(s)." : "";
+        Status($"{action} '{preset.Name}' · {restored.Count} filter(s).{skipped}{unavailable}{manual}");
     }
 
     private void ExportPresetClicked(object sender, RoutedEventArgs e)

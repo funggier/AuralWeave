@@ -29,6 +29,14 @@ public sealed record CompressorSettings(
     public static CompressorSettings Default { get; } = new(-18f, 3f, 10f, 100f, 0f);
 }
 
+public sealed record VstPluginReference(string Path, string Sha256)
+{
+    public bool IsValid() =>
+        !string.IsNullOrWhiteSpace(Path) && Path.Length <= 32767 &&
+        !Path.Any(char.IsControl) && Path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+        Sha256 is { Length: 64 } && Sha256.All(Uri.IsHexDigit);
+}
+
 public sealed record FilterStage(
     Guid Id,
     FilterKind Kind = FilterKind.None,
@@ -36,7 +44,8 @@ public sealed record FilterStage(
     float Parameter = 0f,
     EqualizerSettings? Equalizer = null,
     CompressorSettings? Compressor = null,
-    ImmutableArray<float>? BandGainsDb = null)
+    ImmutableArray<float>? BandGainsDb = null,
+    VstPluginReference? VstPlugin = null)
 {
     public static int ExtendedEqualizerBandCount(FilterKind kind) => kind switch
     {
@@ -69,7 +78,8 @@ public static class FilterStageRules
             if (!Enum.IsDefined(stage.Kind) || !float.IsFinite(stage.Parameter) ||
                 (stage.Equalizer is not null && stage.Kind is not FilterKind.Equalizer) ||
                 (stage.Compressor is not null && stage.Kind is not FilterKind.Compressor) ||
-                (stage.BandGainsDb is not null && bandCount == 0))
+                (stage.BandGainsDb is not null && bandCount == 0) ||
+                (stage.VstPlugin is { } plugin && (stage.Kind != FilterKind.Vst2 || !plugin.IsValid())))
                 throw new ArgumentException("Invalid filter configuration.");
 
             var eq = stage.Equalizer ?? EqualizerSettings.Flat;

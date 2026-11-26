@@ -29,7 +29,7 @@ public static class Vst2PluginCatalog
         return candidates.OrderBy(candidate => candidate.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
     }
 
-    internal static bool IsVst2Plugin(string path)
+    public static bool IsVst2Plugin(string path)
     {
         try
         {

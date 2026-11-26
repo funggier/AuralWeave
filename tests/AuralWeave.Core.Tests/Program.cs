@@ -219,6 +219,31 @@ try
            restoredVst is [{ Kind: FilterKind.Vst2, Enabled: true, Parameter: 0 }],
         "VST preset restores an empty VST card using schema 4");
 
+    var dll = new VstPluginReference(@"plugins\Crystalline.dll", new string('A', 64));
+    var pluginPreset = presetStore.Create("VST path", [vstCard with { VstPlugin = dll }]);
+    var pluginFile = presetStore.Save(pluginPreset);
+    var pluginRestored = FilterPresetStore.Restore(FilterPresetStore.ReadFile(pluginFile.FilePath));
+    Verify(pluginPreset.SchemaVersion == 5 && pluginRestored.Single().VstPlugin == dll,
+        "schema 5 preserves VST file identity and location");
+    try
+    {
+        presetStore.Create("Invalid VST fingerprint", [vstCard with { VstPlugin = dll with { Sha256 = "missing" } }]);
+        throw new Exception("Invalid VST fingerprint unexpectedly accepted");
+    }
+    catch (ArgumentException)
+    {
+        Verify(true, "preset validation rejects malformed VST file identities");
+    }
+    try
+    {
+        FilterPresetStore.Validate(pluginPreset with { SchemaVersion = 4 });
+        throw new Exception("VST reference unexpectedly accepted in schema 4");
+    }
+    catch (InvalidDataException)
+    {
+        Verify(true, "schema 4 remains the empty VST card format");
+    }
+
     var oldPath = Path.Combine(presetTestFolder, "v1.awfilter");
     File.WriteAllText(oldPath, """
         {"SchemaVersion":1,"Name":"Old Voice","Filters":[{"Kind":"gain","Enabled":true,"Parameter":0.75}]}

@@ -1,5 +1,12 @@
 # AuralWeave implementation status
 
+## Studio v0.5.1 — VST preset locations and fine slider control
+
+- Preset schema 5 stores the selected VST2 file path and SHA-256 identity. Relative paths within the portable folder move with the app. DLLs previously loaded in that portable copy auto-restore when the identity matches. Missing files become empty VST cards. Schema 4 VST slots remain readable.
+- New VST folder inputs start empty and show a chooser hint. Older global folder settings are ignored.
+- Mouse-wheel steps apply to the hovered enabled filter or output slider. EQ changes by 0.1 dB and output gain by 0.01x per notch.
+- Windows 10 x64 Release build and 42 Core tests passed. The extracted Portable ZIP saved the actual Crystalline 1.8 location, restored it after restart, and loaded it during a muted WASAPI route. A changed fingerprint required the existing Load plugin action. A missing-file fixture kept the VST card empty with its neighboring Gain settings intact. WPF event checks verified fine steps, high-resolution wheel accumulation, limits and unchanged controls outside the target.
+
 ## Studio v0.5.0 — VST Plugin card
 
 - Each VST Plugin card loads an explicitly selected x64 VST2 effect. The folder scan checks PE exports without executing candidates. The last scanned directory is saved beside the executable.
