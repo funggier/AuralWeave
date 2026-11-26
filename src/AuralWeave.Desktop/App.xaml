@@ -277,6 +277,8 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="Slider">
                             <Grid Height="24">
+                                <!-- Extend the wheel target within the space between slider rows. -->
+                                <Border Background="Transparent" Margin="0,-5"/>
                                 <Track x:Name="PART_Track" VerticalAlignment="Center"
                                        Minimum="{TemplateBinding Minimum}"
                                        Maximum="{TemplateBinding Maximum}"

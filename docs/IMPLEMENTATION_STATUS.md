@@ -1,5 +1,11 @@
 # AuralWeave implementation status
 
+## Studio v0.5.2 — Slider wheel hit areas
+
+- Transparent template borders extend wheel input 5 DIPs above and below the existing slider box without adding layout space.
+- Windows WPF hit tests compared rendered pixels before and after, verified scrolling outside and over disabled controls, and checked a gap between adjacent targets in seven real EQ rows. Wheel input at an extended point changed only the intended band.
+- The tested Portable build uses a separate versioned folder.
+
 ## Studio v0.5.1 — VST preset locations and fine slider control
 
 - Preset schema 5 stores the selected VST2 file path and SHA-256 identity. Relative paths within the portable folder move with the app. DLLs previously loaded in that portable copy auto-restore when the identity matches. Missing files become empty VST cards. Schema 4 VST slots remain readable.
