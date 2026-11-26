@@ -1,6 +1,7 @@
 #pragma once
 #include "auralweave/rnnoise_processor.hpp"
 #include "auralweave/voice_filters.hpp"
+#include "auralweave/vst2_plugin.hpp"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +14,7 @@ namespace auralweave {
 // Blank/unselected slots are OMITTED from the native graph.
 enum class FilterKind : int {
     gain = 1, rnnoise = 2, noise_gate = 3, limiter = 4, equalizer = 5,
-    compressor = 6, equalizer_5_band = 8, equalizer_7_band = 9
+    compressor = 6, equalizer_5_band = 8, equalizer_7_band = 9, vst2 = 10
 };
 
 struct FilterSpec {
@@ -21,6 +22,7 @@ struct FilterSpec {
     float parameter{};
     bool enabled{true};
     std::array<float, 6> additional{};
+    Vst2Handle plugin{};
 };
 
 /// Construct this immutable-topology DSP graph off the real-time worker.

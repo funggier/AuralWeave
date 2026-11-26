@@ -28,6 +28,10 @@ Example: `EQ(A) → Compressor(B) → EQ(C) → EQ(D)` is valid. EQ(A), EQ(C), E
 - **Pitch correction** detects the note and moves it towards a target note in a chosen key or scale. AutoTune is one example. [AutoTune documentation](https://help.antarestech.com/hc/en-us/articles/42855736822932-AutoTune-FAQ)
 - **AI voice conversion** uses a model to change vocal timbre, for example RVC. [RVC project](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI)
 
+## Installed VST2 effects
+
+The [VST Plugin card](VST_PLUGINS.md) uses the installed plugin's native editor and supports explicitly selected x64 effects. Each loaded instance survives graph reordering and edits to other filters.
+
 ## Runtime contract
 
 `prepare(sampleRate, channels, maxFrames)`, `process(buffer, frames)`, `setParameters(snapshot)`, `reset()`, `latencyFrames()`, `dispose()` are draft conceptual operations. Specify and stabilize actual plugin ABI after a minimal core prototype.

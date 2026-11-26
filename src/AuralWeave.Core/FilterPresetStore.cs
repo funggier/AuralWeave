@@ -26,7 +26,8 @@ public sealed record FilterPresetItem(string Name, string FilePath)
 
 public sealed class FilterPresetStore
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
+    private const int ExpandedEqSchemaVersion = 3;
     private const int VoiceFiltersSchemaVersion = 2;
     private const int MaxPresetBytes = 128 * 1024;
     public const string Extension = ".awfilter";
@@ -79,8 +80,9 @@ public sealed class FilterPresetStore
         var cleanName = ValidateName(name);
         var stages = filters.ToArray();
         FilterStageRules.Validate(stages);
-        var schema = stages.Any(x => FilterStage.ExtendedEqualizerBandCount(x.Kind) != 0)
-            ? CurrentSchemaVersion : VoiceFiltersSchemaVersion;
+        var schema = stages.Any(x => x.Kind == FilterKind.Vst2) ? CurrentSchemaVersion
+            : stages.Any(x => FilterStage.ExtendedEqualizerBandCount(x.Kind) != 0)
+                ? ExpandedEqSchemaVersion : VoiceFiltersSchemaVersion;
         return new FilterPresetDocument(schema, cleanName,
             stages.Select(x => new FilterPresetStage(
                 x.Kind, x.Enabled, x.Parameter, x.Equalizer, x.Compressor, x.BandGainsDb)).ToList());
@@ -143,7 +145,7 @@ public sealed class FilterPresetStore
 
     public static void Validate(FilterPresetDocument? preset)
     {
-        if (preset is null || preset.SchemaVersion is not (1 or VoiceFiltersSchemaVersion or CurrentSchemaVersion) ||
+        if (preset is null || preset.SchemaVersion is not (1 or VoiceFiltersSchemaVersion or ExpandedEqSchemaVersion or CurrentSchemaVersion) ||
             preset.Filters is null)
             throw new InvalidDataException("Unsupported or malformed filter preset format.");
         ValidateName(preset.Name);
@@ -156,9 +158,11 @@ public sealed class FilterPresetStore
             if (preset.SchemaVersion == 1 &&
                 (stage.Kind > FilterKind.Limiter || stage.Equalizer is not null || stage.Compressor is not null))
                 throw new InvalidDataException("Preset uses filter settings introduced in schema 2.");
-            if (preset.SchemaVersion < CurrentSchemaVersion &&
+            if (preset.SchemaVersion < ExpandedEqSchemaVersion &&
                 (FilterStage.ExtendedEqualizerBandCount(stage.Kind) != 0 || stage.BandGainsDb is not null))
                 throw new InvalidDataException("Preset uses EQ settings introduced in schema 3.");
+            if (preset.SchemaVersion < CurrentSchemaVersion && stage.Kind == FilterKind.Vst2)
+                throw new InvalidDataException("Preset uses a VST Plugin card introduced in schema 4.");
             if (stage.Kind == FilterKind.PitchShift &&
                 (preset.SchemaVersion != VoiceFiltersSchemaVersion ||
                  stage.Parameter is not (>= -12f and <= 12f) ||

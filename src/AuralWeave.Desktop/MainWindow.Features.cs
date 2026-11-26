@@ -83,6 +83,7 @@ public partial class MainWindow
         // Update native DSP first. Any invalid preset leaves the existing route
         // and current UI filters untouched. Sound Input / Output never change.
         _route?.ReplaceFilterChain(restored);
+        CloseVstCards();
         _filterDebounceTimer.Stop();
         _filters.Clear();
         _filters.AddRange(restored);
@@ -92,7 +93,9 @@ public partial class MainWindow
         RefreshFilterRows();
         var skipped = restored.Count < preset.Filters.Count
             ? " Pitch Shift was skipped." : string.Empty;
-        Status($"{action} '{preset.Name}' · {restored.Count} filter(s).{skipped}");
+        var vst = restored.Any(filter => filter.Kind == FilterKind.Vst2)
+            ? " Select plugins for the VST cards." : string.Empty;
+        Status($"{action} '{preset.Name}' · {restored.Count} filter(s).{skipped}{vst}");
     }
 
     private void ExportPresetClicked(object sender, RoutedEventArgs e)

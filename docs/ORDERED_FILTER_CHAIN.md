@@ -28,10 +28,12 @@ Sound Input -> Filter 01 -> Filter 02 -> ... -> Filter N -> Multi-Output Distrib
 
 Each EQ starts flat at 0 dB and adjusts from −12 to +12 dB per band. The lowest and highest bands are shelves and the others are bell filters. All variants keep separate state per stereo channel and process audio without lookahead. Bands at or above half the input sample rate are bypassed. Flat EQ passes samples through exactly.
 
+A [VST Plugin card](VST_PLUGINS.md) applies an installed 64-bit VST2 effect in the chain. An empty VST card bypasses processing. Loaded instances retain their plugin settings while reordering or editing other cards.
+
 ## Processing architecture
 
 - WPF manages the list of `FilterStage` records with UUIDs and presents controls.
-- `AuralWeave.Audio.Windows` validates the list and sends ordered kinds/parameters/enabled flags through the versioned C ABI function `aw_set_filter_chain_v3`. The earlier entry points remain available for supported filter kinds.
+- `AuralWeave.Audio.Windows` validates the list and sends ordered kinds/parameters/enabled flags through the versioned C ABI function `aw_set_filter_chain_v4`. The earlier entry points remain available for supported filter kinds.
 - The Native C++ route prepares the new `FilterChain` outside the packet-processing callback, then atomically publishes a shared graph pointer. Capture packets process the selected graph in order.
 - Audio frames always pass through Native WASAPI, with output fan-out to selected device endpoints.
 - For RNNoise frames and device mix-rate conversion the native code continues using its bounded resampling adapters.

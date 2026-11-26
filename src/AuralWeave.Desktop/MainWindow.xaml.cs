@@ -29,7 +29,8 @@ public partial class MainWindow : Window
         new(FilterKind.Equalizer, "EQ (3 Band)"),
         new(FilterKind.Equalizer5Band, "EQ (5 Band)"),
         new(FilterKind.Equalizer7Band, "EQ (7 Band)"),
-        new(FilterKind.Compressor, "Compressor")
+        new(FilterKind.Compressor, "Compressor"),
+        new(FilterKind.Vst2, "VST Plugin")
     ];
 
     private readonly List<FilterStage> _filters = [];
@@ -315,11 +316,13 @@ public partial class MainWindow : Window
         _filterDebounceTimer.Stop();
         if (refresh) RefreshFilterRows();
         ApplyFilters();
+        if (filter.Kind == FilterKind.Vst2 && _filters[i].Kind != FilterKind.Vst2)
+            RemoveVstCard(id);
     }
 
     private void ApplyFilters()
     {
-        try { _route?.ReplaceFilterChain(_filters); }
+        try { if (_route is { } route) PublishFilterChain(route); }
         catch (Exception ex) { Status("Filter chain: " + ex.Message, true); }
     }
 
@@ -433,6 +436,7 @@ public partial class MainWindow : Window
                     _filters.RemoveAll(x => x.Id == filter.Id);
                     _collapsedFilters.Remove(filter.Id);
                     ApplyFilters();
+                    RemoveVstCard(filter.Id);
                     RefreshFilterRows();
                 }));
                 Grid.SetColumn(actions, 3);
@@ -467,6 +471,9 @@ public partial class MainWindow : Window
         {
             case FilterKind.None:
                 panel.Children.Add(MutedText("Choose a filter type above."));
+                break;
+            case FilterKind.Vst2:
+                BuildVstSettings(panel, filter.Id);
                 break;
             case FilterKind.RnnoiseStandard:
                 panel.Children.Add(MutedText("RNNoise Standard · Xiph v0.1.1 · 48 kHz / 10 ms frames"));
@@ -611,8 +618,9 @@ public partial class MainWindow : Window
         NativeWasapiAudioRoute? candidate = null;
         try
         {
+            PrepareVstPlugins(input);
             candidate = new NativeWasapiAudioRoute();
-            candidate.ReplaceFilterChain(_filters);
+            PublishFilterChain(candidate);
             candidate.Start(input.Id, _outputs);
             _route = candidate;
             StartButton.Content = "STOP";
@@ -688,6 +696,7 @@ public partial class MainWindow : Window
         _meterTimer.Stop();
         _filterDebounceTimer.Stop();
         StopCurrentRoute();
+        CloseVstCards();
         base.OnClosing(e);
     }
 }

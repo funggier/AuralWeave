@@ -14,7 +14,8 @@ public enum FilterKind
     Compressor = 6,
     PitchShift = 7, // Reserved for reading v0.4.0 presets.
     Equalizer5Band = 8,
-    Equalizer7Band = 9
+    Equalizer7Band = 9,
+    Vst2 = 10
 }
 
 public sealed record EqualizerSettings(float LowDb, float MidDb, float HighDb)
@@ -76,6 +77,7 @@ public static class FilterStageRules
             var valid = stage.Kind switch
             {
                 FilterKind.None => true,
+                FilterKind.Vst2 => stage.Parameter == 0f,
                 FilterKind.Gain => stage.Parameter is >= 0f and <= 2f,
                 FilterKind.RnnoiseStandard => stage.Parameter == 0f,
                 FilterKind.NoiseGate => stage.Parameter is >= -80f and <= 0f,

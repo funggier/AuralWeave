@@ -42,6 +42,7 @@ bool valid_filter_spec(const FilterSpec& spec) noexcept {
             return spec.parameter >= -60.0F && spec.parameter <= 0.0F &&
                 second >= 1.0F && second <= 20.0F && third >= 1.0F && third <= 100.0F &&
                 fourth >= 10.0F && fourth <= 1000.0F && fifth >= 0.0F && fifth <= 24.0F;
+        case FilterKind::vst2: return spec.parameter == 0.0F && spec.plugin != nullptr;
         default: return false;
     }
 }
@@ -78,6 +79,10 @@ FilterChain::FilterChain(std::uint32_t sample_rate, std::uint16_t channels,
                 if (second != 1.0F || fifth != 0.0F)
                     stage.compressor = std::make_unique<Compressor>(
                         sample_rate, spec.parameter, second, third, fourth, fifth);
+                break;
+            case FilterKind::vst2:
+                if (spec.plugin->sample_rate() != static_cast<int>(sample_rate))
+                    throw std::runtime_error("VST plugin sample rate changed. Refresh the input and restart.");
                 break;
             default: break;
         }
@@ -144,6 +149,9 @@ void FilterChain::process(float* samples, std::size_t frames) noexcept {
                 break;
             case FilterKind::compressor:
                 if (stage.compressor) stage.compressor->process(samples, frames, channels_);
+                break;
+            case FilterKind::vst2:
+                stage.spec.plugin->process(samples, frames, channels_);
                 break;
         }
         stage.previously_enabled = true;

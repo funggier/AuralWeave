@@ -1,5 +1,13 @@
 # AuralWeave implementation status
 
+## Studio v0.5.0 — VST Plugin card
+
+- Each VST Plugin card loads an explicitly selected x64 VST2 effect. The folder scan checks PE exports without executing candidates. The last scanned directory is saved beside the executable.
+- The WPF UI owns the plugin and its native editor. Ordered graph snapshots reference the same loaded instance across filter edits, reorders and bypass. The UI prepares the plugin at the input sample rate before the WASAPI worker begins.
+- Windows 10 22H2 x64 build and all 39 Core tests passed. Crystalline 1.8 produced a reverb tail from synthetic PCM at 48 and 192 kHz. The 192 kHz muted route captured 768,000 frames after warmup with zero additional overrun or underrun frames. Live bypass and stop passed.
+- An extracted Portable ZIP found Crystalline through the folder UI, loaded it, opened and closed its native editor twice and kept a muted route running while the editor was open. The archive contains the host and runtime, with third-party effect DLLs supplied by the user.
+- Filter Presets schema 4 retains VST card order and enabled state. On restore, select and load the plugin explicitly. See [VST Plugin cards](VST_PLUGINS.md) for formats and preset details.
+
 ## Studio v0.4.1 — EQ (3 Band), EQ (5 Band), EQ (7 Band)
 
 - The three EQ layouts share the same native biquad implementation. All bands start flat and have independent ±12 dB controls.

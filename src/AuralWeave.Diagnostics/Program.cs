@@ -17,6 +17,45 @@ try
         Console.WriteLine($"  {output.DisplayName} | default={output.IsDefault}" +
             $" | {output.SampleRate} Hz / {output.Channels} ch | id={output.Id}");
 
+    var vst = Array.IndexOf(args, "--smoke-vst2");
+    if (vst >= 0)
+    {
+        if (vst + 1 >= args.Length)
+            throw new ArgumentException("Supply the path to the installed VST2 DLL.");
+        var path = Path.GetFullPath(args[vst + 1]);
+        var candidates = Vst2PluginCatalog.Scan(Path.GetDirectoryName(path)!);
+        if (!candidates.Any(x => string.Equals(x.Path, path, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("The requested VST2 DLL did not appear in the folder scan.");
+
+        var input = sources.FirstOrDefault(x => x.Kind == AudioEndpointKind.Capture && x.IsDefault)
+            ?? sources.First(x => x.Kind == AudioEndpointKind.Capture);
+        var output = outputs.FirstOrDefault(x => x.IsDefault) ?? outputs.First();
+        var stage = new FilterStage(Guid.NewGuid(), FilterKind.Vst2);
+        using var plugin = new NativeVst2Plugin(path, input.SampleRate);
+        using var route = new NativeWasapiAudioRoute();
+        var plugins = new Dictionary<Guid, NativeVst2Plugin> { [stage.Id] = plugin };
+        route.ReplaceFilterChain([stage], plugins);
+        route.Start(input.Id, [new OutputRoute(Guid.NewGuid(), output.Id, 1f, true)]);
+        Thread.Sleep(1500);
+        var start = route.CapturedFrames;
+        var overrun = route.DroppedRenderFrames;
+        var underrun = route.UnderrunRenderFrames;
+        Thread.Sleep(4000);
+        var processed = route.CapturedFrames;
+        Console.WriteLine($"VST2 {Path.GetFileName(path)} / {route.InputSampleRate} Hz / muted output: " +
+            $"{processed - start:N0} frames, {route.DroppedRenderFrames - overrun} overrun, " +
+            $"{route.UnderrunRenderFrames - underrun} underrun after warmup.");
+        route.ReplaceFilterChain([stage with { Enabled = false }], plugins);
+        Thread.Sleep(100);
+        route.ReplaceFilterChain([stage], plugins);
+        Thread.Sleep(200);
+        if (!route.IsRunning || route.CapturedFrames <= processed || processed <= start)
+            throw new InvalidOperationException(route.LastError ?? "VST2 route did not process frames.");
+        route.Stop();
+        Console.WriteLine("PASS: VST2 folder scan, native route, live bypass and stop.");
+        return 0;
+    }
+
     var single = args.Contains("--smoke-native") || args.Contains("--smoke-silent");
     var mixed = args.Contains("--smoke-native-multi") ||
                 args.Contains("--soak-native-multi") ||

@@ -10,6 +10,8 @@ When loading or importing a v0.4.0 preset, the app skips the retired Pitch Shift
 
 **Never included:** Sound Input choice, audio endpoint IDs, Sound Output choices, output gains/mute, Windows hardware identification, or route session state.
 
+Presets containing a **VST Plugin** card use schema 4. The stored card retains its position and enabled state. Restoring it gives an empty card for explicit plugin selection. DLL paths and plugin parameters belong to the installed plugin workflow. [VST Plugin guide](VST_PLUGINS.md)
+
 ## Controls
 
 - **SAVE:** saves named local preset; prompts before overwrite.

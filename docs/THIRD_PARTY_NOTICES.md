@@ -16,6 +16,10 @@ commit `6cbfd53eb348a8d394e0757b4025c6ded34eb2b6`.
 - Modifications: MSVC compatibility changes to two C files; see vendor README
 - No RNNoise model downloads are performed when running or building.
 
+**RustAudio/vst-rs** — MIT-licensed reference for the VST2 ABI layout and operation numbers used by AuralWeave's C++ host. Reference commit `ab74a5682df4fc08e1f78a28fac12aad1ff5fe0b`. The original license is stored in `third_party/vst-rs/LICENSE` and included in the Portable ZIP as `licenses/vst-rs-MIT.txt`. [Upstream project](https://github.com/RustAudio/vst-rs/tree/ab74a5682df4fc08e1f78a28fac12aad1ff5fe0b)
+
+Installed third-party effects, including BABY Audio Crystalline, are supplied by their publishers.
+
 **Windows Core Audio, .NET 8/WPF** — Microsoft platform/runtime components;
 relevant redistribution conditions must be observed.
 

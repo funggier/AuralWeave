@@ -53,14 +53,19 @@ public sealed class NativeWasapiAudioRoute : IDisposable
     }
 
     /// <summary>Publish a fully ordered native processing graph. Unselected slots are omitted.</summary>
-    public void ReplaceFilterChain(IEnumerable<FilterStage> stages)
+    public int InputSampleRate => NativeInputSampleRate(_handle);
+
+    public void ReplaceFilterChain(IEnumerable<FilterStage> stages,
+        IReadOnlyDictionary<Guid, NativeVst2Plugin>? plugins = null)
     {
         ThrowIfDisposed();
         var all = stages.ToArray();
         FilterStageRules.Validate(all);
-        var active = all.Where(x => x.Kind != FilterKind.None).ToArray();
+        var active = all.Where(x => x.Kind != FilterKind.None &&
+            (x.Kind != FilterKind.Vst2 || plugins?.ContainsKey(x.Id) == true)).ToArray();
         var kinds = active.Select(x => (int)x.Kind).ToArray();
-        // Layout documented by aw_set_filter_chain_v3.
+        var handles = new IntPtr[active.Length];
+        // Layout documented by aw_set_filter_chain_v4.
         const int floatsPerFilter = 7;
         var parameters = new float[active.Length * floatsPerFilter];
         for (var i = 0; i < active.Length; ++i)
@@ -69,6 +74,9 @@ public sealed class NativeWasapiAudioRoute : IDisposable
             var offset = i * floatsPerFilter;
             switch (stage.Kind)
             {
+                case FilterKind.Vst2:
+                    handles[i] = plugins![stage.Id].Handle;
+                    break;
                 case FilterKind.Equalizer:
                     var eq = stage.Equalizer ?? EqualizerSettings.Flat;
                     parameters[offset] = eq.LowDb;
@@ -94,7 +102,7 @@ public sealed class NativeWasapiAudioRoute : IDisposable
             }
         }
         var enabled = active.Select(x => x.Enabled ? 1 : 0).ToArray();
-        if (NativeSetFilterChain(_handle, kinds, parameters, enabled, active.Length) != 1)
+        if (NativeSetFilterChain(_handle, kinds, parameters, enabled, handles, active.Length) != 1)
             throw new InvalidOperationException("Native backend rejected filter chain.");
     }
     public bool IsRunning => _handle != IntPtr.Zero && NativeState(_handle) == 2;
@@ -218,9 +226,12 @@ public sealed class NativeWasapiAudioRoute : IDisposable
     [DllImport(Library, EntryPoint = "aw_input_peak", CallingConvention = CallingConvention.Cdecl)]
     private static extern float NativeInputPeak(IntPtr handle);
 
-    [DllImport(Library, EntryPoint = "aw_set_filter_chain_v3", CallingConvention = CallingConvention.Cdecl)]
+    [DllImport(Library, EntryPoint = "aw_input_sample_rate", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeInputSampleRate(IntPtr handle);
+
+    [DllImport(Library, EntryPoint = "aw_set_filter_chain_v4", CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeSetFilterChain(IntPtr handle,
-        [In] int[] kinds, [In] float[] parameters, [In] int[] enabled, int count);
+        [In] int[] kinds, [In] float[] parameters, [In] int[] enabled, [In] IntPtr[] plugins, int count);
 
     [DllImport(Library, EntryPoint = "aw_set_noise_mode", CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeSetNoiseMode(IntPtr handle, int mode);

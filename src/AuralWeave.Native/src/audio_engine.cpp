@@ -219,7 +219,8 @@ public:
     std::uint64_t overruns() const noexcept { return overruns_.load(); }
     std::uint64_t underruns() const noexcept { return underruns_.load(); }
     bool set_filter_chain(const int* kinds, const float* parameters,
-                          const int* enabled, int count, int stride, auralweave::FilterKind last_kind) {
+                          const int* enabled, int count, int stride, auralweave::FilterKind last_kind,
+                          void* const* plugins = nullptr) {
         if (count < 0 || count > 64 || (count > 0 &&
             (!kinds || !parameters || !enabled))) return false;
         std::vector<auralweave::FilterSpec> specs;
@@ -230,6 +231,10 @@ public:
             const auto* values = parameters + i * stride;
             auralweave::FilterSpec spec{kind, values[0], enabled[i] != 0};
             std::copy_n(values + 1, stride - 1, spec.additional.begin());
+            if (kind == auralweave::FilterKind::vst2) {
+                if (!plugins || !plugins[i]) return false;
+                spec.plugin = *static_cast<const auralweave::Vst2Handle*>(plugins[i]);
+            }
             if (!auralweave::valid_filter_spec(spec)) return false;
             specs.push_back(spec);
         }
@@ -253,6 +258,7 @@ public:
         return true;
     }
     float peak() const noexcept { return peak_.load(); }
+    int input_sample_rate() const noexcept { return static_cast<int>(sample_rate_.load()); }
 
     std::wstring error() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -616,6 +622,9 @@ AW_API std::uint64_t aw_underrun_render_frames(void* handle) noexcept {
 AW_API float aw_input_peak(void* handle) noexcept {
     return handle ? static_cast<NativeRoute*>(handle)->peak() : 0;
 }
+AW_API int aw_input_sample_rate(void* handle) noexcept {
+    return handle ? static_cast<NativeRoute*>(handle)->input_sample_rate() : 0;
+}
 AW_API int aw_set_filter_chain(void* handle, const int* kinds,
                                 const float* parameters, const int* enabled,
                                 int count) noexcept {
@@ -636,6 +645,13 @@ AW_API int aw_set_filter_chain_v3(void* handle, const int* kinds, const float* p
     if (!handle) return 0;
     try { return static_cast<NativeRoute*>(handle)->set_filter_chain(
         kinds, parameters, enabled, count, 7, auralweave::FilterKind::equalizer_7_band) ? 1 : 0; }
+    catch (...) { return 0; }
+}
+AW_API int aw_set_filter_chain_v4(void* handle, const int* kinds, const float* parameters,
+                                  const int* enabled, void* const* plugins, int count) noexcept {
+    if (!handle) return 0;
+    try { return static_cast<NativeRoute*>(handle)->set_filter_chain(
+        kinds, parameters, enabled, count, 7, auralweave::FilterKind::vst2, plugins) ? 1 : 0; }
     catch (...) { return 0; }
 }
 AW_API int aw_set_noise_mode(void* handle, int mode) noexcept {

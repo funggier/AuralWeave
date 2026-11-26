@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <iostream>
 #include <limits>
 #include <numbers>
@@ -115,8 +116,53 @@ static void check_voice_filters() {
            "native EQ rejects an invalid seventh band gain");
 }
 
+// Opt-in signal check for a reverb VST2 effect installed on this machine.
+// Uses synthetic PCM without starting any Windows audio devices.
+static void check_vst2_reverb(const wchar_t* path) {
+    auto effect = Vst2Plugin::load(path, 48000);
+    const FilterSpec spec{FilterKind::vst2, 0.0F, true, {}, effect};
+    for (const auto rate : {48000U, 192000U}) {
+        effect->configure(static_cast<int>(rate));
+        FilterChain chain(rate, 2, {spec});
+        const auto packet = rate / 100;
+        std::vector<float> pcm(packet * 2);
+        double tail_energy = 0.0;
+        double worst_ms = 0.0;
+        for (unsigned block = 0; block < 180; ++block) {
+            for (unsigned frame = 0; frame < packet; ++frame) {
+                const auto angle = 2.0 * std::numbers::pi * 440.0 * (block * packet + frame) / rate;
+                const float sample = block < 18 ? .25F * static_cast<float>(std::sin(angle)) : 0.0F;
+                pcm[frame * 2] = sample;
+                pcm[frame * 2 + 1] = sample * .6F;
+            }
+            const auto begin = std::chrono::steady_clock::now();
+            chain.process(pcm.data(), packet);
+            const auto elapsed = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - begin).count();
+            if (block > 8) worst_ms = std::max(worst_ms, elapsed);
+            for (const float sample : pcm) {
+                if (!std::isfinite(sample)) throw std::runtime_error("Non-finite plugin output");
+                if (block >= 23) tail_energy += static_cast<double>(sample) * sample;
+            }
+        }
+        std::cout << "VST2 " << rate << " Hz: tail energy " << tail_energy
+                  << ", maximum time per 10 ms packet " << worst_ms << " ms\n";
+        expect(tail_energy > .00001, "VST2 produces a reverb tail after the source is silent");
+    }
+
+    FilterChain retired(192000, 2, {spec});
+    effect->close();
+    std::array<float, 2> clean{.13F, -.27F};
+    retired.process(clean.data(), 1);
+    expect(clean[0] == .13F && clean[1] == -.27F, "retired VST graph snapshots bypass closed effects");
+}
+
 int wmain(int argc, wchar_t* argv[]) {
     try {
+        if (argc == 3 && std::wstring_view(argv[1]) == L"--vst2-reverb") {
+            check_vst2_reverb(argv[2]);
+            return 0;
+        }
         RouteGraph graph;
         expect(graph.add_output(Output{1, L"Speakers", 1.0F, false}), "add physical output");
         expect(!graph.add_output(Output{2, L"Speakers", 1.0F, false}), "reject duplicate output");

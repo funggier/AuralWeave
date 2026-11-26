@@ -211,6 +211,14 @@ try
         Verify(true, "preset validation rejects an incorrect EQ band count");
     }
 
+    var vstCard = new FilterStage(Guid.NewGuid(), FilterKind.Vst2);
+    var vstPreset = presetStore.Create("VST slot", [vstCard]);
+    var vstFile = presetStore.Save(vstPreset);
+    var restoredVst = FilterPresetStore.Restore(FilterPresetStore.ReadFile(vstFile.FilePath));
+    Verify(vstPreset.SchemaVersion == 4 &&
+           restoredVst is [{ Kind: FilterKind.Vst2, Enabled: true, Parameter: 0 }],
+        "VST preset restores an empty VST card using schema 4");
+
     var oldPath = Path.Combine(presetTestFolder, "v1.awfilter");
     File.WriteAllText(oldPath, """
         {"SchemaVersion":1,"Name":"Old Voice","Filters":[{"Kind":"gain","Enabled":true,"Parameter":0.75}]}
